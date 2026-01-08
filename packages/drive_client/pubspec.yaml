@@ -1,0 +1,11 @@
+name: drive_client
+version: 0.1.0
+publish_to: 'none'
+description: Google Drive OAuth and file operations for sync.
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+dependencies:
+  googleapis: ^13.2.0
+  googleapis_auth: ^1.6.0
+  http: ^1.2.2
+  meta: ^1.12.0
