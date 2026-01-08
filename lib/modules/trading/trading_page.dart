@@ -2,6 +2,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute, kDebugMode, kIsWeb;
+import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,7 +17,7 @@ import 'package:drift/drift.dart' as d;
 import '../../core/services/auth_service.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart';
-import '../../core/app_utils.dart';
+import '../../core/app_utils.dart' show fmtTs, buildSecureFirestoreQuery, creatorFields;
 import '../../core/shared_utils.dart';
 import '../../core/services/firestore_cache_service.dart';
 import '../../firestore_sync_service.dart';
@@ -98,6 +99,8 @@ class _TradingFilePageState extends State<TradingFilePage> {
   final List<_TradingFileEntry> _entries = [];
   DateTime? _buySelectedDate;
   DateTime? _sellSelectedDate;
+  bool _buyDateLocked = false; // Tracks if date is auto-filled and locked
+  bool _sellDateLocked = false; // Tracks if date is auto-filled and locked
   bool _loading = false;
   bool _firestoreReady = false;
   _TradingFileFormType? _selectedFormType;
@@ -916,9 +919,11 @@ class _TradingFilePageState extends State<TradingFilePage> {
       if (type == _TradingFileFormType.buy) {
         _buySelectedDate = calculatedDate;
         _buyDateCtl.text = formatted;
+        _buyDateLocked = true; // Lock the date field after auto-filling
       } else {
         _sellSelectedDate = calculatedDate;
         _sellDateCtl.text = formatted;
+        _sellDateLocked = true; // Lock the date field after auto-filling
       }
     });
   }
@@ -929,6 +934,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
       setState(() {
         _buySelection = null;
         _buySelectedDate = null;
+        _buyDateLocked = false; // Reset date lock flag
         _buyImages = []; // Reset images
       });
       _buyDateCtl.clear();
@@ -998,7 +1004,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  type == _TradingFileFormType.buy ? 'Buy Form' : 'Sell Form',
+                                  type == _TradingFileFormType.buy ? 'Buy Entry' : 'Sell Entry',
                                   style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
                                 ),
                                 const SizedBox(height: 24),
@@ -1228,9 +1234,9 @@ class _TradingFilePageState extends State<TradingFilePage> {
       
       // Filter by transaction type
       bool matchesTransactionType = true;
-      if (_transactionTypeFilter == 'Add Buy') {
+      if (_transactionTypeFilter == 'Buy') {
         matchesTransactionType = entry.type == _TradingFileFormType.buy;
-      } else if (_transactionTypeFilter == 'Add Sell') {
+      } else if (_transactionTypeFilter == 'Sell') {
         matchesTransactionType = entry.type == _TradingFileFormType.sell;
       }
       // If "All" is selected, matchesTransactionType remains true
@@ -1254,9 +1260,9 @@ class _TradingFilePageState extends State<TradingFilePage> {
   /// Gets the label for the summary based on transaction type
   String _getSummaryLabel() {
     switch (_transactionTypeFilter) {
-      case 'Add Buy':
+      case 'Buy':
         return 'Total Purchases';
-      case 'Add Sell':
+      case 'Sell':
         return 'Total Sales';
       default:
         return 'Total Payment';
@@ -1471,6 +1477,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
     final commentsCtl = isBuy ? _buyCommentsCtl : _sellCommentsCtl;
     final selectedDate = isBuy ? _buySelectedDate : _sellSelectedDate;
     final selection = isBuy ? _buySelection : _sellSelection;
+    final isDateLocked = isBuy ? _buyDateLocked : _sellDateLocked;
 
     return Form(
       key: formKey,
@@ -1531,8 +1538,11 @@ class _TradingFilePageState extends State<TradingFilePage> {
                 TextFormField(
                   controller: dateCtl,
                   readOnly: true,
-                  decoration: _fieldDecoration('Date', isRequired: true).copyWith(suffixIcon: const Icon(Icons.calendar_today)),
-                  onTap: () => _pickDate(type),
+                  enabled: !isDateLocked,
+                  decoration: _fieldDecoration('Date', isRequired: true).copyWith(
+                    suffixIcon: const Icon(Icons.calendar_today),
+                  ),
+                  onTap: isDateLocked ? null : () => _pickDate(type),
                   validator: (_) => selectedDate == null ? 'Select a date' : null,
                 ),
               ),
@@ -1662,7 +1672,10 @@ class _TradingFilePageState extends State<TradingFilePage> {
                     const Spacer(),
                     FilledButton.icon(
                       icon: Icon(isBuy ? Icons.shopping_cart : Icons.work),
-                      label: const Text('Save Entry'),
+                      label: Text(isBuy ? 'Save Buy' : 'Save Sell'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: isBuy ? const Color(0xFFFF6B35) : const Color(0xFF4A90E2),
+                      ),
                       onPressed: () async {
                         // Save entry and close modal - pass dialog context
                         await _addEntryForType(type, dialogContext: context);
@@ -2222,14 +2235,14 @@ class _TradingFilePageState extends State<TradingFilePage> {
                 FloatingActionButton.extended(
                   onPressed: () => _showAddFormDialog(_TradingFileFormType.buy),
                   icon: const Icon(Icons.shopping_cart),
-                  label: const Text('Add Buy'),
-                  backgroundColor: Colors.green,
+                  label: const Text('Buy', style: TextStyle(fontWeight: FontWeight.bold)),
+                  backgroundColor: const Color(0xFFFF6B35),
                 ),
                 const SizedBox(width: 12),
                 FloatingActionButton.extended(
                   onPressed: () => _showAddFormDialog(_TradingFileFormType.sell),
                   icon: const Icon(Icons.work),
-                  label: const Text('Add Sell'),
+                  label: const Text('Sell', style: TextStyle(fontWeight: FontWeight.bold)),
                   backgroundColor: Colors.blue,
                 ),
               ],
@@ -2257,7 +2270,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
                     children: [
                     // Filter Dropdowns Row
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
                       child: Row(
                         children: [
                           // Date Range Filter Dropdown
@@ -2299,8 +2312,8 @@ class _TradingFilePageState extends State<TradingFilePage> {
                               ),
                               items: const [
                                 DropdownMenuItem(value: 'All', child: Text('All')),
-                                DropdownMenuItem(value: 'Add Buy', child: Text('Add Buy')),
-                                DropdownMenuItem(value: 'Add Sell', child: Text('Add Sell')),
+                                DropdownMenuItem(value: 'Buy', child: Text('Buy')),
+                                DropdownMenuItem(value: 'Sell', child: Text('Sell')),
                               ],
                               onChanged: (value) {
                                 if (value != null) {
@@ -2449,13 +2462,15 @@ class _TradingFormPageState extends State<TradingFormPage> {
   final List<_TradingClientEntry> _entries = [];
   DateTime? _buySelectedDate;
   DateTime? _sellSelectedDate;
+  bool _buyDateLocked = false; // Tracks if date is auto-filled and locked
+  bool _sellDateLocked = false; // Tracks if date is auto-filled and locked
   bool _loading = false;
   bool _firestoreReady = false;
   _TradingFormType? _selectedFormType;
   List<String> _buyImages = [];
   List<String> _sellImages = [];
   String _dateRangeFilter = 'Today'; // Default filter
-  String _transactionTypeFilter = 'All'; // Default: All, Add Buy, Add Sell
+  String _transactionTypeFilter = 'All'; // Default: All, Buy, Sell
   Map<String, dynamic>? _currentUser; // Current logged-in user for permission checks
   StreamSubscription<QuerySnapshot>? _firestoreSub;
   FirestoreSyncState _syncState = FirestoreSyncState();
@@ -3295,9 +3310,11 @@ class _TradingFormPageState extends State<TradingFormPage> {
       if (type == _TradingFormType.buy) {
         _buySelectedDate = calculatedDate;
         _buyDateCtl.text = formatted;
+        _buyDateLocked = true; // Lock the date field after auto-filling
       } else {
         _sellSelectedDate = calculatedDate;
         _sellDateCtl.text = formatted;
+        _sellDateLocked = true; // Lock the date field after auto-filling
       }
     });
   }
@@ -3308,6 +3325,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
       setState(() {
         _buySelection = null;
         _buySelectedDate = null;
+        _buyDateLocked = false; // Reset date lock flag
         _buyImages = []; // Reset images
       });
       _buyDateCtl.clear();
@@ -3327,6 +3345,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
       setState(() {
         _sellSelection = null;
         _sellSelectedDate = null;
+        _sellDateLocked = false; // Reset date lock flag
         _sellImages = []; // Reset images
       });
       _sellDateCtl.clear();
@@ -3422,7 +3441,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  type == _TradingFormType.buy ? 'Buy Form' : 'Sell Form',
+                                  type == _TradingFormType.buy ? 'Buy Entry' : 'Sell Entry',
                                   style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
                                 ),
                                 const SizedBox(height: 24),
@@ -3667,9 +3686,9 @@ class _TradingFormPageState extends State<TradingFormPage> {
       
       // Filter by transaction type
       bool matchesTransactionType = true;
-      if (_transactionTypeFilter == 'Add Buy') {
+      if (_transactionTypeFilter == 'Buy') {
         matchesTransactionType = entry.type == _TradingFormType.buy;
-      } else if (_transactionTypeFilter == 'Add Sell') {
+      } else if (_transactionTypeFilter == 'Sell') {
         matchesTransactionType = entry.type == _TradingFormType.sell;
       }
       // If "All" is selected, matchesTransactionType remains true
@@ -3693,9 +3712,9 @@ class _TradingFormPageState extends State<TradingFormPage> {
   /// Gets the label for the summary based on transaction type
   String _getSummaryLabel() {
     switch (_transactionTypeFilter) {
-      case 'Add Buy':
+      case 'Buy':
         return 'Total Purchases';
-      case 'Add Sell':
+      case 'Sell':
         return 'Total Sales';
       default:
         return 'Total Payment';
@@ -3878,6 +3897,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
     final commentsCtl = isBuy ? _buyCommentsCtl : _sellCommentsCtl;
     final selectedDate = isBuy ? _buySelectedDate : _sellSelectedDate;
     final selection = isBuy ? _buySelection : _sellSelection;
+    final isDateLocked = isBuy ? _buyDateLocked : _sellDateLocked;
 
     return Form(
       key: formKey,
@@ -3938,8 +3958,11 @@ class _TradingFormPageState extends State<TradingFormPage> {
                 TextFormField(
                   controller: dateCtl,
                   readOnly: true,
-                  decoration: _fieldDecoration('Date', isRequired: true).copyWith(suffixIcon: const Icon(Icons.calendar_today)),
-                  onTap: () => _pickDate(type),
+                  enabled: !isDateLocked,
+                  decoration: _fieldDecoration('Date', isRequired: true).copyWith(
+                    suffixIcon: const Icon(Icons.calendar_today),
+                  ),
+                  onTap: isDateLocked ? null : () => _pickDate(type),
                   validator: (_) => selectedDate == null ? 'Select a date' : null,
                 ),
               ),
@@ -4069,7 +4092,10 @@ class _TradingFormPageState extends State<TradingFormPage> {
                     const Spacer(),
                     FilledButton.icon(
                       icon: Icon(isBuy ? Icons.shopping_cart : Icons.work),
-                      label: const Text('Save Entry'),
+                      label: Text(isBuy ? 'Save Buy' : 'Save Sell'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: isBuy ? const Color(0xFFFF6B35) : const Color(0xFF4A90E2),
+                      ),
                       onPressed: () async {
                         // Save entry and close modal - pass dialog context
                         await _addEntryForType(type, dialogContext: context);
@@ -4666,14 +4692,14 @@ class _TradingFormPageState extends State<TradingFormPage> {
                 FloatingActionButton.extended(
                   onPressed: () => _showAddFormDialog(_TradingFormType.buy),
                   icon: const Icon(Icons.shopping_cart),
-                  label: const Text('Add Buy'),
-                  backgroundColor: Colors.green,
+                  label: const Text('Buy', style: TextStyle(fontWeight: FontWeight.bold)),
+                  backgroundColor: const Color(0xFFFF6B35),
                 ),
                 const SizedBox(width: 12),
                 FloatingActionButton.extended(
                   onPressed: () => _showAddFormDialog(_TradingFormType.sell),
                   icon: const Icon(Icons.work),
-                  label: const Text('Add Sell'),
+                  label: const Text('Sell', style: TextStyle(fontWeight: FontWeight.bold)),
                   backgroundColor: Colors.blue,
                 ),
               ],
@@ -4701,7 +4727,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
                     children: [
                     // Filter Dropdowns Row
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
                       child: Row(
                         children: [
                           // Date Range Filter Dropdown
@@ -4743,8 +4769,8 @@ class _TradingFormPageState extends State<TradingFormPage> {
                               ),
                               items: const [
                                 DropdownMenuItem(value: 'All', child: Text('All')),
-                                DropdownMenuItem(value: 'Add Buy', child: Text('Add Buy')),
-                                DropdownMenuItem(value: 'Add Sell', child: Text('Add Sell')),
+                                DropdownMenuItem(value: 'Buy', child: Text('Buy')),
+                                DropdownMenuItem(value: 'Sell', child: Text('Sell')),
                               ],
                               onChanged: (value) {
                                 if (value != null) {
@@ -4912,6 +4938,8 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
   final TextEditingController _fileSellCommentsCtl = TextEditingController();
   DateTime? _fileBuySelectedDate;
   DateTime? _fileSellSelectedDate;
+  bool _fileBuyDateLocked = false; // Tracks if date is auto-filled and locked
+  bool _fileSellDateLocked = false; // Tracks if date is auto-filled and locked
   List<String> _fileBuyImages = [];
   List<String> _fileSellImages = [];
   _TradingFileFormType? _fileSelectedFormType;
@@ -4947,6 +4975,8 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
   final TextEditingController _formSellCommentsCtl = TextEditingController();
   DateTime? _formBuySelectedDate;
   DateTime? _formSellSelectedDate;
+  bool _formBuyDateLocked = false; // Tracks if date is auto-filled and locked
+  bool _formSellDateLocked = false; // Tracks if date is auto-filled and locked
   List<String> _formBuyImages = [];
   List<String> _formSellImages = [];
   _TradingFormType? _formSelectedFormType;
@@ -5580,9 +5610,9 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
         final isInDateRange = !entryDate.isBefore(startDate) && !entryDate.isAfter(endDate);
         
         bool matchesTransactionType = true;
-        if (_transactionTypeFilter == 'Add Buy') {
+        if (_transactionTypeFilter == 'Buy') {
           matchesTransactionType = entry.type == _TradingFileFormType.buy;
-        } else if (_transactionTypeFilter == 'Add Sell') {
+        } else if (_transactionTypeFilter == 'Sell') {
           matchesTransactionType = entry.type == _TradingFileFormType.sell;
         }
         
@@ -5594,9 +5624,9 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
         final isInDateRange = !entryDate.isBefore(startDate) && !entryDate.isAfter(endDate);
         
         bool matchesTransactionType = true;
-        if (_transactionTypeFilter == 'Add Buy') {
+        if (_transactionTypeFilter == 'Buy') {
           matchesTransactionType = entry.type == _TradingFormType.buy;
-        } else if (_transactionTypeFilter == 'Add Sell') {
+        } else if (_transactionTypeFilter == 'Sell') {
           matchesTransactionType = entry.type == _TradingFormType.sell;
         }
         
@@ -5804,9 +5834,11 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       if (type == _TradingFileFormType.buy) {
         _fileBuySelectedDate = calculatedDate;
         _fileBuyDateCtl.text = formatted;
+        _fileBuyDateLocked = true; // Lock the date field after auto-filling
       } else {
         _fileSellSelectedDate = calculatedDate;
         _fileSellDateCtl.text = formatted;
+        _fileSellDateLocked = true; // Lock the date field after auto-filling
       }
     });
   }
@@ -5817,6 +5849,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       setState(() {
         _fileBuySelection = null;
         _fileBuySelectedDate = null;
+        _fileBuyDateLocked = false; // Reset date lock flag
         _fileBuyImages = [];
       });
       _fileBuyDateCtl.clear();
@@ -5831,6 +5864,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       setState(() {
         _fileSellSelection = null;
         _fileSellSelectedDate = null;
+        _fileSellDateLocked = false; // Reset date lock flag
         _fileSellImages = [];
       });
       _fileSellDateCtl.clear();
@@ -5965,6 +5999,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     final commentsCtl = isBuy ? _fileBuyCommentsCtl : _fileSellCommentsCtl;
     final selectedDate = isBuy ? _fileBuySelectedDate : _fileSellSelectedDate;
     final selection = isBuy ? _fileBuySelection : _fileSellSelection;
+    final isDateLocked = isBuy ? _fileBuyDateLocked : _fileSellDateLocked;
     return Form(
       key: formKey,
       autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -6003,9 +6038,13 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                 items: _tradeDropdownItems,
               )),
               fieldBox(TextFormField(
-                controller: dateCtl, readOnly: true,
-                decoration: _fieldDecoration('Date', isRequired: true).copyWith(suffixIcon: const Icon(Icons.calendar_today)),
-                onTap: () => _filePickDate(type),
+                controller: dateCtl,
+                readOnly: true,
+                enabled: !isDateLocked,
+                decoration: _fieldDecoration('Date', isRequired: true).copyWith(
+                  suffixIcon: const Icon(Icons.calendar_today),
+                ),
+                onTap: isDateLocked ? null : () => _filePickDate(type),
                 validator: (_) => selectedDate == null ? 'Select a date' : null,
               )),
               fieldBox(TextFormField(
@@ -6102,7 +6141,10 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                   const Spacer(),
                   FilledButton.icon(
                     icon: Icon(isBuy ? Icons.shopping_cart : Icons.work),
-                    label: const Text('Save Entry'),
+                    label: Text(isBuy ? 'Save Buy' : 'Save Sell'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: isBuy ? const Color(0xFFFF6B35) : const Color(0xFF4A90E2),
+                    ),
                     onPressed: () => _fileAddEntryForType(type, dialogContext: context),
                   ),
                 ],
@@ -6151,7 +6193,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  type == _TradingFileFormType.buy ? 'Buy Form' : 'Sell Form',
+                                  type == _TradingFileFormType.buy ? 'Buy Entry' : 'Sell Entry',
                                   style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
                                 ),
                                 const SizedBox(height: 24),
@@ -6222,9 +6264,11 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       if (type == _TradingFormType.buy) {
         _formBuySelectedDate = calculatedDate;
         _formBuyDateCtl.text = formatted;
+        _formBuyDateLocked = true; // Lock the date field after auto-filling
       } else {
         _formSellSelectedDate = calculatedDate;
         _formSellDateCtl.text = formatted;
+        _formSellDateLocked = true; // Lock the date field after auto-filling
       }
     });
   }
@@ -6235,6 +6279,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       setState(() {
         _formBuySelection = null;
         _formBuySelectedDate = null;
+        _formBuyDateLocked = false; // Reset date lock flag
         _formBuyImages = [];
       });
       _formBuyDateCtl.clear();
@@ -6254,6 +6299,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       setState(() {
         _formSellSelection = null;
         _formSellSelectedDate = null;
+        _formSellDateLocked = false; // Reset date lock flag
         _formSellImages = [];
       });
       _formSellDateCtl.clear();
@@ -6412,6 +6458,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     final commentsCtl = isBuy ? _formBuyCommentsCtl : _formSellCommentsCtl;
     final selectedDate = isBuy ? _formBuySelectedDate : _formSellSelectedDate;
     final selection = isBuy ? _formBuySelection : _formSellSelection;
+    final isDateLocked = isBuy ? _formBuyDateLocked : _formSellDateLocked;
     return Form(
       key: formKey,
       autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -6450,9 +6497,13 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                 items: _tradeDropdownItems,
               )),
               fieldBox(TextFormField(
-                controller: dateCtl, readOnly: true,
-                decoration: _fieldDecoration('Date', isRequired: true).copyWith(suffixIcon: const Icon(Icons.calendar_today)),
-                onTap: () => _formPickDate(type),
+                controller: dateCtl,
+                readOnly: true,
+                enabled: !isDateLocked,
+                decoration: _fieldDecoration('Date', isRequired: true).copyWith(
+                  suffixIcon: const Icon(Icons.calendar_today),
+                ),
+                onTap: isDateLocked ? null : () => _formPickDate(type),
                 validator: (_) => selectedDate == null ? 'Select a date' : null,
               )),
               fieldBox(TextFormField(
@@ -6584,7 +6635,10 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                   const Spacer(),
                   FilledButton.icon(
                     icon: Icon(isBuy ? Icons.shopping_cart : Icons.work),
-                    label: const Text('Save Entry'),
+                    label: Text(isBuy ? 'Save Buy' : 'Save Sell'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: isBuy ? const Color(0xFFFF6B35) : const Color(0xFF4A90E2),
+                    ),
                     onPressed: () => _formAddEntryForType(type, dialogContext: context),
                   ),
                 ],
@@ -6633,7 +6687,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  type == _TradingFormType.buy ? 'Buy Form' : 'Sell Form',
+                                  type == _TradingFormType.buy ? 'Buy Entry' : 'Sell Entry',
                                   style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
                                 ),
                                 const SizedBox(height: 24),
@@ -6746,7 +6800,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                     }
                   },
                   icon: const Icon(Icons.shopping_cart),
-                  label: const Text('Add Buy'),
+                  label: const Text('Buy', style: TextStyle(fontWeight: FontWeight.bold)),
                   backgroundColor: const Color(0xFFFF6B35), // Orange from gradient
                 ),
                 const SizedBox(width: 12),
@@ -6759,7 +6813,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                     }
                   },
                   icon: const Icon(Icons.work),
-                  label: const Text('Add Sell'),
+                  label: const Text('Sell', style: TextStyle(fontWeight: FontWeight.bold)),
                   backgroundColor: const Color(0xFF4A90E2), // Blue from gradient
                 ),
               ],
@@ -6784,7 +6838,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                   children: [
                     // Filter Dropdowns Row
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
                       child: Row(
                         children: [
                           // Date Range Filter Dropdown
@@ -6828,8 +6882,8 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                               ),
                               items: const [
                                 DropdownMenuItem(value: 'All', child: Text('All')),
-                                DropdownMenuItem(value: 'Add Buy', child: Text('Add Buy')),
-                                DropdownMenuItem(value: 'Add Sell', child: Text('Add Sell')),
+                                DropdownMenuItem(value: 'Buy', child: Text('Buy')),
+                                DropdownMenuItem(value: 'Sell', child: Text('Sell')),
                               ],
                               onChanged: (value) {
                                 if (value != null) {
@@ -6937,15 +6991,26 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     
     if (allFiltered.isEmpty) {
       return Center(
-        child: Text('No ${tabType == 'File' ? 'file entries' : 'form entries'} found'),
+        child: Text('No Trading Records Found'),
       );
     }
     
-    return ListView.builder(
-      controller: scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      itemCount: searchFiltered.length + (_hasMoreEntriesForTab(tabType) ? 1 : 0),
-      itemBuilder: (ctx, i) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+        final summaryRowHeight = isMobile ? 70.0 : 65.0;
+        
+        return Stack(
+          children: [
+            ListView.builder(
+              controller: scrollController,
+              padding: EdgeInsets.only(
+                left: isMobile ? 8 : 12,
+                right: isMobile ? 8 : 12,
+                bottom: summaryRowHeight + 8, // Responsive space for sticky summary row
+              ),
+              itemCount: searchFiltered.length + (_hasMoreEntriesForTab(tabType) ? 1 : 0),
+              itemBuilder: (ctx, i) {
         if (i == searchFiltered.length) {
           // Show shimmer effect while loading more
           return Padding(
@@ -6957,26 +7022,46 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
         // Build card for entry
         if (tabType == 'File') {
           final fileEntry = entry as _TradingFileEntry;
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            elevation: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          fileEntry.personName.isNotEmpty ? fileEntry.personName : 'N/A',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
+          return LayoutBuilder(
+            builder: (context, cardConstraints) {
+              final isMobileCard = cardConstraints.maxWidth < 600;
+              return Card(
+                margin: EdgeInsets.only(bottom: isMobileCard ? 8 : 12),
+                elevation: 2,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => TradingDetailPage(
+                          entry: fileEntry,
+                          tabType: 'File',
+                          db: widget.db,
+                          currentUser: _currentUser,
                         ),
                       ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: EdgeInsets.all(isMobileCard ? 12 : 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                fileEntry.personName.isNotEmpty ? fileEntry.personName : 'N/A',
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: isMobileCard ? 14 : 16,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
@@ -7003,72 +7088,83 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Date',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              DateFormat('dd MMM yyyy').format(fileEntry.date),
-                              style: GoogleFonts.poppins(fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Mobile',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              fileEntry.mobile.isNotEmpty ? fileEntry.mobile : 'N/A',
-                              style: GoogleFonts.poppins(fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Payment',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Rs ${NumberFormat('#,##0').format(fileEntry.payment.toInt())}',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFFFF6B35),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                  SizedBox(height: isMobileCard ? 8 : 12),
+                  isMobileCard
+                                ? Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _buildInfoRow('Date', DateFormat('dd MMM yyyy').format(fileEntry.date), isMobileCard),
+                                      const SizedBox(height: 8),
+                                      _buildInfoRow('Mobile', fileEntry.mobile.isNotEmpty ? fileEntry.mobile : 'N/A', isMobileCard),
+                                      const SizedBox(height: 8),
+                                      _buildInfoRow('Payment', 'Rs ${NumberFormat('#,##0').format(fileEntry.payment.toInt())}', isMobileCard, isBold: true),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Date',
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              DateFormat('dd MMM yyyy').format(fileEntry.date),
+                                              style: GoogleFonts.poppins(fontSize: 14),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Mobile',
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              fileEntry.mobile.isNotEmpty ? fileEntry.mobile : 'N/A',
+                                              style: GoogleFonts.poppins(fontSize: 14),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Payment',
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Rs ${NumberFormat('#,##0').format(fileEntry.payment.toInt())}',
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                                color: const Color(0xFFFF6B35),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                   if (fileEntry.estate.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -7129,184 +7225,859 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                 ],
               ),
             ),
+          ),
+            );
+          },
           );
         } else {
           final formEntry = entry as _TradingClientEntry;
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
+          return LayoutBuilder(
+            builder: (context, cardConstraints) {
+              final isMobileCard = cardConstraints.maxWidth < 600;
+              return Card(
+                margin: EdgeInsets.only(bottom: isMobileCard ? 8 : 12),
+                elevation: 2,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => TradingDetailPage(
+                          entry: formEntry,
+                          tabType: 'Form',
+                          db: widget.db,
+                          currentUser: _currentUser,
+                        ),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: EdgeInsets.all(isMobileCard ? 12 : 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                formEntry.personName.isNotEmpty ? formEntry.personName : 'N/A',
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: isMobileCard ? 14 : 16,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: isMobileCard ? 8 : 12, vertical: isMobileCard ? 4 : 6),
+                              decoration: BoxDecoration(
+                                color: formEntry.type == _TradingFormType.buy 
+                                    ? Colors.green.shade100 
+                                    : Colors.orange.shade100,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: formEntry.type == _TradingFormType.buy 
+                                      ? Colors.green.shade300 
+                                      : Colors.orange.shade300,
+                                ),
+                              ),
+                              child: Text(
+                                formEntry.type == _TradingFormType.buy ? 'Buy' : 'Sell',
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: isMobileCard ? 10 : 12,
+                                  color: formEntry.type == _TradingFormType.buy 
+                                      ? Colors.green.shade700 
+                                      : Colors.orange.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                  SizedBox(height: isMobileCard ? 8 : 12),
+                  isMobileCard
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildInfoRow('Date', DateFormat('dd MMM yyyy').format(formEntry.date), isMobileCard),
+                            const SizedBox(height: 8),
+                            _buildInfoRow('Mobile', formEntry.mobile.isNotEmpty ? formEntry.mobile : 'N/A', isMobileCard),
+                            const SizedBox(height: 8),
+                            _buildInfoRow('Payment', 'Rs ${NumberFormat('#,##0').format(formEntry.payment.toInt())}', isMobileCard, isBold: true),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Date',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    DateFormat('dd MMM yyyy').format(formEntry.date),
+                                    style: GoogleFonts.poppins(fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Mobile',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    formEntry.mobile.isNotEmpty ? formEntry.mobile : 'N/A',
+                                    style: GoogleFonts.poppins(fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Payment',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Rs ${NumberFormat('#,##0').format(formEntry.payment.toInt())}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: const Color(0xFFFF6B35),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                  if (formEntry.estateName.isNotEmpty) ...[
+                    SizedBox(height: isMobileCard ? 8 : 12),
+                    Text(
+                      'Estate: ${formEntry.estateName}',
+                      style: GoogleFonts.poppins(fontSize: isMobileCard ? 12 : 14),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  if (formEntry.comments.isNotEmpty) ...[
+                    SizedBox(height: isMobileCard ? 6 : 8),
+                    Text(
+                      'Comments: ${formEntry.comments}',
+                      style: GoogleFonts.poppins(
+                        fontSize: isMobileCard ? 11 : 12,
+                        color: Colors.grey.shade600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  SizedBox(height: isMobileCard ? 8 : 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Quantity: ${formEntry.quantity}',
+                        style: GoogleFonts.poppins(fontSize: isMobileCard ? 12 : 14),
+                      ),
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: isMobileCard ? 8 : 12, vertical: isMobileCard ? 4 : 6),
+                          decoration: BoxDecoration(
+                            color: formEntry.status == 'Done' 
+                                ? Colors.green.shade100 
+                                : formEntry.status == 'Close' 
+                                    ? Colors.orange.shade100 
+                                    : Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: formEntry.status == 'Done' 
+                                  ? Colors.green.shade300 
+                                  : formEntry.status == 'Close' 
+                                      ? Colors.orange.shade300 
+                                      : Colors.blue.shade300,
+                            ),
+                          ),
+                          child: Text(
+                            formEntry.status,
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                              fontSize: isMobileCard ? 10 : 12,
+                              color: formEntry.status == 'Done' 
+                                  ? Colors.green.shade700 
+                                  : formEntry.status == 'Close' 
+                                      ? Colors.orange.shade700 
+                                      : Colors.blue.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+          },
+          );
+        }
+      },
+    ),
+            // Sticky summary row at bottom - responsive positioning
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+                child: SafeArea(
+                top: false,
+                child: _buildSummaryRow(tabType, _transactionTypeFilter),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+  
+  // Helper method to calculate totals for summary
+  Map<String, dynamic> _calculateSummaryForTab(String tabType) {
+    final allFiltered = _getFilteredEntriesForTab(tabType);
+    int totalQuantity = 0;
+    double totalPayment = 0.0;
+    
+    for (final entry in allFiltered) {
+      if (tabType == 'File') {
+        final fileEntry = entry as _TradingFileEntry;
+        // Filter by transaction type if needed
+        if (_transactionTypeFilter == 'Buy' && fileEntry.type != _TradingFileFormType.buy) continue;
+        if (_transactionTypeFilter == 'Sell' && fileEntry.type != _TradingFileFormType.sell) continue;
+        totalQuantity += fileEntry.quantity;
+        totalPayment += fileEntry.payment;
+      } else {
+        final formEntry = entry as _TradingClientEntry;
+        // Filter by transaction type if needed
+        if (_transactionTypeFilter == 'Buy' && formEntry.type != _TradingFormType.buy) continue;
+        if (_transactionTypeFilter == 'Sell' && formEntry.type != _TradingFormType.sell) continue;
+        totalQuantity += formEntry.quantity;
+        totalPayment += formEntry.payment;
+      }
+    }
+    
+    return {
+      'totalQuantity': totalQuantity,
+      'totalPayment': totalPayment,
+    };
+  }
+  
+  // Helper method to build info rows for mobile cards
+  Widget _buildInfoRow(String label, String value, bool isMobile, {bool isBold = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: isMobile ? 11 : 12,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: isMobile ? 12 : 14,
+                fontWeight: isBold ? FontWeight.w600 : FontWeight.normal,
+                color: isBold ? const Color(0xFFFF6B35) : null,
+              ),
+              textAlign: TextAlign.end,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  // Build sticky summary row with responsive design
+  Widget _buildSummaryRow(String tabType, String transactionTypeFilter) {
+    final summary = _calculateSummaryForTab(tabType);
+    final formatPayment = (double amount) => NumberFormat('#,##0').format(amount.toInt());
+    
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+        final isTablet = constraints.maxWidth >= 600 && constraints.maxWidth < 900;
+        
+        return Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 12 : 16,
+            vertical: isMobile ? 10 : 12,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: isMobile
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Total Quantity',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${summary['totalQuantity']}',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              transactionTypeFilter == 'Buy' 
+                                  ? 'Total Purchases'
+                                  : transactionTypeFilter == 'Sell'
+                                      ? 'Total Sales'
+                                      : 'Total Payment',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Rs ${formatPayment(summary['totalPayment'] as double)}',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Total Quantity',
+                            style: GoogleFonts.poppins(
+                              fontSize: isTablet ? 11 : 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${summary['totalQuantity']}',
+                            style: GoogleFonts.poppins(
+                              fontSize: isTablet ? 16 : 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                              transactionTypeFilter == 'Buy' 
+                                  ? 'Total Purchases'
+                                  : transactionTypeFilter == 'Sell'
+                                      ? 'Total Sales'
+                                      : 'Total Payment',
+                            style: GoogleFonts.poppins(
+                              fontSize: isTablet ? 11 : 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Rs ${formatPayment(summary['totalPayment'] as double)}',
+                            style: GoogleFonts.poppins(
+                              fontSize: isTablet ? 16 : 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
+// Trading Detail Page
+class TradingDetailPage extends StatelessWidget {
+  final dynamic entry; // Can be _TradingFileEntry or _TradingClientEntry
+  final String tabType; // 'File' or 'Form'
+  final AppDatabase db;
+  final Map<String, dynamic>? currentUser;
+
+  const TradingDetailPage({
+    super.key,
+    required this.entry,
+    required this.tabType,
+    required this.db,
+    this.currentUser,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isFileEntry = tabType == 'File';
+    final formatPayment = (double amount) => NumberFormat('#,##0').format(amount.toInt());
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Trading Details',
+          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFFFF6B35), // Orange
+                const Color(0xFF4A90E2), // Blue
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf),
+            tooltip: 'Download Receipt',
+            onPressed: () => _downloadPdf(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.print),
+            tooltip: 'Print',
+            onPressed: () => _printPdf(context),
+          ),
+        ],
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFFFF6B35).withOpacity(0.03),
+              const Color(0xFF4A90E2).withOpacity(0.03),
+            ],
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Card(
             elevation: 2,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Header with Type Badge
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Text(
-                          formEntry.personName.isNotEmpty ? formEntry.personName : 'N/A',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
+                      Text(
+                        'Transaction Details',
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: formEntry.type == _TradingFormType.buy 
-                              ? Colors.green.shade100 
+                          color: (isFileEntry 
+                              ? (entry as _TradingFileEntry).type == _TradingFileFormType.buy
+                              : (entry as _TradingClientEntry).type == _TradingFormType.buy)
+                              ? Colors.green.shade100
                               : Colors.orange.shade100,
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                            color: formEntry.type == _TradingFormType.buy 
-                                ? Colors.green.shade300 
+                            color: (isFileEntry
+                                ? (entry as _TradingFileEntry).type == _TradingFileFormType.buy
+                                : (entry as _TradingClientEntry).type == _TradingFormType.buy)
+                                ? Colors.green.shade300
                                 : Colors.orange.shade300,
                           ),
                         ),
                         child: Text(
-                          formEntry.type == _TradingFormType.buy ? 'Buy' : 'Sell',
+                          isFileEntry
+                              ? (entry as _TradingFileEntry).type == _TradingFileFormType.buy ? 'Buy' : 'Sell'
+                              : (entry as _TradingClientEntry).type == _TradingFormType.buy ? 'Buy' : 'Sell',
                           style: GoogleFonts.poppins(
                             fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                            color: formEntry.type == _TradingFormType.buy 
-                                ? Colors.green.shade700 
+                            fontSize: 14,
+                            color: (isFileEntry
+                                ? (entry as _TradingFileEntry).type == _TradingFileFormType.buy
+                                : (entry as _TradingClientEntry).type == _TradingFormType.buy)
+                                ? Colors.green.shade700
                                 : Colors.orange.shade700,
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Date',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              DateFormat('dd MMM yyyy').format(formEntry.date),
-                              style: GoogleFonts.poppins(fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Mobile',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              formEntry.mobile.isNotEmpty ? formEntry.mobile : 'N/A',
-                              style: GoogleFonts.poppins(fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Payment',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Rs ${NumberFormat('#,##0').format(formEntry.payment.toInt())}',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFFFF6B35),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (formEntry.estateName.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Estate: ${formEntry.estateName}',
-                      style: GoogleFonts.poppins(fontSize: 14),
-                    ),
-                  ],
-                  if (formEntry.comments.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Comments: ${formEntry.comments}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Quantity: ${formEntry.quantity}',
-                        style: GoogleFonts.poppins(fontSize: 14),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: formEntry.status == 'Done' 
-                              ? Colors.green.shade100 
-                              : formEntry.status == 'Close' 
-                                  ? Colors.orange.shade100 
-                                  : Colors.blue.shade100,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: formEntry.status == 'Done' 
-                                ? Colors.green.shade300 
-                                : formEntry.status == 'Close' 
-                                    ? Colors.orange.shade300 
-                                    : Colors.blue.shade300,
-                          ),
-                        ),
-                        child: Text(
-                          formEntry.status,
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                            color: formEntry.status == 'Done' 
-                                ? Colors.green.shade700 
-                                : formEntry.status == 'Close' 
-                                    ? Colors.orange.shade700 
-                                    : Colors.blue.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  const Divider(height: 32),
+                  // Details Table
+                  _buildDetailTable(isFileEntry, formatPayment),
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailTable(bool isFileEntry, String Function(double) formatPayment) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+        
+        if (isFileEntry) {
+          final fileEntry = entry as _TradingFileEntry;
+          
+          if (isMobile) {
+            // Use vertical card layout for mobile
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildTableRow('Date', DateFormat('dd MMM yyyy').format(fileEntry.date), isMobile),
+                _buildTableRow('Payment Option', fileEntry.buyOption ?? fileEntry.sellOption ?? 'N/A', isMobile),
+                _buildTableRow('Mobile No.', fileEntry.mobile, isMobile),
+                _buildTableRow('Person Name', fileEntry.personName.isNotEmpty ? fileEntry.personName : 'N/A', isMobile),
+                _buildTableRow('Estate Name', fileEntry.estate, isMobile),
+                _buildTableRow('Quantity', fileEntry.quantity.toString(), isMobile),
+                _buildTableRow('Payment', 'Rs ${formatPayment(fileEntry.payment)}', isMobile),
+                _buildTableRow('Status', fileEntry.status, isMobile),
+                _buildTableRow('Comments', fileEntry.comments.isNotEmpty ? fileEntry.comments : 'N/A', isMobile),
+              ],
+            );
+          }
+          
+          // Desktop: table layout
+          return Table(
+            columnWidths: const {
+              0: FlexColumnWidth(2),
+              1: FlexColumnWidth(3),
+            },
+            children: [
+              _buildTableRow('Date', DateFormat('dd MMM yyyy').format(fileEntry.date), isMobile) as TableRow,
+              _buildTableRow('Payment Option', fileEntry.buyOption ?? fileEntry.sellOption ?? 'N/A', isMobile) as TableRow,
+              _buildTableRow('Mobile No.', fileEntry.mobile, isMobile) as TableRow,
+              _buildTableRow('Person Name', fileEntry.personName.isNotEmpty ? fileEntry.personName : 'N/A', isMobile) as TableRow,
+              _buildTableRow('Estate Name', fileEntry.estate, isMobile) as TableRow,
+              _buildTableRow('Quantity', fileEntry.quantity.toString(), isMobile) as TableRow,
+              _buildTableRow('Payment', 'Rs ${formatPayment(fileEntry.payment)}', isMobile) as TableRow,
+              _buildTableRow('Status', fileEntry.status, isMobile) as TableRow,
+              _buildTableRow('Comments', fileEntry.comments.isNotEmpty ? fileEntry.comments : 'N/A', isMobile) as TableRow,
+            ],
+          );
+        } else {
+          final formEntry = entry as _TradingClientEntry;
+          
+          if (isMobile) {
+            // Use vertical card layout for mobile
+            final mobileRows = <Widget>[
+              _buildTableRow('Date', DateFormat('dd MMM yyyy').format(formEntry.date), isMobile),
+              _buildTableRow('Payment Option', formEntry.buyOption ?? formEntry.sellOption ?? 'N/A', isMobile),
+              _buildTableRow('Mobile No.', formEntry.mobile, isMobile),
+              _buildTableRow('Person Name', formEntry.personName.isNotEmpty ? formEntry.personName : 'N/A', isMobile),
+              _buildTableRow('Buyer Name', formEntry.buyerName.isNotEmpty ? formEntry.buyerName : 'N/A', isMobile),
+              _buildTableRow('Seller Name', formEntry.sellerName.isNotEmpty ? formEntry.sellerName : 'N/A', isMobile),
+              _buildTableRow('Estate Name', formEntry.estateName, isMobile),
+              if (formEntry.plotNo.isNotEmpty) _buildTableRow('Plot No.', formEntry.plotNo, isMobile),
+              if (formEntry.block.isNotEmpty) _buildTableRow('Block', formEntry.block, isMobile),
+              _buildTableRow('Quantity', formEntry.quantity.toString(), isMobile),
+              _buildTableRow('Payment', 'Rs ${formatPayment(formEntry.payment)}', isMobile),
+              if (formEntry.commission > 0) _buildTableRow('Commission', 'Rs ${formatPayment(formEntry.commission)}', isMobile),
+              _buildTableRow('Status', formEntry.status, isMobile),
+              _buildTableRow('Comments', formEntry.comments.isNotEmpty ? formEntry.comments : 'N/A', isMobile),
+            ];
+            
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: mobileRows,
+            );
+          }
+          
+          // Desktop: table layout
+          final tableRows = <TableRow>[
+            _buildTableRow('Date', DateFormat('dd MMM yyyy').format(formEntry.date), isMobile) as TableRow,
+            _buildTableRow('Payment Option', formEntry.buyOption ?? formEntry.sellOption ?? 'N/A', isMobile) as TableRow,
+            _buildTableRow('Mobile No.', formEntry.mobile, isMobile) as TableRow,
+            _buildTableRow('Person Name', formEntry.personName.isNotEmpty ? formEntry.personName : 'N/A', isMobile) as TableRow,
+            _buildTableRow('Buyer Name', formEntry.buyerName.isNotEmpty ? formEntry.buyerName : 'N/A', isMobile) as TableRow,
+            _buildTableRow('Seller Name', formEntry.sellerName.isNotEmpty ? formEntry.sellerName : 'N/A', isMobile) as TableRow,
+            _buildTableRow('Estate Name', formEntry.estateName, isMobile) as TableRow,
+            if (formEntry.plotNo.isNotEmpty) _buildTableRow('Plot No.', formEntry.plotNo, isMobile) as TableRow,
+            if (formEntry.block.isNotEmpty) _buildTableRow('Block', formEntry.block, isMobile) as TableRow,
+            _buildTableRow('Quantity', formEntry.quantity.toString(), isMobile) as TableRow,
+            _buildTableRow('Payment', 'Rs ${formatPayment(formEntry.payment)}', isMobile) as TableRow,
+            if (formEntry.commission > 0) _buildTableRow('Commission', 'Rs ${formatPayment(formEntry.commission)}', isMobile) as TableRow,
+            _buildTableRow('Status', formEntry.status, isMobile) as TableRow,
+            _buildTableRow('Comments', formEntry.comments.isNotEmpty ? formEntry.comments : 'N/A', isMobile) as TableRow,
+          ];
+          
+          return Table(
+            columnWidths: const {
+              0: FlexColumnWidth(2),
+              1: FlexColumnWidth(3),
+            },
+            children: tableRows,
           );
         }
       },
     );
+  }
+  
+  dynamic _buildTableRow(String label, String value, bool isMobile) {
+    if (isMobile) {
+      // Mobile: vertical card layout
+      return Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        elevation: 1,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: Colors.grey.shade900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // Desktop: table row
+    return TableRow(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          child: Text(
+            value,
+            style: GoogleFonts.poppins(fontSize: 14),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _downloadPdf(BuildContext context) async {
+    try {
+      final entryMap = _buildEntryMap();
+      final bytes = await buildTradingDealSummaryPdf(
+        format: PdfPageFormat.a4,
+        db: db,
+        currentUser: currentUser,
+        entry: entryMap,
+        action: 'download',
+      );
+      
+      // Use platform-specific PDF handling
+      if (kIsWeb || (!kIsWeb && (io.Platform.isAndroid || io.Platform.isIOS))) {
+        // For Web, Android, and iOS, use Printing.layoutPdf which opens native save/print dialog
+        await Printing.layoutPdf(
+          onLayout: (_) async => bytes,
+        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Receipt ready for download/print')),
+          );
+        }
+      } else {
+        // For desktop (Windows, macOS, Linux), save directly to disk
+        await savePdfBytesToDisk(
+          pdfBytes: bytes,
+          suggestedBaseName: 'trading_${entryMap['id']}_${fmtTs(DateTime.now())}',
+        );
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PDF downloaded successfully')),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error downloading PDF: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _printPdf(BuildContext context) async {
+    try {
+      final serial = generateReportSerial(prefix: 'TD');
+      final generatedAt = DateTime.now();
+      final entryMap = _buildEntryMap();
+
+      await logReportHistory(
+        db: db,
+        currentUser: currentUser,
+        companyId: RoleUtils.getUserCompanyId(currentUser),
+        module: 'trading',
+        entityId: entryMap['id'] as String,
+        reportType: 'Trading Detail',
+        action: 'print',
+        serialNumber: serial,
+        generatedAt: generatedAt,
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (_) async {
+          return buildTradingDealSummaryPdf(
+            format: PdfPageFormat.a4,
+            db: db,
+            currentUser: currentUser,
+            entry: entryMap,
+            action: 'print',
+            serialNumber: serial,
+            generatedAt: generatedAt,
+            logHistory: false,
+          );
+        },
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error printing: $e')),
+        );
+      }
+    }
+  }
+
+  Map<String, dynamic> _buildEntryMap() {
+    final isFileEntry = tabType == 'File';
+    if (isFileEntry) {
+      final fileEntry = entry as _TradingFileEntry;
+      return {
+        'id': fileEntry.id,
+        'type': fileEntry.type == _TradingFileFormType.buy ? 'buy' : 'sell',
+        'buy_option': fileEntry.buyOption,
+        'sell_option': fileEntry.sellOption,
+        'date': DateFormat('dd MMM yyyy').format(fileEntry.date),
+        'mobile': fileEntry.mobile,
+        'person_name': fileEntry.personName,
+        'estate_name': fileEntry.estate,
+        'quantity': fileEntry.quantity,
+        'payment': fileEntry.payment,
+        'status': fileEntry.status,
+        'comments': fileEntry.comments,
+      };
+    } else {
+      final formEntry = entry as _TradingClientEntry;
+      return {
+        'id': formEntry.id,
+        'type': formEntry.type == _TradingFormType.buy ? 'buy' : 'sell',
+        'buy_option': formEntry.buyOption,
+        'sell_option': formEntry.sellOption,
+        'date': DateFormat('dd MMM yyyy').format(formEntry.date),
+        'mobile': formEntry.mobile,
+        'person_name': formEntry.personName,
+        'buyer_name': formEntry.buyerName,
+        'seller_name': formEntry.sellerName,
+        'estate_name': formEntry.estateName,
+        'plot_no': formEntry.plotNo,
+        'block': formEntry.block,
+        'quantity': formEntry.quantity,
+        'payment': formEntry.payment,
+        'status': formEntry.status,
+        'commission': formEntry.commission,
+        'comments': formEntry.comments,
+      };
+    }
   }
 }

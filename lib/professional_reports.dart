@@ -398,6 +398,15 @@ Future<Uint8List> _buildTradingDealSummaryPdfInIsolate(Map<String, dynamic> args
   final entry = Map<String, dynamic>.from((args['entry'] as Map).cast<String, dynamic>());
   final id = (entry['id'] ?? '').toString();
   final dealType = (entry['type'] ?? '').toString().toLowerCase() == 'buy' ? 'Buy' : 'Sell';
+  final isBuy = dealType == 'Buy';
+
+  // Color theme: Orange (#FF6D33) for Buy, Blue (#4A90E2) for Sell
+  final primaryColor = isBuy 
+      ? const PdfColor.fromInt(0xFFFF6D33) 
+      : const PdfColor.fromInt(0xFF4A90E2);
+  final primaryColorLight = isBuy 
+      ? const PdfColor.fromInt(0xFFFFE8E0) 
+      : const PdfColor.fromInt(0xFFE3F2FD);
 
   String v(String key) => (entry[key] ?? '').toString().trim();
   String vAny(List<String> keys) {
@@ -415,7 +424,13 @@ Future<Uint8List> _buildTradingDealSummaryPdfInIsolate(Map<String, dynamic> args
     pw.MultiPage(
       pageFormat: format,
       margin: const pw.EdgeInsets.all(28),
-      header: (ctx) => buildReportHeader(fonts: fonts, branding: branding, meta: meta, logoImage: logoImage),
+      header: (ctx) => _buildTradingReportHeader(
+        fonts: fonts, 
+        branding: branding, 
+        meta: meta, 
+        logoImage: logoImage,
+        primaryColor: primaryColor,
+      ),
       footer: (ctx) => buildReportFooter(fonts: fonts, context: ctx),
       build: (ctx) {
         final buyerName = vAny(const ['buyer_name', 'buyerName']);
@@ -444,11 +459,52 @@ Future<Uint8List> _buildTradingDealSummaryPdfInIsolate(Map<String, dynamic> args
         ];
 
         return [
-          pw.Text('Deal Details', style: pw.TextStyle(font: fonts.bold, fontSize: 13)),
+          // Header banner with theme color
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              color: primaryColorLight,
+              border: pw.Border.all(color: primaryColor, width: 2),
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  '$dealType Receipt',
+                  style: pw.TextStyle(
+                    font: fonts.bold,
+                    fontSize: 16,
+                    color: primaryColor,
+                  ),
+                ),
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: pw.BoxDecoration(
+                    color: primaryColor,
+                    borderRadius: pw.BorderRadius.circular(4),
+                  ),
+                  child: pw.Text(
+                    dealType,
+                    style: pw.TextStyle(
+                      font: fonts.bold,
+                      fontSize: 12,
+                      color: PdfColors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 16),
+          pw.Text('Deal Details', style: pw.TextStyle(font: fonts.bold, fontSize: 13, color: primaryColor)),
           pw.SizedBox(height: 10),
           zebraTable(
             fonts: fonts,
             headers: const ['Field', 'Value'],
+            headerColor: primaryColorLight,
+            headerTextColor: primaryColor,
             columnWidths: {
               0: const pw.FixedColumnWidth(140),
               1: const pw.FlexColumnWidth(),
@@ -798,6 +854,71 @@ pw.Widget buildReportHeader({
   );
 }
 
+// Custom header for trading receipts with themed colors
+pw.Widget _buildTradingReportHeader({
+  required ReportFonts fonts,
+  required ReportBranding? branding,
+  required ReportMeta meta,
+  pw.MemoryImage? logoImage,
+  required PdfColor primaryColor,
+}) {
+  final small = pw.TextStyle(font: fonts.base, fontSize: 9, color: const PdfColor.fromInt(0xFF616161));
+  final normal = pw.TextStyle(font: fonts.base, fontSize: 10, color: const PdfColor.fromInt(0xFF212121));
+  final bold = pw.TextStyle(font: fonts.bold, fontSize: 12, color: const PdfColor.fromInt(0xFF212121));
+
+  final left = pw.Row(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      if (logoImage != null) ...[
+        pw.Container(
+          width: 60,
+          height: 60,
+          child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+        ),
+        pw.SizedBox(width: 12),
+      ],
+      pw.Expanded(
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(branding?.companyName ?? 'Company', style: bold),
+            if ((branding?.address ?? '').trim().isNotEmpty)
+              pw.Text(branding!.address!.trim(), style: small, maxLines: 2),
+            if ((branding?.contact ?? '').trim().isNotEmpty)
+              pw.Text(branding!.contact!.trim(), style: small, maxLines: 1),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  final right = pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.end,
+    children: [
+      pw.Text(meta.title, style: pw.TextStyle(font: fonts.bold, fontSize: 12, color: primaryColor)),
+      pw.SizedBox(height: 4),
+      pw.Text('Generated On: ${DateFormat('dd MMM yyyy, hh:mm a').format(meta.generatedAt.toLocal())}', style: small),
+      pw.Text('Report Serial: ${meta.serialNumber}', style: normal),
+    ],
+  );
+
+  return pw.Column(
+    children: [
+      pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Expanded(child: left),
+          pw.SizedBox(width: 12),
+          right,
+        ],
+      ),
+      pw.SizedBox(height: 10),
+      pw.Divider(color: primaryColor, height: 2),
+      pw.SizedBox(height: 8),
+    ],
+  );
+}
+
 pw.Widget buildReportFooter({required ReportFonts fonts, required pw.Context context}) {
   final small = pw.TextStyle(font: fonts.base, fontSize: 9, color: const PdfColor.fromInt(0xFF616161));
   return pw.Column(
@@ -825,8 +946,14 @@ pw.Widget zebraTable({
   required List<List<pw.Widget>> rows,
   Map<int, pw.TableColumnWidth>? columnWidths,
   pw.EdgeInsets cellPadding = const pw.EdgeInsets.all(6),
+  PdfColor? headerColor,
+  PdfColor? headerTextColor,
 }) {
-  final headerStyle = pw.TextStyle(font: fonts.bold, fontSize: 10, color: const PdfColor.fromInt(0xFF212121));
+  final headerStyle = pw.TextStyle(
+    font: fonts.bold, 
+    fontSize: 10, 
+    color: headerTextColor ?? const PdfColor.fromInt(0xFF212121),
+  );
   final cellStyle = pw.TextStyle(font: fonts.base, fontSize: 10, color: const PdfColor.fromInt(0xFF212121));
 
   return pw.Table(
@@ -834,7 +961,7 @@ pw.Widget zebraTable({
     columnWidths: columnWidths,
     children: [
       pw.TableRow(
-        decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFF5F5F5)),
+        decoration: pw.BoxDecoration(color: headerColor ?? const PdfColor.fromInt(0xFFF5F5F5)),
         children: headers
             .map((h) => pw.Padding(padding: cellPadding, child: pw.Text(h, style: headerStyle)))
             .toList(),
@@ -938,7 +1065,10 @@ Future<Uint8List> buildTradingDealSummaryPdf({
   final baseFontBytes = (await _tryLoadRobotoBytes('assets/fonts/Roboto-Regular.ttf')) ?? Uint8List(0);
   final boldFontBytes = (await _tryLoadRobotoBytes('assets/fonts/Roboto-Bold.ttf')) ?? Uint8List(0);
   final branding = await loadReportBranding(db: db, currentUser: currentUser);
-  final logoBytes = null; // Logo removed as per requirements
+  // Load logo if available for trading receipts
+  final logoBytes = branding?.logoPathOrUrl != null && branding!.logoPathOrUrl!.isNotEmpty
+      ? await _loadBytesFromPathOrUrl(branding.logoPathOrUrl)
+      : null;
 
   final id = (entry['id'] ?? '').toString();
   final meta = ReportMeta(

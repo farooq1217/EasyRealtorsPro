@@ -8,6 +8,7 @@ class ExpenditureModel {
   final String? createdBy;
   final String? kind; // 'office' | 'project'
   final String? projectId;
+  final String? categoryId;
   final String? officeMonth; // yyyy-MM
 
   const ExpenditureModel({
@@ -20,6 +21,7 @@ class ExpenditureModel {
     this.createdBy,
     this.kind,
     this.projectId,
+    this.categoryId,
     this.officeMonth,
   });
 
@@ -34,6 +36,7 @@ class ExpenditureModel {
       'createdBy': createdBy,
       'kind': kind,
       'projectId': projectId,
+      'categoryId': categoryId,
       'officeMonth': officeMonth,
     };
   }
@@ -57,6 +60,7 @@ class ExpenditureModel {
       createdBy: (map['createdBy'] ?? map['created_by'])?.toString(),
       kind: (map['kind'] ?? map['type'])?.toString(),
       projectId: (map['projectId'] ?? map['project_id'])?.toString(),
+      categoryId: (map['categoryId'] ?? map['category_id'])?.toString(),
       officeMonth: (map['officeMonth'] ?? map['office_month'])?.toString(),
     );
   }

@@ -36,6 +36,8 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
   String _selectedType = 'Files'; 
   String _q = '';
   String? _selectedStatusFilter; // null = All, 'Sold' = Sold, 'Not Sold' = Available
+  String? _selectedSocietyId; // Selected society for filtering
+  String? _selectedBlockId; // Selected block for filtering
 
   @override
   void initState() {
@@ -71,9 +73,10 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
   Future<void> _loadSocietiesAndBlocks() async {
     if (!mounted) return;
     final isSuper = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
-    final soc = await widget.db.customSelect(isSuper ? 'SELECT id, name FROM societies' : 'SELECT id, name FROM societies WHERE company_id = ?', variables: isSuper ? [] : [d.Variable.withString(companyId ?? '')]).get();
-    final blks = await widget.db.customSelect(isSuper ? 'SELECT id, society_id, name FROM blocks' : 'SELECT id, society_id, name FROM blocks WHERE company_id = ?', variables: isSuper ? [] : [d.Variable.withString(companyId ?? '')]).get();
+    // Use 'GLOBAL_ADMIN' for super admin, otherwise use the user's companyId
+    final companyId = isSuper ? 'GLOBAL_ADMIN' : (RoleUtils.getUserCompanyId(_currentUser) ?? '');
+    final soc = await widget.db.customSelect(isSuper ? 'SELECT id, name FROM societies' : 'SELECT id, name FROM societies WHERE company_id = ?', variables: isSuper ? [] : [d.Variable.withString(companyId)]).get();
+    final blks = await widget.db.customSelect(isSuper ? 'SELECT id, society_id, name FROM blocks' : 'SELECT id, society_id, name FROM blocks WHERE company_id = ?', variables: isSuper ? [] : [d.Variable.withString(companyId)]).get();
     if (!mounted) return;
     setState(() {
       _societies = soc.map((r) => {'id': r.data['id'] as String, 'name': r.data['name'] as String}).toList();
@@ -92,9 +95,25 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
     setState(() { _rows = result.map((r) => r.data).toList(); _loading = false; });
   }
 
-  // Get filtered rows based on search query and status filter
+  // Get filtered rows based on search query, status filter, society, and block
   List<Map<String, dynamic>> get _filteredRows {
     var filtered = _rows;
+    
+    // Apply society filter
+    if (_selectedSocietyId != null) {
+      filtered = filtered.where((row) {
+        final societyId = row['society_id']?.toString();
+        return societyId == _selectedSocietyId;
+      }).toList();
+    }
+    
+    // Apply block filter
+    if (_selectedBlockId != null) {
+      filtered = filtered.where((row) {
+        final blockId = row['block_id']?.toString();
+        return blockId == _selectedBlockId;
+      }).toList();
+    }
     
     // Apply status filter
     if (_selectedStatusFilter != null) {
@@ -434,6 +453,58 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
                     ),
                   ),
                 ),
+                // Society and Block Dropdowns
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF1B1F24)
+                        : Colors.white,
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey.shade300.withOpacity(0.7)),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 60,
+                          child: _buildMainPageDropdown(
+                            'Society',
+                            _societies,
+                            _selectedSocietyId,
+                            (value) {
+                              if (!mounted) return;
+                              setState(() {
+                                _selectedSocietyId = value;
+                                _selectedBlockId = null; // Reset block when society changes
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: SizedBox(
+                          height: 60,
+                          child: _buildMainPageDropdown(
+                            'Block',
+                            _selectedSocietyId != null
+                                ? _blocks.where((b) => b['society_id'] == _selectedSocietyId).toList()
+                                : [],
+                            _selectedBlockId,
+                            (value) {
+                              if (!mounted) return;
+                              setState(() {
+                                _selectedBlockId = value;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 // List View
                 Expanded(
                   child: _filteredRows.isEmpty
@@ -712,6 +783,44 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
         }
       }
     }
+  }
+
+  Widget _buildMainPageDropdown(
+    String label,
+    List<Map<String, String>> items,
+    String? selectedValue,
+    Function(String?) onChanged,
+  ) {
+    final hasItems = items.isNotEmpty;
+    // Always show dropdown with placeholder, even when loading or empty
+    final List<Map<String, String?>> displayItems = hasItems
+        ? [
+            {'id': null, 'name': 'All $label'}, // Add "All" option to clear filter
+            ...items.map((item) => {'id': item['id'], 'name': item['name']}),
+          ]
+        : [{'id': null, 'name': 'Select $label'}];
+    
+    return DropdownButtonFormField<String?>(
+      value: selectedValue,
+      onChanged: hasItems ? onChanged : null,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: 'Select $label',
+        prefixIcon: const Icon(Icons.list),
+        border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+        filled: true,
+        fillColor: Colors.white,
+      ),
+      items: displayItems.map((i) {
+        final itemId = i['id'];
+        final itemName = i['name'] ?? '';
+        return DropdownMenuItem<String?>(
+          value: itemId,
+          child: Text(itemName),
+          enabled: hasItems,
+        );
+      }).toList(),
+    );
   }
 
   Widget _buildFilterChip(String label, String? value) {
