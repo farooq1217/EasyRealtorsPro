@@ -23,6 +23,7 @@ import '../../core/shared_utils.dart';
 import '../../core/services/firestore_cache_service.dart';
 import '../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../core/services/app_storage.dart' show AppStorage;
+import '../../core/services/firestore_thread_helper.dart';
 
 // Helper function for formatting month title
 String _formatMonthTitle(String officeMonth) {
@@ -49,6 +50,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
 
   StreamSubscription<QuerySnapshot>? _expendituresSub;
   StreamSubscription<QuerySnapshot>? _projectsSub;
+  StreamSubscription<QuerySnapshot>? _projectExpendituresSub; // Separate listener for project-type expenditures
   Timer? _dashboardReloadTimer;
 
   Future<void> _expApplyChain = Future.value();
@@ -119,6 +121,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     _tabScrollControllers.values.forEach((controller) => controller.dispose());
     _expendituresSub?.cancel();
     _projectsSub?.cancel();
+    _projectExpendituresSub?.cancel();
     _dashboardReloadTimer?.cancel();
     super.dispose();
   }
@@ -169,10 +172,16 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   void _scheduleDashboardReload() {
     _dashboardReloadTimer?.cancel();
     _dashboardReloadTimer = Timer(const Duration(milliseconds: 350), () {
-      if (!mounted) return;
-      Future.microtask(() async {
+      // Ensure Timer callback runs on platform thread for Windows
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
         try {
           await _loadDashboard();
+          if (mounted && _selectedTab == 'Office Expense') {
+            await _loadOfficeCategories(reset: true);
+          } else if (mounted && _selectedTab == 'Projects') {
+            await _loadClosedProjects(reset: true);
+          }
         } catch (_) {}
       });
     });
@@ -210,54 +219,172 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
 
     _expendituresSub?.cancel();
     _projectsSub?.cancel();
+    _projectExpendituresSub?.cancel();
 
-    Query expQuery = FirebaseFirestore.instance.collection('expenditures');
+    // Use .where() method for strict filtering at Firestore level
+    // Office expenses listener - filter by kind='office' using .where()
+    Query expQuery = FirebaseFirestore.instance.collection('expenditures')
+        .where('kind', isEqualTo: 'office');
+    
+    // Project expenses listener - filter by kind='project' using .where()
+    Query projectExpQuery = FirebaseFirestore.instance.collection('expenditures')
+        .where('kind', isEqualTo: 'project');
+    
+    // Projects listener - sync all types (both 'office' and 'project') for both tabs
     Query projQuery = FirebaseFirestore.instance.collection('expenditure_projects');
+    
     if (!isSuperAdmin) {
+      // Use .where() for company filtering
       expQuery = expQuery.where('companyId', isEqualTo: companyId);
+      projectExpQuery = projectExpQuery.where('companyId', isEqualTo: companyId);
       projQuery = projQuery.where('companyId', isEqualTo: companyId);
     }
 
-    _expendituresSub = expQuery.snapshots().listen((snap) async {
-      final changes = List<DocumentChange>.from(snap.docChanges);
-      if (changes.isEmpty) return;
-
-      _expApplyChain = _expApplyChain.then((_) async {
-        await _applyExpenditureChangesChunked(changes);
-        // Update UI on main thread
-        Future.microtask(() {
+    // Wrap entire callback in Future.microtask to ensure platform thread execution on Windows
+    _expendituresSub = expQuery.snapshots().listen((snap) {
+      // Immediately schedule on platform thread using microtask
+      Future.microtask(() {
+        // Then wrap UI updates in addPostFrameCallback
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
-          _scheduleDashboardReload();
+          try {
+            final changes = List<DocumentChange>.from(snap.docChanges);
+            if (changes.isEmpty) return;
+
+            _expApplyChain = _expApplyChain.then((_) async {
+              await _applyExpenditureChangesChunked(changes);
+              // Update UI on main thread - reload data and call setState inside addPostFrameCallback
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                if (!mounted) return;
+                try {
+                  await _loadDashboard();
+                  if (mounted && _selectedTab == 'Office Expense') {
+                    await _loadOfficeCategories(reset: true);
+                  }
+                } catch (e) {
+                  debugPrint('Error reloading after expenditure changes: $e');
+                }
+              });
+            });
+          } catch (e) {
+            debugPrint('Error in expenditures listener callback: $e');
+          }
         });
       });
     }, onError: (error) {
-      debugPrint('Firestore listener error (expenditures): $error');
-      // Handle missing index errors gracefully
-      final errorStr = error.toString().toLowerCase();
-      if (errorStr.contains('index') || errorStr.contains('missing')) {
-        debugPrint('Firestore index may be missing. This is non-fatal - continuing with limited functionality.');
-      }
+      Future.microtask(() {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          try {
+            debugPrint('Firestore listener error (expenditures): $error');
+            // Handle missing index errors gracefully
+            final errorStr = error.toString().toLowerCase();
+            if (errorStr.contains('index') || errorStr.contains('missing')) {
+              debugPrint('Firestore index may be missing. This is non-fatal - continuing with limited functionality.');
+            }
+          } catch (e) {
+            debugPrint('Error in expenditures error handler: $e');
+          }
+        });
+      });
     });
 
-    _projectsSub = projQuery.snapshots().listen((snap) async {
-      final changes = List<DocumentChange>.from(snap.docChanges);
-      if (changes.isEmpty) return;
-
-      _projApplyChain = _projApplyChain.then((_) async {
-        await _applyProjectChangesChunked(changes);
-        // Update UI on main thread
-        Future.microtask(() {
+    // Wrap entire callback in Future.microtask to ensure platform thread execution on Windows
+    _projectsSub = projQuery.snapshots().listen((snap) {
+      // Immediately schedule on platform thread using microtask
+      Future.microtask(() {
+        // Then wrap UI updates in addPostFrameCallback
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
-          _scheduleDashboardReload();
+          try {
+            final changes = List<DocumentChange>.from(snap.docChanges);
+            if (changes.isEmpty) return;
+
+            _projApplyChain = _projApplyChain.then((_) async {
+              await _applyProjectChangesChunked(changes);
+              // Update UI on main thread - reload data and call setState inside addPostFrameCallback
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                if (!mounted) return;
+                try {
+                  await _loadDashboard();
+                  if (mounted && _selectedTab == 'Office Expense') {
+                    await _loadOfficeCategories(reset: true);
+                  } else if (mounted && _selectedTab == 'Projects') {
+                    await _loadClosedProjects(reset: true);
+                  }
+                } catch (e) {
+                  debugPrint('Error reloading after project changes: $e');
+                }
+              });
+            });
+          } catch (e) {
+            debugPrint('Error in projects listener callback: $e');
+          }
         });
       });
     }, onError: (error) {
-      debugPrint('Firestore listener error (projects): $error');
-      // Handle missing index errors gracefully
-      final errorStr = error.toString().toLowerCase();
-      if (errorStr.contains('index') || errorStr.contains('missing')) {
-        debugPrint('Firestore index may be missing. This is non-fatal - continuing with limited functionality.');
-      }
+      Future.microtask(() {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          try {
+            debugPrint('Firestore listener error (projects): $error');
+            // Handle missing index errors gracefully
+            final errorStr = error.toString().toLowerCase();
+            if (errorStr.contains('index') || errorStr.contains('missing')) {
+              debugPrint('Firestore index may be missing. This is non-fatal - continuing with limited functionality.');
+            }
+          } catch (e) {
+            debugPrint('Error in projects error handler: $e');
+          }
+        });
+      });
+    });
+
+    // Separate listener for project-type expenditures using .where() filtering
+    // Wrap entire callback in Future.microtask to ensure platform thread execution on Windows
+    _projectExpendituresSub = projectExpQuery.snapshots().listen((snap) {
+      // Immediately schedule on platform thread using microtask
+      Future.microtask(() {
+        // Then wrap UI updates in addPostFrameCallback
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
+          try {
+            final changes = List<DocumentChange>.from(snap.docChanges);
+            if (changes.isEmpty) return;
+
+            _expApplyChain = _expApplyChain.then((_) async {
+              await _applyExpenditureChangesChunked(changes);
+              // Update UI on main thread - reload data and call setState inside addPostFrameCallback
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                if (!mounted) return;
+                try {
+                  await _loadDashboard();
+                  if (mounted && _selectedTab == 'Projects') {
+                    await _loadClosedProjects(reset: true);
+                  }
+                } catch (e) {
+                  debugPrint('Error reloading after project expenditure changes: $e');
+                }
+              });
+            });
+          } catch (e) {
+            debugPrint('Error in project expenditures listener callback: $e');
+          }
+        });
+      });
+    }, onError: (error) {
+      Future.microtask(() {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          try {
+            debugPrint('Firestore listener error (project expenditures): $error');
+            // Handle missing index errors gracefully
+            final errorStr = error.toString().toLowerCase();
+            if (errorStr.contains('index') || errorStr.contains('missing')) {
+              debugPrint('Firestore index may be missing. This is non-fatal - continuing with limited functionality.');
+            }
+          } catch (e) {
+            debugPrint('Error in project expenditures error handler: $e');
+          }
+        });
+      });
     });
   }
 
@@ -280,7 +407,11 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             final id = (data['id'] ?? doc.id).toString();
             final cid = (data['companyId'] ?? data['company_id'])?.toString();
             final createdBy = (data['created_by'] ?? data['createdBy'] ?? data['creator_user_id'])?.toString();
-            final kind = (data['kind'] ?? data['type'])?.toString();
+            // FALLBACK: If kind is missing, default to 'office' so it shows in Office Expense tab
+            var kind = (data['kind'] ?? data['type'])?.toString();
+            if (kind == null || kind.isEmpty) {
+              kind = 'office'; // Default fallback to ensure data is visible
+            }
             final projectId = (data['projectId'] ?? data['project_id'])?.toString();
             final officeMonth = (data['officeMonth'] ?? data['office_month'])?.toString();
             final category = (data['category'] ?? data['expenseCategory'] ?? data['expense_category'])?.toString();
@@ -323,13 +454,19 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             final createdBy = (data['created_by'] ?? data['createdBy'] ?? data['creator_user_id'])?.toString();
             final name = (data['name'] ?? '').toString();
             final status = (data['status'] ?? 'running').toString();
+            // FALLBACK: If type is missing, default to 'project' for Projects tab, or 'office' if name suggests office category
+            var projectType = (data['type'] ?? '').toString();
+            if (projectType.isEmpty) {
+              // Try to infer from name or default to 'project'
+              projectType = 'project'; // Default to project type
+            }
             final createdAt = (data['createdAt'] ?? data['created_at'] ?? DateTime.now().toUtc().toIso8601String()).toString();
             final updatedAt = (data['updatedAt'] ?? data['updated_at'] ?? DateTime.now().toUtc().toIso8601String()).toString();
             final closedAt = (data['closedAt'] ?? data['closed_at'])?.toString();
 
             batch.customStatement(
-              'INSERT OR REPLACE INTO expenditure_projects (id, company_id, created_by, name, status, created_at, updated_at, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-              [id, cid, createdBy, name, status, createdAt, updatedAt, closedAt],
+              'INSERT OR REPLACE INTO expenditure_projects (id, company_id, created_by, name, status, type, created_at, updated_at, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [id, cid, createdBy, name, status, projectType, createdAt, updatedAt, closedAt],
             );
           }
         });
@@ -581,19 +718,27 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
 
       final closedCount = (closedCountRow.data['c'] as num?)?.toInt() ?? 0;
 
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
       if (!mounted) return;
-      setState(() {
-        _officeTotal = officeTotal;
-        _runningProjects = runningProjects;
-        _closedProjectsCount = closedCount;
-        _loading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _officeTotal = officeTotal;
+          _runningProjects = runningProjects;
+          _closedProjectsCount = closedCount;
+          _loading = false;
+        });
       });
     } catch (e) {
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
       if (!mounted) return;
-      setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading expenditure dashboard: $e')),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading expenditure dashboard: $e')),
+        );
+      });
     }
   }
 
@@ -602,8 +747,9 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     required String docId,
     required Map<String, dynamic> data,
   }) {
-    // RootIsolateToken check removed - not available in this Flutter version
-    Future.microtask(() async {
+    // Ensure Firestore operations run on platform thread for Windows compatibility
+    // Use FirestoreThreadHelper for tab filtering as requested
+    FirestoreThreadHelper.executeOnPlatformThread(() async {
       try {
         if (Firebase.apps.isNotEmpty) {
           await FirebaseFirestore.instance
@@ -624,8 +770,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final res = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT id, user_id, username, name, status FROM users'
-            : 'SELECT id, user_id, username, name, status FROM users WHERE company_id = ? OR company_id IS NULL',
+            ? 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL)'
+            : 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL) AND (company_id = ? OR company_id IS NULL)',
         variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
       ).get();
       _creatorLookup.clear();
@@ -657,16 +803,24 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   Future<void> _loadOfficeCategories({required bool reset}) async {
     if (!mounted) return;
     if (reset) {
-      setState(() {
-        _loading = true;
-        _loadingMoreOffice = false;
-        _hasMoreOffice = true;
-        _officeCategories.clear();
-        _tabPages['Office Expense'] = 0;
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _loading = true;
+          _loadingMoreOffice = false;
+          _hasMoreOffice = true;
+          _officeCategories.clear();
+          _tabPages['Office Expense'] = 0;
+        });
       });
     } else {
       if (_loadingMoreOffice || !_hasMoreOffice) return;
-      setState(() => _loadingMoreOffice = true);
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _loadingMoreOffice = true);
+      });
     }
 
     final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
@@ -741,47 +895,64 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
               name: r.data['name']?.toString() ?? '',
               status: r.data['status']?.toString() ?? 'Active',
               total: (r.data['total'] as num?)?.toDouble() ?? 0,
-              type: 'office', // Explicitly set type for strict filtering
+              // FALLBACK: If type is missing in DB, default to 'office' so it shows in Office Expense tab
+              type: (r.data['type']?.toString() ?? 'office'), // Default to 'office' if missing
             ),
           )
           .where((cat) => cat.type == 'office') // Strict filter: ensure only office categories
           .toList();
 
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
       if (!mounted) return;
-      setState(() {
-        if (reset) {
-          _officeCategories.clear();
-        }
-        _officeCategories.addAll(categories);
-        _hasMoreOffice = categories.length == _itemsPerPage;
-        _loading = false;
-        _loadingMoreOffice = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          if (reset) {
+            _officeCategories.clear();
+          }
+          _officeCategories.addAll(categories);
+          _hasMoreOffice = categories.length == _itemsPerPage;
+          _loading = false;
+          _loadingMoreOffice = false;
+        });
       });
     } catch (e) {
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _loadingMoreOffice = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _loadingMoreOffice = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading office expenses: $e')),
+        );
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading office expenses: $e')),
-      );
     }
   }
 
   Future<void> _loadClosedProjects({required bool reset}) async {
     if (!mounted) return;
     if (reset) {
-      setState(() {
-        _loading = true;
-        _loadingMoreProjects = false;
-        _hasMoreProjects = true;
-        _closedProjects.clear();
-        _tabPages['Projects'] = 0;
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _loading = true;
+          _loadingMoreProjects = false;
+          _hasMoreProjects = true;
+          _closedProjects.clear();
+          _tabPages['Projects'] = 0;
+        });
       });
     } else {
       if (_loadingMoreProjects || !_hasMoreProjects) return;
-      setState(() => _loadingMoreProjects = true);
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _loadingMoreProjects = true);
+      });
     }
 
     final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
@@ -789,10 +960,14 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     final companyId = RoleUtils.getUserCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
       if (mounted) {
-        setState(() {
-          _loading = false;
-          _loadingMoreProjects = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            _loading = false;
+            _loadingMoreProjects = false;
+          });
         });
       }
       return;
@@ -856,31 +1031,40 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
               name: r.data['name']?.toString() ?? '',
               status: r.data['status']?.toString() ?? 'Active',
               total: (r.data['total'] as num?)?.toDouble() ?? 0,
-              type: 'project', // Explicitly set type for defensive filtering
+              // FALLBACK: If type is missing in DB, default to 'project' so it shows in Projects tab
+              type: (r.data['type']?.toString() ?? 'project'), // Default to 'project' if missing
             ),
           )
           .where((proj) => proj.type == 'project') // Defensive filter: ensure only projects
           .toList();
 
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
       if (!mounted) return;
-      setState(() {
-        if (reset) {
-          _closedProjects.clear();
-        }
-        _closedProjects.addAll(projects);
-        _hasMoreProjects = projects.length == _itemsPerPage;
-        _loading = false;
-        _loadingMoreProjects = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          if (reset) {
+            _closedProjects.clear();
+          }
+          _closedProjects.addAll(projects);
+          _hasMoreProjects = projects.length == _itemsPerPage;
+          _loading = false;
+          _loadingMoreProjects = false;
+        });
       });
     } catch (e) {
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _loadingMoreProjects = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _loadingMoreProjects = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading closed projects: $e')),
+        );
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading closed projects: $e')),
-      );
     }
   }
 
@@ -1034,18 +1218,18 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       return;
     }
 
-    // Detect which tab is currently active to set the correct type
-    final categoryType = _selectedTab == 'Office Expense' ? 'office' : 'project';
-
     final createdBy = _currentUser?['id']?.toString() ?? '';
     final id = const Uuid().v4();
     final nowIso = DateTime.now().toIso8601String();
     final finalCompanyId = isSuperAdmin ? 'GLOBAL_ADMIN' : companyId!;
 
     try {
+      // DEFAULT KIND: Detect which tab is currently active to set the correct type (0=office, 1=project)
+      final finalCategoryType = _tabController.index == 0 ? 'office' : 'project';
+      
       await widget.db.customStatement(
         'INSERT OR REPLACE INTO expenditure_projects (id, company_id, created_by, name, status, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [id, finalCompanyId, createdBy, name, 'Active', categoryType, nowIso, nowIso],
+        [id, finalCompanyId, createdBy, name, 'Active', finalCategoryType, nowIso, nowIso],
       );
 
       _syncToFirestore(
@@ -1059,7 +1243,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
           ...creatorFields(_currentUser),
           'name': name,
           'status': 'Active',
-          'type': categoryType,
+          'type': finalCategoryType, // DEFAULT KIND: Set based on current tab (0=office, 1=project)
           'createdAt': nowIso,
           'created_at': nowIso,
           'updatedAt': nowIso,
@@ -1067,11 +1251,17 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
         },
       );
 
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
       if (!mounted) return;
-      await _loadOfficeCategories(reset: true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Category created successfully')),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await _loadOfficeCategories(reset: true);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Category created successfully')),
+          );
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1353,8 +1543,12 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
           'closedAt': null,
         },
       );
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
       if (!mounted) return;
-      await _loadDashboard();
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await _loadDashboard();
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create project: $e')));
@@ -1566,13 +1760,16 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     final amount = double.tryParse(amountCtl.text.trim()) ?? 0;
     final category = (selectedCategory == 'Other' ? customCategoryCtl.text.trim() : selectedCategory).trim();
     try {
+      // DEFAULT KIND: Set kind based on current tab index (0=office, 1=project)
+      final expenseKind = _tabController.index == 0 ? 'office' : 'project';
+      
       await widget.db.customStatement(
         'INSERT OR REPLACE INTO expenditures (id, company_id, created_by, kind, project_id, office_month, category, date, description, amount, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           id,
           finalCompanyId,
           createdBy,
-          'office',
+          expenseKind, // DEFAULT KIND: Set based on current tab (0=office, 1=project)
           null,
           _currentOfficeMonth,
           category.isEmpty ? null : category,
@@ -1592,7 +1789,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
           'createdBy': createdBy,
           'created_by': createdBy,
           ...creatorFields(_currentUser),
-          'kind': 'office',
+          'kind': expenseKind, // DEFAULT KIND: Set based on current tab (0=office, 1=project)
           'projectId': null,
           'project_id': null,
           'officeMonth': _currentOfficeMonth,
@@ -1605,12 +1802,18 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
           'updated_at': nowIso,
         },
       );
+      // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
       if (!mounted) return;
-      await _loadOfficeCategories(reset: true);
-      await _loadDashboard();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Expense added successfully')),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await _loadOfficeCategories(reset: true);
+        await _loadDashboard();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Expense added successfully')),
+          );
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2174,8 +2377,8 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final res = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT id, user_id, username, name, status FROM users'
-            : 'SELECT id, user_id, username, name, status FROM users WHERE company_id = ? OR company_id IS NULL',
+            ? 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL)'
+            : 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL) AND (company_id = ? OR company_id IS NULL)',
         variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
       ).get();
       _creatorLookup.clear();
@@ -2195,8 +2398,8 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
   }
 
   void _syncToFirestore({required String collection, required String docId, required Map<String, dynamic> data}) {
-    // RootIsolateToken check removed - not available in this Flutter version
-    Future.microtask(() async {
+    // Ensure Firestore operations run on platform thread for Windows compatibility
+    FirestoreThreadHelper.executeOnPlatformThread(() async {
       try {
         if (Firebase.apps.isNotEmpty) {
           await FirebaseFirestore.instance.collection(collection).doc(docId).set(data, SetOptions(merge: true));
@@ -2886,8 +3089,8 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final res = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT id, user_id, username, name, status FROM users'
-            : 'SELECT id, user_id, username, name, status FROM users WHERE company_id = ? OR company_id IS NULL',
+            ? 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL)'
+            : 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL) AND (company_id = ? OR company_id IS NULL)',
         variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
       ).get();
       _creatorLookup.clear();
@@ -2907,8 +3110,8 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
   }
 
   void _syncToFirestore({required String collection, required String docId, required Map<String, dynamic> data}) {
-    // RootIsolateToken check removed - not available in this Flutter version
-    Future.microtask(() async {
+    // Ensure Firestore operations run on platform thread for Windows compatibility
+    FirestoreThreadHelper.executeOnPlatformThread(() async {
       try {
         if (Firebase.apps.isNotEmpty) {
           await FirebaseFirestore.instance.collection(collection).doc(docId).set(data, SetOptions(merge: true));
@@ -3569,8 +3772,8 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final res = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT id, user_id, username, name, status FROM users'
-            : 'SELECT id, user_id, username, name, status FROM users WHERE company_id = ? OR company_id IS NULL',
+            ? 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL)'
+            : 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL) AND (company_id = ? OR company_id IS NULL)',
         variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
       ).get();
       _creatorLookup.clear();
