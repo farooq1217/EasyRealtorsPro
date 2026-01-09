@@ -29,6 +29,7 @@ class Users extends Table {
   TextColumn get companyId => text().nullable().references(Companies, #id)(); // null for Super Admin
   TextColumn get status => text().nullable()(); // 'active' or 'inactive'
   BoolColumn get isFirstLogin => boolean().withDefault(const Constant(true))(); // true for new Company Admins, forces password change
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get createdAt => text().nullable()();
   TextColumn get updatedAt => text()();
   @override
@@ -40,6 +41,7 @@ class Societies extends Table {
   TextColumn get name => text()();
   TextColumn get companyId => text().nullable()();
   TextColumn get metadata => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
   @override
   Set<Column> get primaryKey => {id};
@@ -51,6 +53,7 @@ class Blocks extends Table {
   TextColumn get name => text()();
   TextColumn get companyId => text().nullable()();
   TextColumn get metadata => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
   @override
   Set<Column> get primaryKey => {id};
@@ -73,6 +76,7 @@ class Properties extends Table {
   TextColumn get cnic => text().nullable()();
   TextColumn get societyId => text().nullable().references(Societies, #id)();
   TextColumn get blockId => text().nullable().references(Blocks, #id)();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
   @override
   Set<Column> get primaryKey => {id};
@@ -106,6 +110,7 @@ class FilesTable extends Table {
   TextColumn get blockId => text().nullable().references(Blocks, #id)();
   TextColumn get path => text().nullable()();
   TextColumn get remarks => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
   @override
   Set<Column> get primaryKey => {id};
@@ -134,6 +139,7 @@ class RentalItems extends Table {
   TextColumn get cnic => text().nullable()();
   IntColumn get security => integer().nullable()();
   TextColumn get saleStatus => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
   @override
   Set<Column> get primaryKey => {id};
@@ -160,6 +166,7 @@ class WorkingProgress extends Table {
   TextColumn get transferDate => text().nullable()();
   TextColumn get nextWorkingDate => text().nullable()();
   TextColumn get category => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
   @override
   Set<Column> get primaryKey => {id};
@@ -186,6 +193,7 @@ class Reminders extends Table {
   TextColumn get reminderDate => text()();
   TextColumn get reminderTime => text()();
   TextColumn get notificationStatus => text()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get createdAt => text()();
   TextColumn get updatedAt => text()();
 }
@@ -311,12 +319,13 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
+          await _createSoftDeleteTriggers(m.database);
           // Create Companies table if not already created
           await m.database.customStatement(
             'CREATE TABLE IF NOT EXISTS companies ('
@@ -655,6 +664,103 @@ class AppDatabase extends _$AppDatabase {
               // ignore backfill failures
             }
           }
+
+          if (from < 21) {
+            final statements = <String>[
+              'ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+              'ALTER TABLE properties ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+              'ALTER TABLE files_table ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+              'ALTER TABLE rental_items ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+              'ALTER TABLE working_progress ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+              'ALTER TABLE societies ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+              'ALTER TABLE blocks ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+              'ALTER TABLE reminders ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+            ];
+
+            for (final stmt in statements) {
+              try {
+                await m.database.customStatement(stmt);
+              } catch (_) {
+                // Column might already exist; ignore errors to keep migration idempotent
+              }
+            }
+
+            await _createSoftDeleteTriggers(m.database);
+          }
         },
       );
+}
+
+Future<void> _createSoftDeleteTriggers(GeneratedDatabase db) async {
+  const nowExpr = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
+  final triggers = <String>[
+    '''
+    CREATE TRIGGER IF NOT EXISTS soft_delete_users
+    BEFORE DELETE ON users
+    BEGIN
+      UPDATE users SET is_active = 0, updated_at = $nowExpr WHERE id = OLD.id;
+      SELECT RAISE(IGNORE);
+    END;
+    ''',
+    '''
+    CREATE TRIGGER IF NOT EXISTS soft_delete_properties
+    BEFORE DELETE ON properties
+    BEGIN
+      UPDATE properties SET is_active = 0, updated_at = $nowExpr WHERE id = OLD.id;
+      SELECT RAISE(IGNORE);
+    END;
+    ''',
+    '''
+    CREATE TRIGGER IF NOT EXISTS soft_delete_files
+    BEFORE DELETE ON files_table
+    BEGIN
+      UPDATE files_table SET is_active = 0, updated_at = $nowExpr WHERE id = OLD.id;
+      SELECT RAISE(IGNORE);
+    END;
+    ''',
+    '''
+    CREATE TRIGGER IF NOT EXISTS soft_delete_rental_items
+    BEFORE DELETE ON rental_items
+    BEGIN
+      UPDATE rental_items SET is_active = 0, updated_at = $nowExpr WHERE id = OLD.id;
+      SELECT RAISE(IGNORE);
+    END;
+    ''',
+    '''
+    CREATE TRIGGER IF NOT EXISTS soft_delete_working_progress
+    BEFORE DELETE ON working_progress
+    BEGIN
+      UPDATE working_progress SET is_active = 0, updated_at = $nowExpr WHERE id = OLD.id;
+      SELECT RAISE(IGNORE);
+    END;
+    ''',
+    '''
+    CREATE TRIGGER IF NOT EXISTS soft_delete_societies
+    BEFORE DELETE ON societies
+    BEGIN
+      UPDATE societies SET is_active = 0, updated_at = $nowExpr WHERE id = OLD.id;
+      SELECT RAISE(IGNORE);
+    END;
+    ''',
+    '''
+    CREATE TRIGGER IF NOT EXISTS soft_delete_blocks
+    BEFORE DELETE ON blocks
+    BEGIN
+      UPDATE blocks SET is_active = 0, updated_at = $nowExpr WHERE id = OLD.id;
+      SELECT RAISE(IGNORE);
+    END;
+    ''',
+    '''
+    CREATE TRIGGER IF NOT EXISTS soft_delete_reminders
+    BEFORE DELETE ON reminders
+    BEGIN
+      UPDATE reminders SET is_active = 0, updated_at = $nowExpr WHERE reminder_id = OLD.reminder_id;
+      SELECT RAISE(IGNORE);
+    END;
+    ''',
+  ];
+
+  for (final trigger in triggers) {
+    await db.customStatement(trigger);
+  }
 }

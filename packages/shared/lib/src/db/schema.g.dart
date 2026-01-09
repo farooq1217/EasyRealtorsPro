@@ -523,6 +523,16 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("is_first_login" IN (0, 1))'),
       defaultValue: const Constant(true));
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -550,6 +560,7 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
         companyId,
         status,
         isFirstLogin,
+        isActive,
         createdAt,
         updatedAt
       ];
@@ -626,6 +637,10 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
           isFirstLogin.isAcceptableOrUnknown(
               data['is_first_login']!, _isFirstLoginMeta));
     }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -671,6 +686,8 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
           .read(DriftSqlType.string, data['${effectivePrefix}status']),
       isFirstLogin: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_first_login'])!,
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}created_at']),
       updatedAt: attachedDatabase.typeMapping
@@ -698,6 +715,7 @@ class User extends DataClass implements Insertable<User> {
   final String? companyId;
   final String? status;
   final bool isFirstLogin;
+  final bool isActive;
   final String? createdAt;
   final String updatedAt;
   const User(
@@ -714,6 +732,7 @@ class User extends DataClass implements Insertable<User> {
       this.companyId,
       this.status,
       required this.isFirstLogin,
+      required this.isActive,
       this.createdAt,
       required this.updatedAt});
   @override
@@ -752,6 +771,7 @@ class User extends DataClass implements Insertable<User> {
       map['status'] = Variable<String>(status);
     }
     map['is_first_login'] = Variable<bool>(isFirstLogin);
+    map['is_active'] = Variable<bool>(isActive);
     if (!nullToAbsent || createdAt != null) {
       map['created_at'] = Variable<String>(createdAt);
     }
@@ -787,6 +807,7 @@ class User extends DataClass implements Insertable<User> {
       status:
           status == null && nullToAbsent ? const Value.absent() : Value(status),
       isFirstLogin: Value(isFirstLogin),
+      isActive: Value(isActive),
       createdAt: createdAt == null && nullToAbsent
           ? const Value.absent()
           : Value(createdAt),
@@ -811,6 +832,7 @@ class User extends DataClass implements Insertable<User> {
       companyId: serializer.fromJson<String?>(json['companyId']),
       status: serializer.fromJson<String?>(json['status']),
       isFirstLogin: serializer.fromJson<bool>(json['isFirstLogin']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
       createdAt: serializer.fromJson<String?>(json['createdAt']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
     );
@@ -832,6 +854,7 @@ class User extends DataClass implements Insertable<User> {
       'companyId': serializer.toJson<String?>(companyId),
       'status': serializer.toJson<String?>(status),
       'isFirstLogin': serializer.toJson<bool>(isFirstLogin),
+      'isActive': serializer.toJson<bool>(isActive),
       'createdAt': serializer.toJson<String?>(createdAt),
       'updatedAt': serializer.toJson<String>(updatedAt),
     };
@@ -851,6 +874,7 @@ class User extends DataClass implements Insertable<User> {
           Value<String?> companyId = const Value.absent(),
           Value<String?> status = const Value.absent(),
           bool? isFirstLogin,
+          bool? isActive,
           Value<String?> createdAt = const Value.absent(),
           String? updatedAt}) =>
       User(
@@ -868,6 +892,7 @@ class User extends DataClass implements Insertable<User> {
         companyId: companyId.present ? companyId.value : this.companyId,
         status: status.present ? status.value : this.status,
         isFirstLogin: isFirstLogin ?? this.isFirstLogin,
+        isActive: isActive ?? this.isActive,
         createdAt: createdAt.present ? createdAt.value : this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -892,6 +917,7 @@ class User extends DataClass implements Insertable<User> {
       isFirstLogin: data.isFirstLogin.present
           ? data.isFirstLogin.value
           : this.isFirstLogin,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -913,6 +939,7 @@ class User extends DataClass implements Insertable<User> {
           ..write('companyId: $companyId, ')
           ..write('status: $status, ')
           ..write('isFirstLogin: $isFirstLogin, ')
+          ..write('isActive: $isActive, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -934,6 +961,7 @@ class User extends DataClass implements Insertable<User> {
       companyId,
       status,
       isFirstLogin,
+      isActive,
       createdAt,
       updatedAt);
   @override
@@ -953,6 +981,7 @@ class User extends DataClass implements Insertable<User> {
           other.companyId == this.companyId &&
           other.status == this.status &&
           other.isFirstLogin == this.isFirstLogin &&
+          other.isActive == this.isActive &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -971,6 +1000,7 @@ class UsersCompanion extends UpdateCompanion<User> {
   final Value<String?> companyId;
   final Value<String?> status;
   final Value<bool> isFirstLogin;
+  final Value<bool> isActive;
   final Value<String?> createdAt;
   final Value<String> updatedAt;
   final Value<int> rowid;
@@ -988,6 +1018,7 @@ class UsersCompanion extends UpdateCompanion<User> {
     this.companyId = const Value.absent(),
     this.status = const Value.absent(),
     this.isFirstLogin = const Value.absent(),
+    this.isActive = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1006,6 +1037,7 @@ class UsersCompanion extends UpdateCompanion<User> {
     this.companyId = const Value.absent(),
     this.status = const Value.absent(),
     this.isFirstLogin = const Value.absent(),
+    this.isActive = const Value.absent(),
     this.createdAt = const Value.absent(),
     required String updatedAt,
     this.rowid = const Value.absent(),
@@ -1026,6 +1058,7 @@ class UsersCompanion extends UpdateCompanion<User> {
     Expression<String>? companyId,
     Expression<String>? status,
     Expression<bool>? isFirstLogin,
+    Expression<bool>? isActive,
     Expression<String>? createdAt,
     Expression<String>? updatedAt,
     Expression<int>? rowid,
@@ -1044,6 +1077,7 @@ class UsersCompanion extends UpdateCompanion<User> {
       if (companyId != null) 'company_id': companyId,
       if (status != null) 'status': status,
       if (isFirstLogin != null) 'is_first_login': isFirstLogin,
+      if (isActive != null) 'is_active': isActive,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -1064,6 +1098,7 @@ class UsersCompanion extends UpdateCompanion<User> {
       Value<String?>? companyId,
       Value<String?>? status,
       Value<bool>? isFirstLogin,
+      Value<bool>? isActive,
       Value<String?>? createdAt,
       Value<String>? updatedAt,
       Value<int>? rowid}) {
@@ -1081,6 +1116,7 @@ class UsersCompanion extends UpdateCompanion<User> {
       companyId: companyId ?? this.companyId,
       status: status ?? this.status,
       isFirstLogin: isFirstLogin ?? this.isFirstLogin,
+      isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -1129,6 +1165,9 @@ class UsersCompanion extends UpdateCompanion<User> {
     if (isFirstLogin.present) {
       map['is_first_login'] = Variable<bool>(isFirstLogin.value);
     }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<String>(createdAt.value);
     }
@@ -1157,6 +1196,7 @@ class UsersCompanion extends UpdateCompanion<User> {
           ..write('companyId: $companyId, ')
           ..write('status: $status, ')
           ..write('isFirstLogin: $isFirstLogin, ')
+          ..write('isActive: $isActive, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -1193,6 +1233,16 @@ class $SocietiesTable extends Societies
   late final GeneratedColumn<String> metadata = GeneratedColumn<String>(
       'metadata', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -1201,7 +1251,7 @@ class $SocietiesTable extends Societies
       type: DriftSqlType.string, requiredDuringInsert: true);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, name, companyId, metadata, updatedAt];
+      [id, name, companyId, metadata, isActive, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1231,6 +1281,10 @@ class $SocietiesTable extends Societies
       context.handle(_metadataMeta,
           metadata.isAcceptableOrUnknown(data['metadata']!, _metadataMeta));
     }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -1254,6 +1308,8 @@ class $SocietiesTable extends Societies
           .read(DriftSqlType.string, data['${effectivePrefix}company_id']),
       metadata: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}metadata']),
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}updated_at'])!,
     );
@@ -1270,12 +1326,14 @@ class Society extends DataClass implements Insertable<Society> {
   final String name;
   final String? companyId;
   final String? metadata;
+  final bool isActive;
   final String updatedAt;
   const Society(
       {required this.id,
       required this.name,
       this.companyId,
       this.metadata,
+      required this.isActive,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1288,6 +1346,7 @@ class Society extends DataClass implements Insertable<Society> {
     if (!nullToAbsent || metadata != null) {
       map['metadata'] = Variable<String>(metadata);
     }
+    map['is_active'] = Variable<bool>(isActive);
     map['updated_at'] = Variable<String>(updatedAt);
     return map;
   }
@@ -1302,6 +1361,7 @@ class Society extends DataClass implements Insertable<Society> {
       metadata: metadata == null && nullToAbsent
           ? const Value.absent()
           : Value(metadata),
+      isActive: Value(isActive),
       updatedAt: Value(updatedAt),
     );
   }
@@ -1314,6 +1374,7 @@ class Society extends DataClass implements Insertable<Society> {
       name: serializer.fromJson<String>(json['name']),
       companyId: serializer.fromJson<String?>(json['companyId']),
       metadata: serializer.fromJson<String?>(json['metadata']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
     );
   }
@@ -1325,6 +1386,7 @@ class Society extends DataClass implements Insertable<Society> {
       'name': serializer.toJson<String>(name),
       'companyId': serializer.toJson<String?>(companyId),
       'metadata': serializer.toJson<String?>(metadata),
+      'isActive': serializer.toJson<bool>(isActive),
       'updatedAt': serializer.toJson<String>(updatedAt),
     };
   }
@@ -1334,12 +1396,14 @@ class Society extends DataClass implements Insertable<Society> {
           String? name,
           Value<String?> companyId = const Value.absent(),
           Value<String?> metadata = const Value.absent(),
+          bool? isActive,
           String? updatedAt}) =>
       Society(
         id: id ?? this.id,
         name: name ?? this.name,
         companyId: companyId.present ? companyId.value : this.companyId,
         metadata: metadata.present ? metadata.value : this.metadata,
+        isActive: isActive ?? this.isActive,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   Society copyWithCompanion(SocietiesCompanion data) {
@@ -1348,6 +1412,7 @@ class Society extends DataClass implements Insertable<Society> {
       name: data.name.present ? data.name.value : this.name,
       companyId: data.companyId.present ? data.companyId.value : this.companyId,
       metadata: data.metadata.present ? data.metadata.value : this.metadata,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -1359,13 +1424,15 @@ class Society extends DataClass implements Insertable<Society> {
           ..write('name: $name, ')
           ..write('companyId: $companyId, ')
           ..write('metadata: $metadata, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, companyId, metadata, updatedAt);
+  int get hashCode =>
+      Object.hash(id, name, companyId, metadata, isActive, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1374,6 +1441,7 @@ class Society extends DataClass implements Insertable<Society> {
           other.name == this.name &&
           other.companyId == this.companyId &&
           other.metadata == this.metadata &&
+          other.isActive == this.isActive &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -1382,6 +1450,7 @@ class SocietiesCompanion extends UpdateCompanion<Society> {
   final Value<String> name;
   final Value<String?> companyId;
   final Value<String?> metadata;
+  final Value<bool> isActive;
   final Value<String> updatedAt;
   final Value<int> rowid;
   const SocietiesCompanion({
@@ -1389,6 +1458,7 @@ class SocietiesCompanion extends UpdateCompanion<Society> {
     this.name = const Value.absent(),
     this.companyId = const Value.absent(),
     this.metadata = const Value.absent(),
+    this.isActive = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1397,6 +1467,7 @@ class SocietiesCompanion extends UpdateCompanion<Society> {
     required String name,
     this.companyId = const Value.absent(),
     this.metadata = const Value.absent(),
+    this.isActive = const Value.absent(),
     required String updatedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -1407,6 +1478,7 @@ class SocietiesCompanion extends UpdateCompanion<Society> {
     Expression<String>? name,
     Expression<String>? companyId,
     Expression<String>? metadata,
+    Expression<bool>? isActive,
     Expression<String>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -1415,6 +1487,7 @@ class SocietiesCompanion extends UpdateCompanion<Society> {
       if (name != null) 'name': name,
       if (companyId != null) 'company_id': companyId,
       if (metadata != null) 'metadata': metadata,
+      if (isActive != null) 'is_active': isActive,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1425,6 +1498,7 @@ class SocietiesCompanion extends UpdateCompanion<Society> {
       Value<String>? name,
       Value<String?>? companyId,
       Value<String?>? metadata,
+      Value<bool>? isActive,
       Value<String>? updatedAt,
       Value<int>? rowid}) {
     return SocietiesCompanion(
@@ -1432,6 +1506,7 @@ class SocietiesCompanion extends UpdateCompanion<Society> {
       name: name ?? this.name,
       companyId: companyId ?? this.companyId,
       metadata: metadata ?? this.metadata,
+      isActive: isActive ?? this.isActive,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1452,6 +1527,9 @@ class SocietiesCompanion extends UpdateCompanion<Society> {
     if (metadata.present) {
       map['metadata'] = Variable<String>(metadata.value);
     }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<String>(updatedAt.value);
     }
@@ -1468,6 +1546,7 @@ class SocietiesCompanion extends UpdateCompanion<Society> {
           ..write('name: $name, ')
           ..write('companyId: $companyId, ')
           ..write('metadata: $metadata, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -1511,6 +1590,16 @@ class $BlocksTable extends Blocks with TableInfo<$BlocksTable, Block> {
   late final GeneratedColumn<String> metadata = GeneratedColumn<String>(
       'metadata', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -1519,7 +1608,7 @@ class $BlocksTable extends Blocks with TableInfo<$BlocksTable, Block> {
       type: DriftSqlType.string, requiredDuringInsert: true);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, societyId, name, companyId, metadata, updatedAt];
+      [id, societyId, name, companyId, metadata, isActive, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1555,6 +1644,10 @@ class $BlocksTable extends Blocks with TableInfo<$BlocksTable, Block> {
       context.handle(_metadataMeta,
           metadata.isAcceptableOrUnknown(data['metadata']!, _metadataMeta));
     }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -1580,6 +1673,8 @@ class $BlocksTable extends Blocks with TableInfo<$BlocksTable, Block> {
           .read(DriftSqlType.string, data['${effectivePrefix}company_id']),
       metadata: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}metadata']),
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}updated_at'])!,
     );
@@ -1597,6 +1692,7 @@ class Block extends DataClass implements Insertable<Block> {
   final String name;
   final String? companyId;
   final String? metadata;
+  final bool isActive;
   final String updatedAt;
   const Block(
       {required this.id,
@@ -1604,6 +1700,7 @@ class Block extends DataClass implements Insertable<Block> {
       required this.name,
       this.companyId,
       this.metadata,
+      required this.isActive,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1617,6 +1714,7 @@ class Block extends DataClass implements Insertable<Block> {
     if (!nullToAbsent || metadata != null) {
       map['metadata'] = Variable<String>(metadata);
     }
+    map['is_active'] = Variable<bool>(isActive);
     map['updated_at'] = Variable<String>(updatedAt);
     return map;
   }
@@ -1632,6 +1730,7 @@ class Block extends DataClass implements Insertable<Block> {
       metadata: metadata == null && nullToAbsent
           ? const Value.absent()
           : Value(metadata),
+      isActive: Value(isActive),
       updatedAt: Value(updatedAt),
     );
   }
@@ -1645,6 +1744,7 @@ class Block extends DataClass implements Insertable<Block> {
       name: serializer.fromJson<String>(json['name']),
       companyId: serializer.fromJson<String?>(json['companyId']),
       metadata: serializer.fromJson<String?>(json['metadata']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
     );
   }
@@ -1657,6 +1757,7 @@ class Block extends DataClass implements Insertable<Block> {
       'name': serializer.toJson<String>(name),
       'companyId': serializer.toJson<String?>(companyId),
       'metadata': serializer.toJson<String?>(metadata),
+      'isActive': serializer.toJson<bool>(isActive),
       'updatedAt': serializer.toJson<String>(updatedAt),
     };
   }
@@ -1667,6 +1768,7 @@ class Block extends DataClass implements Insertable<Block> {
           String? name,
           Value<String?> companyId = const Value.absent(),
           Value<String?> metadata = const Value.absent(),
+          bool? isActive,
           String? updatedAt}) =>
       Block(
         id: id ?? this.id,
@@ -1674,6 +1776,7 @@ class Block extends DataClass implements Insertable<Block> {
         name: name ?? this.name,
         companyId: companyId.present ? companyId.value : this.companyId,
         metadata: metadata.present ? metadata.value : this.metadata,
+        isActive: isActive ?? this.isActive,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   Block copyWithCompanion(BlocksCompanion data) {
@@ -1683,6 +1786,7 @@ class Block extends DataClass implements Insertable<Block> {
       name: data.name.present ? data.name.value : this.name,
       companyId: data.companyId.present ? data.companyId.value : this.companyId,
       metadata: data.metadata.present ? data.metadata.value : this.metadata,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -1695,14 +1799,15 @@ class Block extends DataClass implements Insertable<Block> {
           ..write('name: $name, ')
           ..write('companyId: $companyId, ')
           ..write('metadata: $metadata, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, societyId, name, companyId, metadata, updatedAt);
+  int get hashCode => Object.hash(
+      id, societyId, name, companyId, metadata, isActive, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1712,6 +1817,7 @@ class Block extends DataClass implements Insertable<Block> {
           other.name == this.name &&
           other.companyId == this.companyId &&
           other.metadata == this.metadata &&
+          other.isActive == this.isActive &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -1721,6 +1827,7 @@ class BlocksCompanion extends UpdateCompanion<Block> {
   final Value<String> name;
   final Value<String?> companyId;
   final Value<String?> metadata;
+  final Value<bool> isActive;
   final Value<String> updatedAt;
   final Value<int> rowid;
   const BlocksCompanion({
@@ -1729,6 +1836,7 @@ class BlocksCompanion extends UpdateCompanion<Block> {
     this.name = const Value.absent(),
     this.companyId = const Value.absent(),
     this.metadata = const Value.absent(),
+    this.isActive = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1738,6 +1846,7 @@ class BlocksCompanion extends UpdateCompanion<Block> {
     required String name,
     this.companyId = const Value.absent(),
     this.metadata = const Value.absent(),
+    this.isActive = const Value.absent(),
     required String updatedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -1750,6 +1859,7 @@ class BlocksCompanion extends UpdateCompanion<Block> {
     Expression<String>? name,
     Expression<String>? companyId,
     Expression<String>? metadata,
+    Expression<bool>? isActive,
     Expression<String>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -1759,6 +1869,7 @@ class BlocksCompanion extends UpdateCompanion<Block> {
       if (name != null) 'name': name,
       if (companyId != null) 'company_id': companyId,
       if (metadata != null) 'metadata': metadata,
+      if (isActive != null) 'is_active': isActive,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1770,6 +1881,7 @@ class BlocksCompanion extends UpdateCompanion<Block> {
       Value<String>? name,
       Value<String?>? companyId,
       Value<String?>? metadata,
+      Value<bool>? isActive,
       Value<String>? updatedAt,
       Value<int>? rowid}) {
     return BlocksCompanion(
@@ -1778,6 +1890,7 @@ class BlocksCompanion extends UpdateCompanion<Block> {
       name: name ?? this.name,
       companyId: companyId ?? this.companyId,
       metadata: metadata ?? this.metadata,
+      isActive: isActive ?? this.isActive,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1801,6 +1914,9 @@ class BlocksCompanion extends UpdateCompanion<Block> {
     if (metadata.present) {
       map['metadata'] = Variable<String>(metadata.value);
     }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<String>(updatedAt.value);
     }
@@ -1818,6 +1934,7 @@ class BlocksCompanion extends UpdateCompanion<Block> {
           ..write('name: $name, ')
           ..write('companyId: $companyId, ')
           ..write('metadata: $metadata, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -1916,6 +2033,16 @@ class $PropertiesTable extends Properties
       requiredDuringInsert: false,
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('REFERENCES blocks (id)'));
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -1938,6 +2065,7 @@ class $PropertiesTable extends Properties
         cnic,
         societyId,
         blockId,
+        isActive,
         updatedAt
       ];
   @override
@@ -2017,6 +2145,10 @@ class $PropertiesTable extends Properties
       context.handle(_blockIdMeta,
           blockId.isAcceptableOrUnknown(data['block_id']!, _blockIdMeta));
     }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -2060,6 +2192,8 @@ class $PropertiesTable extends Properties
           .read(DriftSqlType.string, data['${effectivePrefix}society_id']),
       blockId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}block_id']),
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}updated_at'])!,
     );
@@ -2086,6 +2220,7 @@ class Property extends DataClass implements Insertable<Property> {
   final String? cnic;
   final String? societyId;
   final String? blockId;
+  final bool isActive;
   final String updatedAt;
   const Property(
       {required this.id,
@@ -2102,6 +2237,7 @@ class Property extends DataClass implements Insertable<Property> {
       this.cnic,
       this.societyId,
       this.blockId,
+      required this.isActive,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2144,6 +2280,7 @@ class Property extends DataClass implements Insertable<Property> {
     if (!nullToAbsent || blockId != null) {
       map['block_id'] = Variable<String>(blockId);
     }
+    map['is_active'] = Variable<bool>(isActive);
     map['updated_at'] = Variable<String>(updatedAt);
     return map;
   }
@@ -2183,6 +2320,7 @@ class Property extends DataClass implements Insertable<Property> {
       blockId: blockId == null && nullToAbsent
           ? const Value.absent()
           : Value(blockId),
+      isActive: Value(isActive),
       updatedAt: Value(updatedAt),
     );
   }
@@ -2205,6 +2343,7 @@ class Property extends DataClass implements Insertable<Property> {
       cnic: serializer.fromJson<String?>(json['cnic']),
       societyId: serializer.fromJson<String?>(json['societyId']),
       blockId: serializer.fromJson<String?>(json['blockId']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
     );
   }
@@ -2226,6 +2365,7 @@ class Property extends DataClass implements Insertable<Property> {
       'cnic': serializer.toJson<String?>(cnic),
       'societyId': serializer.toJson<String?>(societyId),
       'blockId': serializer.toJson<String?>(blockId),
+      'isActive': serializer.toJson<bool>(isActive),
       'updatedAt': serializer.toJson<String>(updatedAt),
     };
   }
@@ -2245,6 +2385,7 @@ class Property extends DataClass implements Insertable<Property> {
           Value<String?> cnic = const Value.absent(),
           Value<String?> societyId = const Value.absent(),
           Value<String?> blockId = const Value.absent(),
+          bool? isActive,
           String? updatedAt}) =>
       Property(
         id: id ?? this.id,
@@ -2261,6 +2402,7 @@ class Property extends DataClass implements Insertable<Property> {
         cnic: cnic.present ? cnic.value : this.cnic,
         societyId: societyId.present ? societyId.value : this.societyId,
         blockId: blockId.present ? blockId.value : this.blockId,
+        isActive: isActive ?? this.isActive,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   Property copyWithCompanion(PropertiesCompanion data) {
@@ -2284,6 +2426,7 @@ class Property extends DataClass implements Insertable<Property> {
       cnic: data.cnic.present ? data.cnic.value : this.cnic,
       societyId: data.societyId.present ? data.societyId.value : this.societyId,
       blockId: data.blockId.present ? data.blockId.value : this.blockId,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -2305,6 +2448,7 @@ class Property extends DataClass implements Insertable<Property> {
           ..write('cnic: $cnic, ')
           ..write('societyId: $societyId, ')
           ..write('blockId: $blockId, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -2326,6 +2470,7 @@ class Property extends DataClass implements Insertable<Property> {
       cnic,
       societyId,
       blockId,
+      isActive,
       updatedAt);
   @override
   bool operator ==(Object other) =>
@@ -2345,6 +2490,7 @@ class Property extends DataClass implements Insertable<Property> {
           other.cnic == this.cnic &&
           other.societyId == this.societyId &&
           other.blockId == this.blockId &&
+          other.isActive == this.isActive &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -2363,6 +2509,7 @@ class PropertiesCompanion extends UpdateCompanion<Property> {
   final Value<String?> cnic;
   final Value<String?> societyId;
   final Value<String?> blockId;
+  final Value<bool> isActive;
   final Value<String> updatedAt;
   final Value<int> rowid;
   const PropertiesCompanion({
@@ -2380,6 +2527,7 @@ class PropertiesCompanion extends UpdateCompanion<Property> {
     this.cnic = const Value.absent(),
     this.societyId = const Value.absent(),
     this.blockId = const Value.absent(),
+    this.isActive = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -2398,6 +2546,7 @@ class PropertiesCompanion extends UpdateCompanion<Property> {
     this.cnic = const Value.absent(),
     this.societyId = const Value.absent(),
     this.blockId = const Value.absent(),
+    this.isActive = const Value.absent(),
     required String updatedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -2418,6 +2567,7 @@ class PropertiesCompanion extends UpdateCompanion<Property> {
     Expression<String>? cnic,
     Expression<String>? societyId,
     Expression<String>? blockId,
+    Expression<bool>? isActive,
     Expression<String>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -2436,6 +2586,7 @@ class PropertiesCompanion extends UpdateCompanion<Property> {
       if (cnic != null) 'cnic': cnic,
       if (societyId != null) 'society_id': societyId,
       if (blockId != null) 'block_id': blockId,
+      if (isActive != null) 'is_active': isActive,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -2456,6 +2607,7 @@ class PropertiesCompanion extends UpdateCompanion<Property> {
       Value<String?>? cnic,
       Value<String?>? societyId,
       Value<String?>? blockId,
+      Value<bool>? isActive,
       Value<String>? updatedAt,
       Value<int>? rowid}) {
     return PropertiesCompanion(
@@ -2473,6 +2625,7 @@ class PropertiesCompanion extends UpdateCompanion<Property> {
       cnic: cnic ?? this.cnic,
       societyId: societyId ?? this.societyId,
       blockId: blockId ?? this.blockId,
+      isActive: isActive ?? this.isActive,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -2523,6 +2676,9 @@ class PropertiesCompanion extends UpdateCompanion<Property> {
     if (blockId.present) {
       map['block_id'] = Variable<String>(blockId.value);
     }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<String>(updatedAt.value);
     }
@@ -2549,6 +2705,7 @@ class PropertiesCompanion extends UpdateCompanion<Property> {
           ..write('cnic: $cnic, ')
           ..write('societyId: $societyId, ')
           ..write('blockId: $blockId, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -2967,6 +3124,16 @@ class $FilesTableTable extends FilesTable
   late final GeneratedColumn<String> remarks = GeneratedColumn<String>(
       'remarks', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -2990,6 +3157,7 @@ class $FilesTableTable extends FilesTable
         blockId,
         path,
         remarks,
+        isActive,
         updatedAt
       ];
   @override
@@ -3071,6 +3239,10 @@ class $FilesTableTable extends FilesTable
       context.handle(_remarksMeta,
           remarks.isAcceptableOrUnknown(data['remarks']!, _remarksMeta));
     }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -3116,6 +3288,8 @@ class $FilesTableTable extends FilesTable
           .read(DriftSqlType.string, data['${effectivePrefix}path']),
       remarks: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}remarks']),
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}updated_at'])!,
     );
@@ -3143,6 +3317,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
   final String? blockId;
   final String? path;
   final String? remarks;
+  final bool isActive;
   final String updatedAt;
   const FilesTableData(
       {required this.id,
@@ -3160,6 +3335,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
       this.blockId,
       this.path,
       this.remarks,
+      required this.isActive,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3205,6 +3381,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
     if (!nullToAbsent || remarks != null) {
       map['remarks'] = Variable<String>(remarks);
     }
+    map['is_active'] = Variable<bool>(isActive);
     map['updated_at'] = Variable<String>(updatedAt);
     return map;
   }
@@ -3246,6 +3423,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
       remarks: remarks == null && nullToAbsent
           ? const Value.absent()
           : Value(remarks),
+      isActive: Value(isActive),
       updatedAt: Value(updatedAt),
     );
   }
@@ -3269,6 +3447,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
       blockId: serializer.fromJson<String?>(json['blockId']),
       path: serializer.fromJson<String?>(json['path']),
       remarks: serializer.fromJson<String?>(json['remarks']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
     );
   }
@@ -3291,6 +3470,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
       'blockId': serializer.toJson<String?>(blockId),
       'path': serializer.toJson<String?>(path),
       'remarks': serializer.toJson<String?>(remarks),
+      'isActive': serializer.toJson<bool>(isActive),
       'updatedAt': serializer.toJson<String>(updatedAt),
     };
   }
@@ -3311,6 +3491,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
           Value<String?> blockId = const Value.absent(),
           Value<String?> path = const Value.absent(),
           Value<String?> remarks = const Value.absent(),
+          bool? isActive,
           String? updatedAt}) =>
       FilesTableData(
         id: id ?? this.id,
@@ -3328,6 +3509,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
         blockId: blockId.present ? blockId.value : this.blockId,
         path: path.present ? path.value : this.path,
         remarks: remarks.present ? remarks.value : this.remarks,
+        isActive: isActive ?? this.isActive,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   FilesTableData copyWithCompanion(FilesTableCompanion data) {
@@ -3350,6 +3532,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
       blockId: data.blockId.present ? data.blockId.value : this.blockId,
       path: data.path.present ? data.path.value : this.path,
       remarks: data.remarks.present ? data.remarks.value : this.remarks,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -3372,6 +3555,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
           ..write('blockId: $blockId, ')
           ..write('path: $path, ')
           ..write('remarks: $remarks, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -3394,6 +3578,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
       blockId,
       path,
       remarks,
+      isActive,
       updatedAt);
   @override
   bool operator ==(Object other) =>
@@ -3414,6 +3599,7 @@ class FilesTableData extends DataClass implements Insertable<FilesTableData> {
           other.blockId == this.blockId &&
           other.path == this.path &&
           other.remarks == this.remarks &&
+          other.isActive == this.isActive &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -3433,6 +3619,7 @@ class FilesTableCompanion extends UpdateCompanion<FilesTableData> {
   final Value<String?> blockId;
   final Value<String?> path;
   final Value<String?> remarks;
+  final Value<bool> isActive;
   final Value<String> updatedAt;
   final Value<int> rowid;
   const FilesTableCompanion({
@@ -3451,6 +3638,7 @@ class FilesTableCompanion extends UpdateCompanion<FilesTableData> {
     this.blockId = const Value.absent(),
     this.path = const Value.absent(),
     this.remarks = const Value.absent(),
+    this.isActive = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -3470,6 +3658,7 @@ class FilesTableCompanion extends UpdateCompanion<FilesTableData> {
     this.blockId = const Value.absent(),
     this.path = const Value.absent(),
     this.remarks = const Value.absent(),
+    this.isActive = const Value.absent(),
     required String updatedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -3491,6 +3680,7 @@ class FilesTableCompanion extends UpdateCompanion<FilesTableData> {
     Expression<String>? blockId,
     Expression<String>? path,
     Expression<String>? remarks,
+    Expression<bool>? isActive,
     Expression<String>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -3510,6 +3700,7 @@ class FilesTableCompanion extends UpdateCompanion<FilesTableData> {
       if (blockId != null) 'block_id': blockId,
       if (path != null) 'path': path,
       if (remarks != null) 'remarks': remarks,
+      if (isActive != null) 'is_active': isActive,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -3531,6 +3722,7 @@ class FilesTableCompanion extends UpdateCompanion<FilesTableData> {
       Value<String?>? blockId,
       Value<String?>? path,
       Value<String?>? remarks,
+      Value<bool>? isActive,
       Value<String>? updatedAt,
       Value<int>? rowid}) {
     return FilesTableCompanion(
@@ -3549,6 +3741,7 @@ class FilesTableCompanion extends UpdateCompanion<FilesTableData> {
       blockId: blockId ?? this.blockId,
       path: path ?? this.path,
       remarks: remarks ?? this.remarks,
+      isActive: isActive ?? this.isActive,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -3602,6 +3795,9 @@ class FilesTableCompanion extends UpdateCompanion<FilesTableData> {
     if (remarks.present) {
       map['remarks'] = Variable<String>(remarks.value);
     }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<String>(updatedAt.value);
     }
@@ -3629,6 +3825,7 @@ class FilesTableCompanion extends UpdateCompanion<FilesTableData> {
           ..write('blockId: $blockId, ')
           ..write('path: $path, ')
           ..write('remarks: $remarks, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -4025,6 +4222,16 @@ class $RentalItemsTable extends RentalItems
   late final GeneratedColumn<String> saleStatus = GeneratedColumn<String>(
       'sale_status', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -4045,6 +4252,7 @@ class $RentalItemsTable extends RentalItems
         cnic,
         security,
         saleStatus,
+        isActive,
         updatedAt
       ];
   @override
@@ -4110,6 +4318,10 @@ class $RentalItemsTable extends RentalItems
           saleStatus.isAcceptableOrUnknown(
               data['sale_status']!, _saleStatusMeta));
     }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -4149,6 +4361,8 @@ class $RentalItemsTable extends RentalItems
           .read(DriftSqlType.int, data['${effectivePrefix}security']),
       saleStatus: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}sale_status']),
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}updated_at'])!,
     );
@@ -4173,6 +4387,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
   final String? cnic;
   final int? security;
   final String? saleStatus;
+  final bool isActive;
   final String updatedAt;
   const RentalItem(
       {required this.id,
@@ -4187,6 +4402,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
       this.cnic,
       this.security,
       this.saleStatus,
+      required this.isActive,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4223,6 +4439,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
     if (!nullToAbsent || saleStatus != null) {
       map['sale_status'] = Variable<String>(saleStatus);
     }
+    map['is_active'] = Variable<bool>(isActive);
     map['updated_at'] = Variable<String>(updatedAt);
     return map;
   }
@@ -4258,6 +4475,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
       saleStatus: saleStatus == null && nullToAbsent
           ? const Value.absent()
           : Value(saleStatus),
+      isActive: Value(isActive),
       updatedAt: Value(updatedAt),
     );
   }
@@ -4278,6 +4496,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
       cnic: serializer.fromJson<String?>(json['cnic']),
       security: serializer.fromJson<int?>(json['security']),
       saleStatus: serializer.fromJson<String?>(json['saleStatus']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
     );
   }
@@ -4297,6 +4516,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
       'cnic': serializer.toJson<String?>(cnic),
       'security': serializer.toJson<int?>(security),
       'saleStatus': serializer.toJson<String?>(saleStatus),
+      'isActive': serializer.toJson<bool>(isActive),
       'updatedAt': serializer.toJson<String>(updatedAt),
     };
   }
@@ -4314,6 +4534,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
           Value<String?> cnic = const Value.absent(),
           Value<int?> security = const Value.absent(),
           Value<String?> saleStatus = const Value.absent(),
+          bool? isActive,
           String? updatedAt}) =>
       RentalItem(
         id: id ?? this.id,
@@ -4328,6 +4549,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
         cnic: cnic.present ? cnic.value : this.cnic,
         security: security.present ? security.value : this.security,
         saleStatus: saleStatus.present ? saleStatus.value : this.saleStatus,
+        isActive: isActive ?? this.isActive,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   RentalItem copyWithCompanion(RentalItemsCompanion data) {
@@ -4345,6 +4567,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
       security: data.security.present ? data.security.value : this.security,
       saleStatus:
           data.saleStatus.present ? data.saleStatus.value : this.saleStatus,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -4364,6 +4587,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
           ..write('cnic: $cnic, ')
           ..write('security: $security, ')
           ..write('saleStatus: $saleStatus, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -4383,6 +4607,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
       cnic,
       security,
       saleStatus,
+      isActive,
       updatedAt);
   @override
   bool operator ==(Object other) =>
@@ -4400,6 +4625,7 @@ class RentalItem extends DataClass implements Insertable<RentalItem> {
           other.cnic == this.cnic &&
           other.security == this.security &&
           other.saleStatus == this.saleStatus &&
+          other.isActive == this.isActive &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -4416,6 +4642,7 @@ class RentalItemsCompanion extends UpdateCompanion<RentalItem> {
   final Value<String?> cnic;
   final Value<int?> security;
   final Value<String?> saleStatus;
+  final Value<bool> isActive;
   final Value<String> updatedAt;
   final Value<int> rowid;
   const RentalItemsCompanion({
@@ -4431,6 +4658,7 @@ class RentalItemsCompanion extends UpdateCompanion<RentalItem> {
     this.cnic = const Value.absent(),
     this.security = const Value.absent(),
     this.saleStatus = const Value.absent(),
+    this.isActive = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -4447,6 +4675,7 @@ class RentalItemsCompanion extends UpdateCompanion<RentalItem> {
     this.cnic = const Value.absent(),
     this.security = const Value.absent(),
     this.saleStatus = const Value.absent(),
+    this.isActive = const Value.absent(),
     required String updatedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -4465,6 +4694,7 @@ class RentalItemsCompanion extends UpdateCompanion<RentalItem> {
     Expression<String>? cnic,
     Expression<int>? security,
     Expression<String>? saleStatus,
+    Expression<bool>? isActive,
     Expression<String>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -4481,6 +4711,7 @@ class RentalItemsCompanion extends UpdateCompanion<RentalItem> {
       if (cnic != null) 'cnic': cnic,
       if (security != null) 'security': security,
       if (saleStatus != null) 'sale_status': saleStatus,
+      if (isActive != null) 'is_active': isActive,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -4499,6 +4730,7 @@ class RentalItemsCompanion extends UpdateCompanion<RentalItem> {
       Value<String?>? cnic,
       Value<int?>? security,
       Value<String?>? saleStatus,
+      Value<bool>? isActive,
       Value<String>? updatedAt,
       Value<int>? rowid}) {
     return RentalItemsCompanion(
@@ -4514,6 +4746,7 @@ class RentalItemsCompanion extends UpdateCompanion<RentalItem> {
       cnic: cnic ?? this.cnic,
       security: security ?? this.security,
       saleStatus: saleStatus ?? this.saleStatus,
+      isActive: isActive ?? this.isActive,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -4558,6 +4791,9 @@ class RentalItemsCompanion extends UpdateCompanion<RentalItem> {
     if (saleStatus.present) {
       map['sale_status'] = Variable<String>(saleStatus.value);
     }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<String>(updatedAt.value);
     }
@@ -4582,6 +4818,7 @@ class RentalItemsCompanion extends UpdateCompanion<RentalItem> {
           ..write('cnic: $cnic, ')
           ..write('security: $security, ')
           ..write('saleStatus: $saleStatus, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -4966,6 +5203,16 @@ class $WorkingProgressTable extends WorkingProgress
   late final GeneratedColumn<String> category = GeneratedColumn<String>(
       'category', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -4984,6 +5231,7 @@ class $WorkingProgressTable extends WorkingProgress
         transferDate,
         nextWorkingDate,
         category,
+        isActive,
         updatedAt
       ];
   @override
@@ -5044,6 +5292,10 @@ class $WorkingProgressTable extends WorkingProgress
       context.handle(_categoryMeta,
           category.isAcceptableOrUnknown(data['category']!, _categoryMeta));
     }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -5079,6 +5331,8 @@ class $WorkingProgressTable extends WorkingProgress
           DriftSqlType.string, data['${effectivePrefix}next_working_date']),
       category: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}category']),
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}updated_at'])!,
     );
@@ -5102,6 +5356,7 @@ class WorkingProgressData extends DataClass
   final String? transferDate;
   final String? nextWorkingDate;
   final String? category;
+  final bool isActive;
   final String updatedAt;
   const WorkingProgressData(
       {required this.id,
@@ -5114,6 +5369,7 @@ class WorkingProgressData extends DataClass
       this.transferDate,
       this.nextWorkingDate,
       this.category,
+      required this.isActive,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5144,6 +5400,7 @@ class WorkingProgressData extends DataClass
     if (!nullToAbsent || category != null) {
       map['category'] = Variable<String>(category);
     }
+    map['is_active'] = Variable<bool>(isActive);
     map['updated_at'] = Variable<String>(updatedAt);
     return map;
   }
@@ -5174,6 +5431,7 @@ class WorkingProgressData extends DataClass
       category: category == null && nullToAbsent
           ? const Value.absent()
           : Value(category),
+      isActive: Value(isActive),
       updatedAt: Value(updatedAt),
     );
   }
@@ -5192,6 +5450,7 @@ class WorkingProgressData extends DataClass
       transferDate: serializer.fromJson<String?>(json['transferDate']),
       nextWorkingDate: serializer.fromJson<String?>(json['nextWorkingDate']),
       category: serializer.fromJson<String?>(json['category']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
     );
   }
@@ -5209,6 +5468,7 @@ class WorkingProgressData extends DataClass
       'transferDate': serializer.toJson<String?>(transferDate),
       'nextWorkingDate': serializer.toJson<String?>(nextWorkingDate),
       'category': serializer.toJson<String?>(category),
+      'isActive': serializer.toJson<bool>(isActive),
       'updatedAt': serializer.toJson<String>(updatedAt),
     };
   }
@@ -5224,6 +5484,7 @@ class WorkingProgressData extends DataClass
           Value<String?> transferDate = const Value.absent(),
           Value<String?> nextWorkingDate = const Value.absent(),
           Value<String?> category = const Value.absent(),
+          bool? isActive,
           String? updatedAt}) =>
       WorkingProgressData(
         id: id ?? this.id,
@@ -5239,6 +5500,7 @@ class WorkingProgressData extends DataClass
             ? nextWorkingDate.value
             : this.nextWorkingDate,
         category: category.present ? category.value : this.category,
+        isActive: isActive ?? this.isActive,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   WorkingProgressData copyWithCompanion(WorkingProgressCompanion data) {
@@ -5257,6 +5519,7 @@ class WorkingProgressData extends DataClass
           ? data.nextWorkingDate.value
           : this.nextWorkingDate,
       category: data.category.present ? data.category.value : this.category,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -5274,14 +5537,26 @@ class WorkingProgressData extends DataClass
           ..write('transferDate: $transferDate, ')
           ..write('nextWorkingDate: $nextWorkingDate, ')
           ..write('category: $category, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, companyId, name, status, remarks,
-      fromUser, toUser, transferDate, nextWorkingDate, category, updatedAt);
+  int get hashCode => Object.hash(
+      id,
+      companyId,
+      name,
+      status,
+      remarks,
+      fromUser,
+      toUser,
+      transferDate,
+      nextWorkingDate,
+      category,
+      isActive,
+      updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -5296,6 +5571,7 @@ class WorkingProgressData extends DataClass
           other.transferDate == this.transferDate &&
           other.nextWorkingDate == this.nextWorkingDate &&
           other.category == this.category &&
+          other.isActive == this.isActive &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -5310,6 +5586,7 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
   final Value<String?> transferDate;
   final Value<String?> nextWorkingDate;
   final Value<String?> category;
+  final Value<bool> isActive;
   final Value<String> updatedAt;
   final Value<int> rowid;
   const WorkingProgressCompanion({
@@ -5323,6 +5600,7 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
     this.transferDate = const Value.absent(),
     this.nextWorkingDate = const Value.absent(),
     this.category = const Value.absent(),
+    this.isActive = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -5337,6 +5615,7 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
     this.transferDate = const Value.absent(),
     this.nextWorkingDate = const Value.absent(),
     this.category = const Value.absent(),
+    this.isActive = const Value.absent(),
     required String updatedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -5353,6 +5632,7 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
     Expression<String>? transferDate,
     Expression<String>? nextWorkingDate,
     Expression<String>? category,
+    Expression<bool>? isActive,
     Expression<String>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -5367,6 +5647,7 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
       if (transferDate != null) 'transfer_date': transferDate,
       if (nextWorkingDate != null) 'next_working_date': nextWorkingDate,
       if (category != null) 'category': category,
+      if (isActive != null) 'is_active': isActive,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -5383,6 +5664,7 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
       Value<String?>? transferDate,
       Value<String?>? nextWorkingDate,
       Value<String?>? category,
+      Value<bool>? isActive,
       Value<String>? updatedAt,
       Value<int>? rowid}) {
     return WorkingProgressCompanion(
@@ -5396,6 +5678,7 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
       transferDate: transferDate ?? this.transferDate,
       nextWorkingDate: nextWorkingDate ?? this.nextWorkingDate,
       category: category ?? this.category,
+      isActive: isActive ?? this.isActive,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -5434,6 +5717,9 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
     if (category.present) {
       map['category'] = Variable<String>(category.value);
     }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<String>(updatedAt.value);
     }
@@ -5456,6 +5742,7 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
           ..write('transferDate: $transferDate, ')
           ..write('nextWorkingDate: $nextWorkingDate, ')
           ..write('category: $category, ')
+          ..write('isActive: $isActive, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -5851,6 +6138,16 @@ class $RemindersTable extends Reminders
   late final GeneratedColumn<String> notificationStatus =
       GeneratedColumn<String>('notification_status', aliasedName, false,
           type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -5875,6 +6172,7 @@ class $RemindersTable extends Reminders
         reminderDate,
         reminderTime,
         notificationStatus,
+        isActive,
         createdAt,
         updatedAt
       ];
@@ -5954,6 +6252,10 @@ class $RemindersTable extends Reminders
     } else if (isInserting) {
       context.missing(_notificationStatusMeta);
     }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -5995,6 +6297,8 @@ class $RemindersTable extends Reminders
           .read(DriftSqlType.string, data['${effectivePrefix}reminder_time'])!,
       notificationStatus: attachedDatabase.typeMapping.read(
           DriftSqlType.string, data['${effectivePrefix}notification_status'])!,
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -6019,6 +6323,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
   final String reminderDate;
   final String reminderTime;
   final String notificationStatus;
+  final bool isActive;
   final String createdAt;
   final String updatedAt;
   const Reminder(
@@ -6032,6 +6337,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       required this.reminderDate,
       required this.reminderTime,
       required this.notificationStatus,
+      required this.isActive,
       required this.createdAt,
       required this.updatedAt});
   @override
@@ -6055,6 +6361,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
     map['reminder_date'] = Variable<String>(reminderDate);
     map['reminder_time'] = Variable<String>(reminderTime);
     map['notification_status'] = Variable<String>(notificationStatus);
+    map['is_active'] = Variable<bool>(isActive);
     map['created_at'] = Variable<String>(createdAt);
     map['updated_at'] = Variable<String>(updatedAt);
     return map;
@@ -6080,6 +6387,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       reminderDate: Value(reminderDate),
       reminderTime: Value(reminderTime),
       notificationStatus: Value(notificationStatus),
+      isActive: Value(isActive),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -6100,6 +6408,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       reminderTime: serializer.fromJson<String>(json['reminderTime']),
       notificationStatus:
           serializer.fromJson<String>(json['notificationStatus']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
       createdAt: serializer.fromJson<String>(json['createdAt']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
     );
@@ -6118,6 +6427,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       'reminderDate': serializer.toJson<String>(reminderDate),
       'reminderTime': serializer.toJson<String>(reminderTime),
       'notificationStatus': serializer.toJson<String>(notificationStatus),
+      'isActive': serializer.toJson<bool>(isActive),
       'createdAt': serializer.toJson<String>(createdAt),
       'updatedAt': serializer.toJson<String>(updatedAt),
     };
@@ -6134,6 +6444,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
           String? reminderDate,
           String? reminderTime,
           String? notificationStatus,
+          bool? isActive,
           String? createdAt,
           String? updatedAt}) =>
       Reminder(
@@ -6149,6 +6460,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
         reminderDate: reminderDate ?? this.reminderDate,
         reminderTime: reminderTime ?? this.reminderTime,
         notificationStatus: notificationStatus ?? this.notificationStatus,
+        isActive: isActive ?? this.isActive,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -6177,6 +6489,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       notificationStatus: data.notificationStatus.present
           ? data.notificationStatus.value
           : this.notificationStatus,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -6195,6 +6508,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
           ..write('reminderDate: $reminderDate, ')
           ..write('reminderTime: $reminderTime, ')
           ..write('notificationStatus: $notificationStatus, ')
+          ..write('isActive: $isActive, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -6213,6 +6527,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       reminderDate,
       reminderTime,
       notificationStatus,
+      isActive,
       createdAt,
       updatedAt);
   @override
@@ -6229,6 +6544,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
           other.reminderDate == this.reminderDate &&
           other.reminderTime == this.reminderTime &&
           other.notificationStatus == this.notificationStatus &&
+          other.isActive == this.isActive &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -6244,6 +6560,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
   final Value<String> reminderDate;
   final Value<String> reminderTime;
   final Value<String> notificationStatus;
+  final Value<bool> isActive;
   final Value<String> createdAt;
   final Value<String> updatedAt;
   const RemindersCompanion({
@@ -6257,6 +6574,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     this.reminderDate = const Value.absent(),
     this.reminderTime = const Value.absent(),
     this.notificationStatus = const Value.absent(),
+    this.isActive = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -6271,6 +6589,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     required String reminderDate,
     required String reminderTime,
     required String notificationStatus,
+    this.isActive = const Value.absent(),
     required String createdAt,
     required String updatedAt,
   })  : agentId = Value(agentId),
@@ -6291,6 +6610,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     Expression<String>? reminderDate,
     Expression<String>? reminderTime,
     Expression<String>? notificationStatus,
+    Expression<bool>? isActive,
     Expression<String>? createdAt,
     Expression<String>? updatedAt,
   }) {
@@ -6305,6 +6625,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
       if (reminderDate != null) 'reminder_date': reminderDate,
       if (reminderTime != null) 'reminder_time': reminderTime,
       if (notificationStatus != null) 'notification_status': notificationStatus,
+      if (isActive != null) 'is_active': isActive,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -6321,6 +6642,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
       Value<String>? reminderDate,
       Value<String>? reminderTime,
       Value<String>? notificationStatus,
+      Value<bool>? isActive,
       Value<String>? createdAt,
       Value<String>? updatedAt}) {
     return RemindersCompanion(
@@ -6334,6 +6656,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
       reminderDate: reminderDate ?? this.reminderDate,
       reminderTime: reminderTime ?? this.reminderTime,
       notificationStatus: notificationStatus ?? this.notificationStatus,
+      isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -6372,6 +6695,9 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     if (notificationStatus.present) {
       map['notification_status'] = Variable<String>(notificationStatus.value);
     }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<String>(createdAt.value);
     }
@@ -6394,6 +6720,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
           ..write('reminderDate: $reminderDate, ')
           ..write('reminderTime: $reminderTime, ')
           ..write('notificationStatus: $notificationStatus, ')
+          ..write('isActive: $isActive, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -8663,6 +8990,7 @@ typedef $$UsersTableCreateCompanionBuilder = UsersCompanion Function({
   Value<String?> companyId,
   Value<String?> status,
   Value<bool> isFirstLogin,
+  Value<bool> isActive,
   Value<String?> createdAt,
   required String updatedAt,
   Value<int> rowid,
@@ -8681,6 +9009,7 @@ typedef $$UsersTableUpdateCompanionBuilder = UsersCompanion Function({
   Value<String?> companyId,
   Value<String?> status,
   Value<bool> isFirstLogin,
+  Value<bool> isActive,
   Value<String?> createdAt,
   Value<String> updatedAt,
   Value<int> rowid,
@@ -8762,6 +9091,9 @@ class $$UsersTableFilterComposer extends Composer<_$AppDatabase, $UsersTable> {
 
   ColumnFilters<bool> get isFirstLogin => $composableBuilder(
       column: $table.isFirstLogin, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -8858,6 +9190,9 @@ class $$UsersTableOrderingComposer
       column: $table.isFirstLogin,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -8929,6 +9264,9 @@ class $$UsersTableAnnotationComposer
 
   GeneratedColumn<bool> get isFirstLogin => $composableBuilder(
       column: $table.isFirstLogin, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
 
   GeneratedColumn<String> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -9014,6 +9352,7 @@ class $$UsersTableTableManager extends RootTableManager<
             Value<String?> companyId = const Value.absent(),
             Value<String?> status = const Value.absent(),
             Value<bool> isFirstLogin = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             Value<String?> createdAt = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -9032,6 +9371,7 @@ class $$UsersTableTableManager extends RootTableManager<
             companyId: companyId,
             status: status,
             isFirstLogin: isFirstLogin,
+            isActive: isActive,
             createdAt: createdAt,
             updatedAt: updatedAt,
             rowid: rowid,
@@ -9050,6 +9390,7 @@ class $$UsersTableTableManager extends RootTableManager<
             Value<String?> companyId = const Value.absent(),
             Value<String?> status = const Value.absent(),
             Value<bool> isFirstLogin = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             Value<String?> createdAt = const Value.absent(),
             required String updatedAt,
             Value<int> rowid = const Value.absent(),
@@ -9068,6 +9409,7 @@ class $$UsersTableTableManager extends RootTableManager<
             companyId: companyId,
             status: status,
             isFirstLogin: isFirstLogin,
+            isActive: isActive,
             createdAt: createdAt,
             updatedAt: updatedAt,
             rowid: rowid,
@@ -9142,6 +9484,7 @@ typedef $$SocietiesTableCreateCompanionBuilder = SocietiesCompanion Function({
   required String name,
   Value<String?> companyId,
   Value<String?> metadata,
+  Value<bool> isActive,
   required String updatedAt,
   Value<int> rowid,
 });
@@ -9150,6 +9493,7 @@ typedef $$SocietiesTableUpdateCompanionBuilder = SocietiesCompanion Function({
   Value<String> name,
   Value<String?> companyId,
   Value<String?> metadata,
+  Value<bool> isActive,
   Value<String> updatedAt,
   Value<int> rowid,
 });
@@ -9224,6 +9568,9 @@ class $$SocietiesTableFilterComposer
 
   ColumnFilters<String> get metadata => $composableBuilder(
       column: $table.metadata, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -9313,6 +9660,9 @@ class $$SocietiesTableOrderingComposer
   ColumnOrderings<String> get metadata => $composableBuilder(
       column: $table.metadata, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 }
@@ -9337,6 +9687,9 @@ class $$SocietiesTableAnnotationComposer
 
   GeneratedColumn<String> get metadata =>
       $composableBuilder(column: $table.metadata, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
 
   GeneratedColumn<String> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -9433,6 +9786,7 @@ class $$SocietiesTableTableManager extends RootTableManager<
             Value<String> name = const Value.absent(),
             Value<String?> companyId = const Value.absent(),
             Value<String?> metadata = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -9441,6 +9795,7 @@ class $$SocietiesTableTableManager extends RootTableManager<
             name: name,
             companyId: companyId,
             metadata: metadata,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -9449,6 +9804,7 @@ class $$SocietiesTableTableManager extends RootTableManager<
             required String name,
             Value<String?> companyId = const Value.absent(),
             Value<String?> metadata = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             required String updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -9457,6 +9813,7 @@ class $$SocietiesTableTableManager extends RootTableManager<
             name: name,
             companyId: companyId,
             metadata: metadata,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -9544,6 +9901,7 @@ typedef $$BlocksTableCreateCompanionBuilder = BlocksCompanion Function({
   required String name,
   Value<String?> companyId,
   Value<String?> metadata,
+  Value<bool> isActive,
   required String updatedAt,
   Value<int> rowid,
 });
@@ -9553,6 +9911,7 @@ typedef $$BlocksTableUpdateCompanionBuilder = BlocksCompanion Function({
   Value<String> name,
   Value<String?> companyId,
   Value<String?> metadata,
+  Value<bool> isActive,
   Value<String> updatedAt,
   Value<int> rowid,
 });
@@ -9624,6 +9983,9 @@ class $$BlocksTableFilterComposer
 
   ColumnFilters<String> get metadata => $composableBuilder(
       column: $table.metadata, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -9712,6 +10074,9 @@ class $$BlocksTableOrderingComposer
   ColumnOrderings<String> get metadata => $composableBuilder(
       column: $table.metadata, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 
@@ -9756,6 +10121,9 @@ class $$BlocksTableAnnotationComposer
 
   GeneratedColumn<String> get metadata =>
       $composableBuilder(column: $table.metadata, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
 
   GeneratedColumn<String> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -9852,6 +10220,7 @@ class $$BlocksTableTableManager extends RootTableManager<
             Value<String> name = const Value.absent(),
             Value<String?> companyId = const Value.absent(),
             Value<String?> metadata = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -9861,6 +10230,7 @@ class $$BlocksTableTableManager extends RootTableManager<
             name: name,
             companyId: companyId,
             metadata: metadata,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -9870,6 +10240,7 @@ class $$BlocksTableTableManager extends RootTableManager<
             required String name,
             Value<String?> companyId = const Value.absent(),
             Value<String?> metadata = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             required String updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -9879,6 +10250,7 @@ class $$BlocksTableTableManager extends RootTableManager<
             name: name,
             companyId: companyId,
             metadata: metadata,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -9984,6 +10356,7 @@ typedef $$PropertiesTableCreateCompanionBuilder = PropertiesCompanion Function({
   Value<String?> cnic,
   Value<String?> societyId,
   Value<String?> blockId,
+  Value<bool> isActive,
   required String updatedAt,
   Value<int> rowid,
 });
@@ -10002,6 +10375,7 @@ typedef $$PropertiesTableUpdateCompanionBuilder = PropertiesCompanion Function({
   Value<String?> cnic,
   Value<String?> societyId,
   Value<String?> blockId,
+  Value<bool> isActive,
   Value<String> updatedAt,
   Value<int> rowid,
 });
@@ -10101,6 +10475,9 @@ class $$PropertiesTableFilterComposer
 
   ColumnFilters<String> get cnic => $composableBuilder(
       column: $table.cnic, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -10213,6 +10590,9 @@ class $$PropertiesTableOrderingComposer
   ColumnOrderings<String> get cnic => $composableBuilder(
       column: $table.cnic, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 
@@ -10301,6 +10681,9 @@ class $$PropertiesTableAnnotationComposer
 
   GeneratedColumn<String> get cnic =>
       $composableBuilder(column: $table.cnic, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
 
   GeneratedColumn<String> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -10405,6 +10788,7 @@ class $$PropertiesTableTableManager extends RootTableManager<
             Value<String?> cnic = const Value.absent(),
             Value<String?> societyId = const Value.absent(),
             Value<String?> blockId = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -10423,6 +10807,7 @@ class $$PropertiesTableTableManager extends RootTableManager<
             cnic: cnic,
             societyId: societyId,
             blockId: blockId,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -10441,6 +10826,7 @@ class $$PropertiesTableTableManager extends RootTableManager<
             Value<String?> cnic = const Value.absent(),
             Value<String?> societyId = const Value.absent(),
             Value<String?> blockId = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             required String updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -10459,6 +10845,7 @@ class $$PropertiesTableTableManager extends RootTableManager<
             cnic: cnic,
             societyId: societyId,
             blockId: blockId,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -10841,6 +11228,7 @@ typedef $$FilesTableTableCreateCompanionBuilder = FilesTableCompanion Function({
   Value<String?> blockId,
   Value<String?> path,
   Value<String?> remarks,
+  Value<bool> isActive,
   required String updatedAt,
   Value<int> rowid,
 });
@@ -10860,6 +11248,7 @@ typedef $$FilesTableTableUpdateCompanionBuilder = FilesTableCompanion Function({
   Value<String?> blockId,
   Value<String?> path,
   Value<String?> remarks,
+  Value<bool> isActive,
   Value<String> updatedAt,
   Value<int> rowid,
 });
@@ -10960,6 +11349,9 @@ class $$FilesTableTableFilterComposer
 
   ColumnFilters<String> get remarks => $composableBuilder(
       column: $table.remarks, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -11074,6 +11466,9 @@ class $$FilesTableTableOrderingComposer
   ColumnOrderings<String> get remarks => $composableBuilder(
       column: $table.remarks, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 
@@ -11165,6 +11560,9 @@ class $$FilesTableTableAnnotationComposer
 
   GeneratedColumn<String> get remarks =>
       $composableBuilder(column: $table.remarks, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
 
   GeneratedColumn<String> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -11270,6 +11668,7 @@ class $$FilesTableTableTableManager extends RootTableManager<
             Value<String?> blockId = const Value.absent(),
             Value<String?> path = const Value.absent(),
             Value<String?> remarks = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -11289,6 +11688,7 @@ class $$FilesTableTableTableManager extends RootTableManager<
             blockId: blockId,
             path: path,
             remarks: remarks,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -11308,6 +11708,7 @@ class $$FilesTableTableTableManager extends RootTableManager<
             Value<String?> blockId = const Value.absent(),
             Value<String?> path = const Value.absent(),
             Value<String?> remarks = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             required String updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -11327,6 +11728,7 @@ class $$FilesTableTableTableManager extends RootTableManager<
             blockId: blockId,
             path: path,
             remarks: remarks,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -11701,6 +12103,7 @@ typedef $$RentalItemsTableCreateCompanionBuilder = RentalItemsCompanion
   Value<String?> cnic,
   Value<int?> security,
   Value<String?> saleStatus,
+  Value<bool> isActive,
   required String updatedAt,
   Value<int> rowid,
 });
@@ -11718,6 +12121,7 @@ typedef $$RentalItemsTableUpdateCompanionBuilder = RentalItemsCompanion
   Value<String?> cnic,
   Value<int?> security,
   Value<String?> saleStatus,
+  Value<bool> isActive,
   Value<String> updatedAt,
   Value<int> rowid,
 });
@@ -11786,6 +12190,9 @@ class $$RentalItemsTableFilterComposer
 
   ColumnFilters<String> get saleStatus => $composableBuilder(
       column: $table.saleStatus, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -11857,6 +12264,9 @@ class $$RentalItemsTableOrderingComposer
   ColumnOrderings<String> get saleStatus => $composableBuilder(
       column: $table.saleStatus, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 }
@@ -11905,6 +12315,9 @@ class $$RentalItemsTableAnnotationComposer
 
   GeneratedColumn<String> get saleStatus => $composableBuilder(
       column: $table.saleStatus, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
 
   GeneratedColumn<String> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -11966,6 +12379,7 @@ class $$RentalItemsTableTableManager extends RootTableManager<
             Value<String?> cnic = const Value.absent(),
             Value<int?> security = const Value.absent(),
             Value<String?> saleStatus = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -11982,6 +12396,7 @@ class $$RentalItemsTableTableManager extends RootTableManager<
             cnic: cnic,
             security: security,
             saleStatus: saleStatus,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -11998,6 +12413,7 @@ class $$RentalItemsTableTableManager extends RootTableManager<
             Value<String?> cnic = const Value.absent(),
             Value<int?> security = const Value.absent(),
             Value<String?> saleStatus = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             required String updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -12014,6 +12430,7 @@ class $$RentalItemsTableTableManager extends RootTableManager<
             cnic: cnic,
             security: security,
             saleStatus: saleStatus,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -12353,6 +12770,7 @@ typedef $$WorkingProgressTableCreateCompanionBuilder = WorkingProgressCompanion
   Value<String?> transferDate,
   Value<String?> nextWorkingDate,
   Value<String?> category,
+  Value<bool> isActive,
   required String updatedAt,
   Value<int> rowid,
 });
@@ -12368,6 +12786,7 @@ typedef $$WorkingProgressTableUpdateCompanionBuilder = WorkingProgressCompanion
   Value<String?> transferDate,
   Value<String?> nextWorkingDate,
   Value<String?> category,
+  Value<bool> isActive,
   Value<String> updatedAt,
   Value<int> rowid,
 });
@@ -12435,6 +12854,9 @@ class $$WorkingProgressTableFilterComposer
   ColumnFilters<String> get category => $composableBuilder(
       column: $table.category, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
+
   ColumnFilters<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
 
@@ -12501,6 +12923,9 @@ class $$WorkingProgressTableOrderingComposer
   ColumnOrderings<String> get category => $composableBuilder(
       column: $table.category, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 }
@@ -12543,6 +12968,9 @@ class $$WorkingProgressTableAnnotationComposer
 
   GeneratedColumn<String> get category =>
       $composableBuilder(column: $table.category, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
 
   GeneratedColumn<String> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -12603,6 +13031,7 @@ class $$WorkingProgressTableTableManager extends RootTableManager<
             Value<String?> transferDate = const Value.absent(),
             Value<String?> nextWorkingDate = const Value.absent(),
             Value<String?> category = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -12617,6 +13046,7 @@ class $$WorkingProgressTableTableManager extends RootTableManager<
             transferDate: transferDate,
             nextWorkingDate: nextWorkingDate,
             category: category,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -12631,6 +13061,7 @@ class $$WorkingProgressTableTableManager extends RootTableManager<
             Value<String?> transferDate = const Value.absent(),
             Value<String?> nextWorkingDate = const Value.absent(),
             Value<String?> category = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             required String updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -12645,6 +13076,7 @@ class $$WorkingProgressTableTableManager extends RootTableManager<
             transferDate: transferDate,
             nextWorkingDate: nextWorkingDate,
             category: category,
+            isActive: isActive,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -12984,6 +13416,7 @@ typedef $$RemindersTableCreateCompanionBuilder = RemindersCompanion Function({
   required String reminderDate,
   required String reminderTime,
   required String notificationStatus,
+  Value<bool> isActive,
   required String createdAt,
   required String updatedAt,
 });
@@ -12998,6 +13431,7 @@ typedef $$RemindersTableUpdateCompanionBuilder = RemindersCompanion Function({
   Value<String> reminderDate,
   Value<String> reminderTime,
   Value<String> notificationStatus,
+  Value<bool> isActive,
   Value<String> createdAt,
   Value<String> updatedAt,
 });
@@ -13058,6 +13492,9 @@ class $$RemindersTableFilterComposer
   ColumnFilters<String> get notificationStatus => $composableBuilder(
       column: $table.notificationStatus,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -13127,6 +13564,9 @@ class $$RemindersTableOrderingComposer
       column: $table.notificationStatus,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -13190,6 +13630,9 @@ class $$RemindersTableAnnotationComposer
   GeneratedColumn<String> get notificationStatus => $composableBuilder(
       column: $table.notificationStatus, builder: (column) => column);
 
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
   GeneratedColumn<String> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -13250,6 +13693,7 @@ class $$RemindersTableTableManager extends RootTableManager<
             Value<String> reminderDate = const Value.absent(),
             Value<String> reminderTime = const Value.absent(),
             Value<String> notificationStatus = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
             Value<String> createdAt = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
           }) =>
@@ -13264,6 +13708,7 @@ class $$RemindersTableTableManager extends RootTableManager<
             reminderDate: reminderDate,
             reminderTime: reminderTime,
             notificationStatus: notificationStatus,
+            isActive: isActive,
             createdAt: createdAt,
             updatedAt: updatedAt,
           ),
@@ -13278,6 +13723,7 @@ class $$RemindersTableTableManager extends RootTableManager<
             required String reminderDate,
             required String reminderTime,
             required String notificationStatus,
+            Value<bool> isActive = const Value.absent(),
             required String createdAt,
             required String updatedAt,
           }) =>
@@ -13292,6 +13738,7 @@ class $$RemindersTableTableManager extends RootTableManager<
             reminderDate: reminderDate,
             reminderTime: reminderTime,
             notificationStatus: notificationStatus,
+            isActive: isActive,
             createdAt: createdAt,
             updatedAt: updatedAt,
           ),

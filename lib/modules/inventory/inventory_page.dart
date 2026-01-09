@@ -75,8 +75,18 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
     final isSuper = RoleUtils.isSuperAdmin(_currentUser);
     // Use 'GLOBAL_ADMIN' for super admin, otherwise use the user's companyId
     final companyId = isSuper ? 'GLOBAL_ADMIN' : (RoleUtils.getUserCompanyId(_currentUser) ?? '');
-    final soc = await widget.db.customSelect(isSuper ? 'SELECT id, name FROM societies' : 'SELECT id, name FROM societies WHERE company_id = ?', variables: isSuper ? [] : [d.Variable.withString(companyId)]).get();
-    final blks = await widget.db.customSelect(isSuper ? 'SELECT id, society_id, name FROM blocks' : 'SELECT id, society_id, name FROM blocks WHERE company_id = ?', variables: isSuper ? [] : [d.Variable.withString(companyId)]).get();
+    final soc = await widget.db.customSelect(
+      isSuper
+          ? 'SELECT id, name FROM societies WHERE is_active = 1'
+          : 'SELECT id, name FROM societies WHERE company_id = ? AND is_active = 1',
+      variables: isSuper ? [] : [d.Variable.withString(companyId)],
+    ).get();
+    final blks = await widget.db.customSelect(
+      isSuper
+          ? 'SELECT id, society_id, name FROM blocks WHERE is_active = 1'
+          : 'SELECT id, society_id, name FROM blocks WHERE company_id = ? AND is_active = 1',
+      variables: isSuper ? [] : [d.Variable.withString(companyId)],
+    ).get();
     if (!mounted) return;
     setState(() {
       _societies = soc.map((r) => {'id': r.data['id'] as String, 'name': r.data['name'] as String}).toList();
@@ -90,7 +100,16 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
     final isSuper = RoleUtils.isSuperAdmin(_currentUser);
     final companyId = RoleUtils.getUserCompanyId(_currentUser);
     final table = _selectedType == 'Files' ? 'files_table' : 'properties';
-    final result = await widget.db.customSelect('SELECT * FROM $table ${isSuper ? "" : "WHERE company_id = '" + (companyId ?? "") + "'"} ORDER BY updated_at DESC').get();
+    final clauses = <String>['is_active = 1'];
+    final vars = <d.Variable<String>>[];
+    if (!isSuper) {
+      clauses.add('company_id = ?');
+      vars.add(d.Variable.withString(companyId ?? ''));
+    }
+    final where = clauses.isNotEmpty ? 'WHERE ${clauses.join(' AND ')}' : '';
+    final result = await widget.db
+        .customSelect('SELECT * FROM $table $where ORDER BY updated_at DESC', variables: vars)
+        .get();
     if (!mounted) return;
     setState(() { _rows = result.map((r) => r.data).toList(); _loading = false; });
   }
@@ -766,8 +785,8 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
       try {
         final table = _selectedType == 'Files' ? 'files_table' : 'properties';
         await widget.db.customStatement(
-          'DELETE FROM $table WHERE id = ?',
-          [id],
+          'UPDATE $table SET is_active = 0, updated_at = ? WHERE id = ?',
+          [DateTime.now().toUtc().toIso8601String(), id],
         );
         await _load();
         if (mounted) {

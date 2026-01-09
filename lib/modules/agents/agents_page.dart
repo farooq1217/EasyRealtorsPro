@@ -3274,7 +3274,10 @@ class _UsersPageState extends State<UsersPage> {
                 final id = (data['id'] ?? doc.id).toString();
                 
                 if (change.type == DocumentChangeType.removed) {
-                  batch.customStatement('DELETE FROM users WHERE id = ?', [id]);
+                  batch.customStatement(
+                    'UPDATE users SET is_active = 0, updated_at = ? WHERE id = ?',
+                    [DateTime.now().toUtc().toIso8601String(), id],
+                  );
                   continue;
                 }
 
@@ -3289,11 +3292,13 @@ class _UsersPageState extends State<UsersPage> {
                 final cid = (data['company_id'] ?? data['companyId'])?.toString();
                 final createdAt = (data['created_at'] ?? data['createdAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
                 final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
+                final isActiveRaw = data['is_active'] ?? data['isActive'];
+                final isActive = isActiveRaw == null ? 1 : ((isActiveRaw is bool ? (isActiveRaw ? 1 : 0) : int.tryParse(isActiveRaw.toString()) ?? 1));
 
                 // Note: Password fields are NOT synced from Firestore for security
                 batch.customStatement(
-                  'INSERT OR REPLACE INTO users (id, username, user_id, name, email, contact_no, permissions, company_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                  [id, username, userId, name, email, contactNo, permissions != null ? jsonEncode(permissions) : null, cid, status, createdAt, updatedAt],
+                  'INSERT OR REPLACE INTO users (id, username, user_id, name, email, contact_no, permissions, company_id, status, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  [id, username, userId, name, email, contactNo, permissions != null ? jsonEncode(permissions) : null, cid, status, isActive, createdAt, updatedAt],
                 );
               }
             });
@@ -3573,8 +3578,8 @@ class _UsersPageState extends State<UsersPage> {
       // Load users with all fields including new ones
       final result = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT id, username, user_id, name, email, contact_no, permissions, company_id, status, created_at, updated_at FROM users ORDER BY updated_at DESC'
-            : 'SELECT id, username, user_id, name, email, contact_no, permissions, company_id, status, created_at, updated_at FROM users WHERE company_id = ? AND id != ? AND permissions LIKE ? ORDER BY updated_at DESC',
+            ? 'SELECT id, username, user_id, name, email, contact_no, permissions, company_id, status, created_at, updated_at FROM users WHERE is_active = 1 ORDER BY updated_at DESC'
+            : 'SELECT id, username, user_id, name, email, contact_no, permissions, company_id, status, created_at, updated_at FROM users WHERE company_id = ? AND id != ? AND permissions LIKE ? AND is_active = 1 ORDER BY updated_at DESC',
         variables: isSuperAdmin
             ? []
             : [
@@ -3614,8 +3619,8 @@ class _UsersPageState extends State<UsersPage> {
 
         final result = await widget.db.customSelect(
           isSuperAdmin
-              ? 'SELECT id, username, company_id, updated_at FROM users ORDER BY updated_at DESC'
-              : 'SELECT id, username, company_id, updated_at FROM users WHERE company_id = ? ORDER BY updated_at DESC',
+              ? 'SELECT id, username, company_id, updated_at FROM users WHERE is_active = 1 ORDER BY updated_at DESC'
+              : 'SELECT id, username, company_id, updated_at FROM users WHERE company_id = ? AND is_active = 1 ORDER BY updated_at DESC',
           variables: isSuperAdmin ? [] : [d.Variable.withString(myCompanyId!)],
           readsFrom: {widget.db.users},
         ).get();

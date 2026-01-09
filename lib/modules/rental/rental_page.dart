@@ -164,7 +164,10 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                 final id = (data['id'] ?? doc.id).toString();
                 
                 if (change.type == DocumentChangeType.removed) {
-                  batch.customStatement('DELETE FROM rental_items WHERE id = ?', [id]);
+                  batch.customStatement(
+                    'UPDATE rental_items SET is_active = 0, updated_at = ? WHERE id = ?',
+                    [DateTime.now().toUtc().toIso8601String(), id],
+                  );
                   continue;
                 }
 
@@ -180,10 +183,12 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                 final createdBy = (data['created_by'] ?? data['createdBy'])?.toString();
                 final cid = (data['company_id'] ?? data['companyId'])?.toString();
                 final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
+                final isActiveRaw = data['is_active'] ?? data['isActive'];
+                final isActive = isActiveRaw == null ? 1 : ((isActiveRaw is bool ? (isActiveRaw ? 1 : 0) : int.tryParse(isActiveRaw.toString()) ?? 1));
 
                 batch.customStatement(
-                  'INSERT OR REPLACE INTO rental_items (id, created_by, name, location, owner_name, contact_no, price, security, sale_status, remarks, company_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                  [id, createdBy, name, location, ownerName, contactNo, price, security, saleStatus, remarks, cid, updatedAt],
+                  'INSERT OR REPLACE INTO rental_items (id, created_by, name, location, owner_name, contact_no, price, security, sale_status, remarks, company_id, is_active, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  [id, createdBy, name, location, ownerName, contactNo, price, security, saleStatus, remarks, cid, isActive, updatedAt],
                 );
               }
             });
@@ -288,10 +293,10 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
 
     final result = await widget.db.customSelect(
       isSuperAdmin
-          ? 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items ORDER BY updated_at DESC'
+          ? 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE is_active = 1 ORDER BY updated_at DESC'
           : (isAgent
-              ? 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE company_id = ? AND created_by = ? ORDER BY updated_at DESC'
-              : 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE company_id = ? ORDER BY updated_at DESC'),
+              ? 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE company_id = ? AND created_by = ? AND is_active = 1 ORDER BY updated_at DESC'
+              : 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE company_id = ? AND is_active = 1 ORDER BY updated_at DESC'),
       variables: isSuperAdmin
           ? []
           : [

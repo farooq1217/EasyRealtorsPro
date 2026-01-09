@@ -689,7 +689,10 @@ class _RemindersPageState extends State<RemindersPage> {
                   final id = (data['reminder_id'] ?? data['id'] ?? doc.id).toString();
                   
                   if (change.type == DocumentChangeType.removed) {
-                    batch.customStatement('DELETE FROM reminders WHERE reminder_id = ?', [id]);
+                    batch.customStatement(
+                      'UPDATE reminders SET is_active = 0, updated_at = ? WHERE reminder_id = ?',
+                      [DateTime.now().toUtc().toIso8601String(), id],
+                    );
                     continue;
                   }
 
@@ -705,10 +708,12 @@ class _RemindersPageState extends State<RemindersPage> {
                   final cid = (data['company_id'] ?? data['companyId'])?.toString();
                   final createdAt = (data['created_at'] ?? data['createdAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
                   final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
+                  final isActiveRaw = data['is_active'] ?? data['isActive'];
+                  final isActive = isActiveRaw == null ? 1 : ((isActiveRaw is bool ? (isActiveRaw ? 1 : 0) : int.tryParse(isActiveRaw.toString()) ?? 1));
 
                   batch.customStatement(
-                    'INSERT OR REPLACE INTO reminders (reminder_id, agent_id, client_name, client_phone, reminder_title, reminder_details, reminder_date, reminder_time, notification_status, company_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [id, agentId, clientName, clientPhone, reminderTitle, reminderDetails, reminderDate, reminderTime, notificationStatus, cid, createdAt, updatedAt],
+                    'INSERT OR REPLACE INTO reminders (reminder_id, agent_id, client_name, client_phone, reminder_title, reminder_details, reminder_date, reminder_time, notification_status, company_id, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [id, agentId, clientName, clientPhone, reminderTitle, reminderDetails, reminderDate, reminderTime, notificationStatus, cid, isActive, createdAt, updatedAt],
                   );
                 }
               });
@@ -830,10 +835,10 @@ class _RemindersPageState extends State<RemindersPage> {
 
       final res = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT reminder_id, agent_id, client_name, client_phone, reminder_title, reminder_details, reminder_date, reminder_time, notification_status, created_at, updated_at FROM reminders ORDER BY reminder_date DESC, reminder_time DESC'
+            ? 'SELECT reminder_id, agent_id, client_name, client_phone, reminder_title, reminder_details, reminder_date, reminder_time, notification_status, created_at, updated_at FROM reminders WHERE is_active = 1 ORDER BY reminder_date DESC, reminder_time DESC'
             : (isAgent
-                ? 'SELECT reminder_id, agent_id, client_name, client_phone, reminder_title, reminder_details, reminder_date, reminder_time, notification_status, created_at, updated_at FROM reminders WHERE company_id = ? AND agent_id = ? ORDER BY reminder_date DESC, reminder_time DESC'
-                : 'SELECT reminder_id, agent_id, client_name, client_phone, reminder_title, reminder_details, reminder_date, reminder_time, notification_status, created_at, updated_at FROM reminders WHERE company_id = ? ORDER BY reminder_date DESC, reminder_time DESC'),
+                ? 'SELECT reminder_id, agent_id, client_name, client_phone, reminder_title, reminder_details, reminder_date, reminder_time, notification_status, created_at, updated_at FROM reminders WHERE company_id = ? AND agent_id = ? AND is_active = 1 ORDER BY reminder_date DESC, reminder_time DESC'
+                : 'SELECT reminder_id, agent_id, client_name, client_phone, reminder_title, reminder_details, reminder_date, reminder_time, notification_status, created_at, updated_at FROM reminders WHERE company_id = ? AND is_active = 1 ORDER BY reminder_date DESC, reminder_time DESC'),
         variables: isSuperAdmin
             ? []
             : [
@@ -845,8 +850,8 @@ class _RemindersPageState extends State<RemindersPage> {
 
       final ag = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT id, username FROM users ORDER BY username'
-            : 'SELECT id, username FROM users WHERE company_id = ? ORDER BY username',
+            ? 'SELECT id, username FROM users WHERE is_active = 1 ORDER BY username'
+            : 'SELECT id, username FROM users WHERE company_id = ? AND is_active = 1 ORDER BY username',
         variables: isSuperAdmin ? [] : [d.Variable.withString(companyId!)],
         readsFrom: {widget.db.users},
       ).get();
@@ -1400,7 +1405,10 @@ class _RemindersPageState extends State<RemindersPage> {
       ),
     );
     if (ok == true) {
-      await widget.db.customStatement('DELETE FROM reminders WHERE reminder_id = ?', [id]);
+      await widget.db.customStatement(
+        'UPDATE reminders SET is_active = 0, updated_at = ? WHERE reminder_id = ?',
+        [DateTime.now().toUtc().toIso8601String(), id],
+      );
       await _load();
     }
   }
