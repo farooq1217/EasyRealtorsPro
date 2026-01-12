@@ -319,13 +319,14 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
           await _createSoftDeleteTriggers(m.database);
+          await _safeAddIsActiveColumns(m.database); // ensure active flags exist even on fresh installs
           // Create Companies table if not already created
           await m.database.customStatement(
             'CREATE TABLE IF NOT EXISTS companies ('
@@ -687,8 +688,46 @@ class AppDatabase extends _$AppDatabase {
 
             await _createSoftDeleteTriggers(m.database);
           }
+          if (from < 22) {
+            await _safeAddIsActiveColumns(m.database);
+          }
         },
       );
+}
+
+/// Adds is_active columns to critical tables and backfills active rows.
+Future<void> _safeAddIsActiveColumns(GeneratedDatabase db) async {
+  // Core tables
+  for (final stmt in [
+    'ALTER TABLE companies ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1',
+  ]) {
+    try {
+      await db.customStatement(stmt);
+    } catch (_) {}
+  }
+
+  // Trading tables live outside Drift schema; keep them in sync
+  for (final stmt in [
+    'ALTER TABLE trading_entries ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE trading_file_entries ADD COLUMN is_active INTEGER DEFAULT 1',
+  ]) {
+    try {
+      await db.customStatement(stmt);
+    } catch (_) {}
+  }
+
+  // Backfill to active so filtered queries don't hide existing rows
+  for (final stmt in [
+    'UPDATE companies SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE users SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE trading_entries SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE trading_file_entries SET is_active = 1 WHERE is_active IS NULL',
+  ]) {
+    try {
+      await db.customStatement(stmt);
+    } catch (_) {}
+  }
 }
 
 Future<void> _createSoftDeleteTriggers(GeneratedDatabase db) async {

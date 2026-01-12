@@ -46,6 +46,7 @@ import '../../modules/inventory/inventory_page.dart' show FilesPage;
 import '../../modules/todo/todo_page.dart' show ToDoPage;
 import '../../modules/trading/trading_page.dart' show TradingPage;
 import '../../modules/expenditure/expenditure_page.dart' show ExpenditurePage;
+import '../../modules/agents/agents_page.dart' as agents show CompaniesPage, UsersPage;
 import '../../modules/settings/settings_page.dart' show SettingsPage;
 
 class RentalItemsPage extends StatefulWidget {
@@ -98,19 +99,8 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   void initState() {
     super.initState();
     _currentFilter = widget.initialFilter;
-    // Force companyId = 'GLOBAL_ADMIN' at the beginning of initState
     Future.microtask(() async {
       await _loadCurrentUser();
-      // Force companyId = 'GLOBAL_ADMIN' - ensure it's set before any operations
-      if (_currentUser == null) {
-        _currentUser = {'companyId': 'GLOBAL_ADMIN', 'company_id': 'GLOBAL_ADMIN', 'role': 'super_admin', 'email': 'mayof286@gmail.com'};
-      } else {
-        final userMap = Map<String, dynamic>.from(_currentUser ?? {});
-        userMap['companyId'] = 'GLOBAL_ADMIN';
-        userMap['company_id'] = 'GLOBAL_ADMIN';
-        userMap['role'] = 'super_admin';
-        _currentUser = userMap;
-      }
       await _startFirestoreListener();
       await _load();
     });
@@ -132,15 +122,8 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
       return;
     }
 
-    // Force companyId = 'GLOBAL_ADMIN' for Super Admin
-    if (_currentUser != null) {
-      _currentUser?['companyId'] = 'GLOBAL_ADMIN';
-      _currentUser?['company_id'] = 'GLOBAL_ADMIN';
-      _currentUser?['role'] = 'super_admin';
-    }
     final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    var companyId = 'GLOBAL_ADMIN'; // Always use GLOBAL_ADMIN
-    // Removed companyId check that was blocking rental page from loading
+    final companyId = RoleUtils.getUserCompanyId(_currentUser);
 
     try {
       // Use secure query builder for role-based isolation
@@ -271,19 +254,13 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    // Force companyId = 'GLOBAL_ADMIN' for Super Admin
-    if (_currentUser != null) {
-      final userMap = Map<String, dynamic>.from(_currentUser ?? {});
-      userMap['companyId'] = 'GLOBAL_ADMIN';
-      userMap['role'] = 'super_admin';
-      _currentUser = userMap;
-    }
     final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
     final isAgent = RoleUtils.isAgent(_currentUser);
-    var companyId = RoleUtils.getUserCompanyId(_currentUser) ?? 'GLOBAL_ADMIN';
+    final companyId = RoleUtils.getUserCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
 
     if (isAgent && (myUserId == null || myUserId.trim().isEmpty)) {
+      if (!mounted) return;
       setState(() {
         _rows = [];
         _loading = false;
@@ -300,7 +277,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
       variables: isSuperAdmin
           ? []
           : [
-              d.Variable.withString(companyId ?? 'GLOBAL_ADMIN'),
+              d.Variable.withString(companyId ?? ''),
               if (isAgent) d.Variable.withString(myUserId ?? ''),
             ],
       readsFrom: {widget.db.rentalItems},
@@ -309,6 +286,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
     final prev = await widget.db.customSelect(
       'SELECT rc.parent_id, rc.comment FROM rental_comments rc JOIN (SELECT parent_id, MAX(updated_at) AS m FROM rental_comments GROUP BY parent_id) t ON t.parent_id = rc.parent_id AND t.m = rc.updated_at')
       .get();
+    if (!mounted) return;
     setState(() {
       _rows = result.map((r) => r.data).toList();
       _commentCounts = { for (final r in cnt) (r.data['parent_id'] as String): (r.data['c'] as int) };
@@ -1762,6 +1740,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() { _drive = svc; });
     }
     await _openDb();
+    await _syncCompaniesFromFirestoreHome();
 
     // Ensure dynamic trading tables have required columns even if user never opens Trading screens
     try {
@@ -2032,6 +2011,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final p = await countSince('properties', 'properties', propsSince);
     final r = await countSince('rental_items', 'rental_items', rentSince);
     final f = await countSince('files_table', 'files', filesSince);
+    if (!mounted) return;
     setState(() {
       _badgeProps = p;
       _badgeRentals = r;
@@ -2185,6 +2165,79 @@ class _HomeScreenState extends State<HomeScreen> {
     await _ensureCompanyBrandingColumns();
     await _ensureExpenditureCategoryColumn();
     await _ensureTradingReportColumns();
+  }
+
+  Future<void> _syncCompaniesFromFirestoreHome() async {
+    debugPrint('STRIKE 1 (home): Entering sync function');
+    debugPrint('STRIKE 2 (home): Firebase apps count: ${Firebase.apps.length}');
+    debugPrint('DB PATH (home sync): ${_db?.executor}');
+    if (Firebase.apps.isEmpty) {
+      debugPrint('STRIKE 3 (home): Firebase is NOT initialized!');
+      return;
+    }
+    if (_db == null) return;
+    try {
+      debugPrint('DEBUG HOME: syncCompaniesFromFirestore started...');
+      final snap = await FirebaseFirestore.instance.collection('companies').get();
+      debugPrint('Firestore docs found (home): ${snap.docs.length}');
+      if (snap.docs.isEmpty) return;
+
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      await _db!.batch((batch) {
+        for (final doc in snap.docs) {
+          debugPrint('Attempting to sync company ID (home): ${doc.id}');
+          final data = doc.data();
+          debugPrint('Writing to SQLite (home): ${doc.id} - ${data['name']}');
+          final id = doc.id.toString();
+          if (id.trim().isEmpty) continue;
+
+          final name = (data['name'] ?? 'No Name').toString();
+          final status = (data['status'] ?? 'inactive').toString();
+          final metadataRaw = data['metadata'];
+          final metadata = metadataRaw == null
+              ? null
+              : (metadataRaw is String ? metadataRaw : jsonEncode(metadataRaw));
+          final logoUrl = (data['logo_url'] ?? data['logoUrl'])?.toString();
+          final address = data['address']?.toString();
+          final contact = data['contact']?.toString();
+          final maxRaw = data['max_user_limit'] ?? data['maxUserLimit'] ?? 5;
+          final maxUserLimit = maxRaw is int ? maxRaw : int.tryParse(maxRaw.toString());
+          final tier = (data['subscription_tier'] ?? data['subscriptionTier'] ?? 'Starter').toString();
+          final createdAt = (data['created_at'] ?? data['createdAt'] ?? nowIso).toString();
+          final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? nowIso).toString();
+
+          try {
+            batch.customStatement(
+              'INSERT OR REPLACE INTO companies (id, name, status, metadata, logo_url, address, contact, max_user_limit, subscription_tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [
+                id,
+                name,
+                status,
+                metadata,
+                logoUrl,
+                address,
+                contact,
+                maxUserLimit,
+                tier,
+                createdAt,
+                updatedAt,
+              ],
+            );
+          } catch (e) {
+            debugPrint('SQLite Insert Error (home) for $id: $e');
+          }
+        }
+      });
+
+      try {
+        final countRes = await _db!.customSelect('SELECT COUNT(*) AS c FROM companies').getSingle();
+        debugPrint('SQLite companies row count (home): ${countRes.data['c']}');
+      } catch (e) {
+        debugPrint('SQLite count error (home): $e');
+      }
+    } catch (e) {
+      debugPrint('Companies Firestore sync failed (home): $e');
+    }
   }
 
   Future<void> _ensureCompanyBrandingColumns() async {
@@ -3381,7 +3434,7 @@ class _HomeScreenState extends State<HomeScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) => _denyAndGoDashboard('Permission Denied'));
           content = const SizedBox.shrink();
         } else {
-          content = _db == null ? const SizedBox.shrink() : UsersPage(db: _db!);
+          content = _db == null ? const SizedBox.shrink() : agents.UsersPage(db: _db!);
         }
         break;
       case 9:
@@ -3389,7 +3442,7 @@ class _HomeScreenState extends State<HomeScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) => _denyAndGoDashboard('Permission Denied'));
           content = const SizedBox.shrink();
         } else {
-          content = _db == null ? const SizedBox.shrink() : CompaniesPage(db: _db!);
+          content = _db == null ? const SizedBox.shrink() : agents.CompaniesPage(db: _db!);
         }
         break;
       case 10:
@@ -3973,7 +4026,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             ? 'SELECT * FROM working_progress WHERE next_working_date = ? AND status NOT IN (?, ?)'
             : 'SELECT * FROM working_progress WHERE company_id = ? AND next_working_date = ? AND status NOT IN (?, ?)',
         variables: [
-          if (!isSuperAdmin) d.Variable.withString(companyId ?? 'GLOBAL_ADMIN'),
+          if (!isSuperAdmin && companyId != null) d.Variable.withString(companyId),
           d.Variable.withString(today),
           d.Variable.withString('Done'),
           d.Variable.withString('Closed'),
@@ -8029,6 +8082,7 @@ class _UsersPageState extends State<UsersPage> {
       final wasReached = _userLimitReached;
       _checkingUserLimit = true;
       _checkedCompanyId = companyId;
+    final companyIdStr = companyId.toString();
       setLocal(() {});
       try {
         int? limit;
@@ -8037,22 +8091,25 @@ class _UsersPageState extends State<UsersPage> {
 
         if (Firebase.apps.isNotEmpty) {
           try {
-            final doc = await FirebaseFirestore.instance.collection('companies').doc(companyId).get();
+          final doc = await FirebaseFirestore.instance.collection('companies').doc(companyIdStr).get();
+            if (!doc.exists) {
+            debugPrint('UserLimit: Firestore companies/$companyIdStr not found. Looking for ID: $companyIdStr');
+            }
             final data = doc.data();
             final raw = data?['max_user_limit'] ?? data?['maxUserLimit'];
             limit = raw is int ? raw : int.tryParse(raw?.toString() ?? '');
             tier = normalizeSubscriptionTier(data?['subscription_tier'] ?? data?['subscriptionTier']);
           } catch (e) {
             if (kDebugMode) {
-              debugPrint('UserLimit: Firestore company limit read failed for companyId=$companyId: $e');
+            debugPrint('UserLimit: Firestore company limit read failed for companyId=$companyIdStr: $e');
             }
           }
 
           try {
             QuerySnapshot<Map<String, dynamic>> snap;
-            snap = await FirebaseFirestore.instance.collection('users').where('company_id', isEqualTo: companyId).get();
+          snap = await FirebaseFirestore.instance.collection('users').where('company_id', isEqualTo: companyIdStr).get();
             if (snap.docs.isEmpty) {
-              snap = await FirebaseFirestore.instance.collection('users').where('companyId', isEqualTo: companyId).get();
+            snap = await FirebaseFirestore.instance.collection('users').where('companyId', isEqualTo: companyIdStr).get();
             }
             final docs = snap.docs.map((d) => d.data()).toList();
             cnt = docs.where((u) {
@@ -8150,9 +8207,10 @@ class _UsersPageState extends State<UsersPage> {
     // Force super admin context - remove null checks
     final isSuperAdmin = true; // Always true for Super Admin
     final isCompanyAdmin = false; // Not needed for Super Admin
-    // Force companyId and role - use hardcoded values if needed
-    final myCompanyId = selectedCompanyId ?? 'GLOBAL_ADMIN';
-    selectedCompanyId = myCompanyId;
+    final myCompanyId = selectedCompanyId ??
+        (_companies.isNotEmpty ? _companies.first['id'] : RoleUtils.getUserCompanyId(_currentUser));
+    final myCompanyIdStr = (myCompanyId ?? '').toString();
+    selectedCompanyId = myCompanyIdStr.isEmpty ? null : myCompanyIdStr;
     if (selectedRole.isEmpty || selectedRole == 'agent') {
       selectedRole = existing?['role']?.toString() ?? 'agent';
     }
@@ -8192,12 +8250,12 @@ class _UsersPageState extends State<UsersPage> {
       builder: (context, setLocal) {
         if (!_limitInitDone && existing == null) {
           _limitInitDone = true;
-          final cid = selectedCompanyId ?? 'GLOBAL_ADMIN';
-          if (cid.trim().isNotEmpty) {
+          final cid = selectedCompanyId ?? (_companies.isNotEmpty ? _companies.first['id'] : null);
+          if (cid != null && cid.trim().isNotEmpty) {
             Future.microtask(() => _refreshUserLimit(companyId: cid, setLocal: setLocal));
           }
         }
-        final cidForEmp = selectedCompanyId ?? 'GLOBAL_ADMIN';
+        final cidForEmp = selectedCompanyId ?? (_companies.isNotEmpty ? _companies.first['id'] : null);
         if (existing == null && cidForEmp != null && cidForEmp.trim().isNotEmpty) {
           Future.microtask(() => _autoGenerateUserId(companyId: cidForEmp, setLocal: setLocal));
         }
@@ -8582,7 +8640,7 @@ class _UsersPageState extends State<UsersPage> {
 
                                 if (Firebase.apps.isNotEmpty) {
                                   try {
-                                    final doc = await FirebaseFirestore.instance.collection('companies').doc(effectiveCompanyId).get();
+                                    final doc = await FirebaseFirestore.instance.collection('companies').doc(effectiveCompanyId.toString()).get();
                                     final data = doc.data();
                                     final raw = data?['max_user_limit'] ?? data?['maxUserLimit'];
                                     limit = raw is int ? raw : int.tryParse(raw?.toString() ?? '');
@@ -9586,8 +9644,76 @@ class _CompaniesPageState extends State<CompaniesPage> {
                   readsFrom: {widget.db.companies},
                 ).get()
               : <d.QueryRow>[];
+      var rows = result.map((r) => r.data).toList();
+
+      // If nothing locally and Firestore is available, backfill companies from Firestore
+      if (rows.isEmpty && Firebase.apps.isNotEmpty) {
+        try {
+          final snap = await FirebaseFirestore.instance.collection('companies').get();
+          if (snap.docs.isNotEmpty) {
+            final nowIso = DateTime.now().toUtc().toIso8601String();
+            await widget.db.batch((batch) {
+              for (final doc in snap.docs) {
+                final data = doc.data();
+                final id = doc.id.toString();
+                if (id.trim().isEmpty) continue;
+                final name = (data['name'] ?? '').toString();
+                final status = (data['status'] ?? 'active').toString();
+                final metadataRaw = data['metadata'];
+                final metadata = metadataRaw == null
+                    ? null
+                    : (metadataRaw is String ? metadataRaw : jsonEncode(metadataRaw));
+                final logoUrl = (data['logoUrl'] ?? data['logo_url'])?.toString();
+                final address = data['address']?.toString();
+                final contact = data['contact']?.toString();
+                final maxRaw = data['max_user_limit'] ?? data['maxUserLimit'];
+                final maxUserLimit = maxRaw is int ? maxRaw : int.tryParse(maxRaw?.toString() ?? '');
+                final tier = (data['subscription_tier'] ?? data['subscriptionTier'] ?? 'Starter').toString();
+                final createdAt = (data['created_at'] ?? data['createdAt'] ?? nowIso).toString();
+                final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? nowIso).toString();
+
+                batch.customStatement(
+                  'INSERT OR REPLACE INTO companies (id, name, status, metadata, logo_url, address, contact, max_user_limit, subscription_tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  [
+                    id,
+                    name,
+                    status,
+                    metadata,
+                    logoUrl,
+                    address,
+                    contact,
+                    maxUserLimit,
+                    tier,
+                    createdAt,
+                    updatedAt,
+                  ],
+                );
+              }
+            });
+
+            final refreshed = isSuperAdmin
+                ? await widget.db.customSelect(
+                    'SELECT id, name, status, metadata, logo_url, address, contact, max_user_limit, subscription_tier, created_at, updated_at FROM companies ORDER BY updated_at DESC',
+                    readsFrom: {widget.db.companies},
+                  ).get()
+                : (isCompanyAdmin && companyId != null && companyId.isNotEmpty)
+                    ? await widget.db.customSelect(
+                        'SELECT id, name, status, metadata, logo_url, address, contact, max_user_limit, subscription_tier, created_at, updated_at FROM companies WHERE id = ? LIMIT 1',
+                        variables: [d.Variable.withString(companyId)],
+                        readsFrom: {widget.db.companies},
+                      ).get()
+                    : <d.QueryRow>[];
+            rows = refreshed.map((r) => r.data).toList();
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('Companies Firestore backfill failed: $e');
+          }
+        }
+      }
+
       setState(() {
-        _rows = result.map((r) => r.data).toList();
+        _rows = rows;
         _loading = false;
       });
     } catch (e) {

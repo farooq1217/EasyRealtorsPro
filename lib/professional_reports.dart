@@ -160,7 +160,10 @@ Future<ReportBranding?> loadReportBranding({
 
   if (Firebase.apps.isNotEmpty) {
     try {
-      final doc = await FirebaseFirestore.instance.collection('companies').doc(effectiveCompanyId).get();
+      final doc = await FirebaseFirestore.instance.collection('companies').doc(effectiveCompanyId.toString()).get();
+      if (!doc.exists) {
+        debugPrint('Reports: Firestore companies/$effectiveCompanyId not found. Looking for ID: $effectiveCompanyId');
+      }
       final data = doc.data();
       if (data != null) {
         companyName = companyName.isNotEmpty ? companyName : (data['name']?.toString() ?? '');

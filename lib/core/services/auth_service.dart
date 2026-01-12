@@ -24,7 +24,7 @@ class AuthService {
     final db = await AppDatabase.instance();
     try {
       final dbResult = await db.customSelect(
-        'SELECT id, username, email, password_hash, name, contact_no, permissions, company_id, status, is_first_login, user_id, created_at FROM users WHERE email = ? OR username = ?',
+        'SELECT id, username, email, password_hash, name, contact_no, permissions, company_id, status, is_active, is_first_login, user_id, created_at FROM users WHERE email = ? OR username = ?',
         variables: [
           d.Variable.withString(emailKey),
           d.Variable.withString(emailKey),
@@ -51,6 +51,8 @@ class AuthService {
         'lastLogin': null,
         'companyId': u['company_id'] as String?,
         'status': u['status'] as String?,
+        'isActive': u['is_active'] ?? u['isActive'],
+        'is_active': u['is_active'] ?? u['isActive'],
         'permissions': u['permissions'],
         'isFirstLogin': u['is_first_login'] as int? ?? 0,
       };
@@ -64,7 +66,7 @@ class AuthService {
     if (kIsWeb) return;
     try {
       final res = await db.customSelect(
-        'SELECT id, username, email, password_hash, name, contact_no, permissions, company_id, status, is_first_login, user_id, created_at FROM users WHERE id = ?',
+        'SELECT id, username, email, password_hash, name, contact_no, permissions, company_id, status, is_active, is_first_login, user_id, created_at FROM users WHERE id = ?',
         variables: [d.Variable.withString(userId)],
         readsFrom: {db.users},
       ).get();
@@ -87,6 +89,8 @@ class AuthService {
         'permissions': u['permissions'],
         'companyId': u['company_id'] as String?,
         'status': u['status'] as String?,
+        'isActive': u['is_active'] ?? u['isActive'],
+        'is_active': u['is_active'] ?? u['isActive'],
         'isFirstLogin': u['is_first_login'] as int? ?? 0,
         'userId': (u['user_id'] as String?) ?? (existing?['userId'] as String?),
         'user_id': (u['user_id'] as String?) ?? (existing?['user_id'] as String?),
@@ -317,7 +321,7 @@ class AuthService {
 
         // Query database for user
         final dbResult = await db.customSelect(
-          'SELECT id, username, email, password_hash, name, contact_no, permissions, company_id, status, is_first_login, user_id, created_at FROM users WHERE email = ? OR username = ?',
+          'SELECT id, username, email, password_hash, name, contact_no, permissions, company_id, status, is_active, is_first_login, user_id, created_at FROM users WHERE email = ? OR username = ?',
           variables: [
             d.Variable.withString(emailKey),
             d.Variable.withString(emailKey),
@@ -387,6 +391,9 @@ class AuthService {
                 'lastLogin': null,
                 'companyId': dbUser['company_id'] as String?,
                 'isFirstLogin': dbUser['is_first_login'] as int? ?? 0,
+                'status': dbUser['status']?.toString(),
+                'isActive': dbUser['is_active'] ?? dbUser['isActive'],
+                'is_active': dbUser['is_active'] ?? dbUser['isActive'],
               };
 
               // Optionally sync to JSON file for future logins
@@ -419,6 +426,17 @@ class AuthService {
     if (user == null) {
       debugPrint('User not found in users map or database');
       return {'success': false, 'message': 'Invalid email or password'};
+    }
+    
+    bool _isBlocked(Map<String, dynamic>? u) {
+      if (u == null) return false;
+      final status = (u['status'] ?? '').toString().toLowerCase();
+      final isActive = u['is_active'] ?? u['isActive'];
+      final activeFlag = (isActive is num ? isActive != 0 : (isActive is bool ? isActive : true));
+      return status == 'inactive' || status == 'archived' || !activeFlag;
+    }
+    if (_isBlocked(user)) {
+      return {'success': false, 'message': 'Your account is inactive. Please contact your administrator.'};
     }
     
     debugPrint('User found: ${user['email']}');
@@ -734,6 +752,13 @@ class AuthService {
     await _writeSessions(sessions);
   }
 
+  Future<void> _revokeSessionsByUserId(String userId) async {
+    if (userId.isEmpty) return;
+    final sessions = await _readSessions();
+    sessions.removeWhere((key, value) => value['userId'] == userId);
+    await _writeSessions(sessions);
+  }
+
   // Revoke All Sessions
   Future<void> revokeAllSessions(String userId) async {
     final sessions = await _readSessions();
@@ -790,12 +815,24 @@ class AuthService {
         }
         users[emailKey] = merged;
         await _writeUsers(users);
+        if ((merged['status'] ?? '').toString().toLowerCase() == 'archived' || (merged['status'] ?? '').toString().toLowerCase() == 'inactive' || ((merged['is_active'] ?? merged['isActive']) is num ? (merged['is_active'] ?? merged['isActive']) == 0 : (merged['is_active'] ?? merged['isActive']) == false)) {
+          final uid = (merged['id'] ?? merged['userId'] ?? merged['user_id'])?.toString() ?? '';
+          await _revokeSessionsByUserId(uid);
+          return null;
+        }
         return merged;
       }
       // Force Super Admin role and companyId for mayof286@gmail.com
       if (emailKey == 'mayof286@gmail.com' && cached != null) {
         cached['role'] = 'super_admin';
         cached['companyId'] = 'GLOBAL_ADMIN';
+      }
+      if (cached != null) {
+        if ((cached['status'] ?? '').toString().toLowerCase() == 'archived' || (cached['status'] ?? '').toString().toLowerCase() == 'inactive' || ((cached['is_active'] ?? cached['isActive']) is num ? (cached['is_active'] ?? cached['isActive']) == 0 : (cached['is_active'] ?? cached['isActive']) == false)) {
+          final uid = (cached['id'] ?? cached['userId'] ?? cached['user_id'])?.toString() ?? '';
+          await _revokeSessionsByUserId(uid);
+          return null;
+        }
       }
       return cached;
     } catch (e) {

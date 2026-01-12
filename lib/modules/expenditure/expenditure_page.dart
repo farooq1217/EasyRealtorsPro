@@ -398,8 +398,12 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
         await widget.db.batch((batch) {
           for (final change in chunk) {
             final doc = change.doc;
+            final nowIso = DateTime.now().toUtc().toIso8601String();
             if (change.type == DocumentChangeType.removed) {
-              batch.customStatement('DELETE FROM expenditures WHERE id = ?', [doc.id]);
+              batch.customStatement(
+                "UPDATE expenditures SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
+                [nowIso, doc.id],
+              );
               continue;
             }
 
@@ -422,8 +426,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             final updatedAt = (data['updatedAt'] ?? data['updated_at'] ?? DateTime.now().toUtc().toIso8601String()).toString();
 
             batch.customStatement(
-              'INSERT OR REPLACE INTO expenditures (id, company_id, created_by, kind, project_id, office_month, category, date, description, amount, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-              [id, cid, createdBy, kind, projectId, officeMonth, category, date, desc, amount, updatedAt],
+              'INSERT OR REPLACE INTO expenditures (id, company_id, created_by, kind, project_id, office_month, category, date, description, amount, status, is_active, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, \'active\'), COALESCE(?, 1), ?)',
+              [id, cid, createdBy, kind, projectId, officeMonth, category, date, desc, amount, data['status'], data['is_active'] ?? data['isActive'], updatedAt],
             );
           }
         });
@@ -443,8 +447,12 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
         await widget.db.batch((batch) {
           for (final change in chunk) {
             final doc = change.doc;
+            final nowIso = DateTime.now().toUtc().toIso8601String();
             if (change.type == DocumentChangeType.removed) {
-              batch.customStatement('DELETE FROM expenditure_projects WHERE id = ?', [doc.id]);
+              batch.customStatement(
+                "UPDATE expenditure_projects SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
+                [nowIso, doc.id],
+              );
               continue;
             }
 
@@ -465,8 +473,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             final closedAt = (data['closedAt'] ?? data['closed_at'])?.toString();
 
             batch.customStatement(
-              'INSERT OR REPLACE INTO expenditure_projects (id, company_id, created_by, name, status, type, created_at, updated_at, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-              [id, cid, createdBy, name, status, projectType, createdAt, updatedAt, closedAt],
+              'INSERT OR REPLACE INTO expenditure_projects (id, company_id, created_by, name, status, is_active, type, created_at, updated_at, closed_at) VALUES (?, ?, ?, ?, ?, COALESCE(?, 1), ?, ?, ?, ?)',
+              [id, cid, createdBy, name, status, data['is_active'] ?? data['isActive'] ?? 1, projectType, createdAt, updatedAt, closedAt],
             );
           }
         });
@@ -1095,28 +1103,29 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
 
     try {
-      // Delete all expenses for this project
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      // Soft delete all expenses for this project
       await widget.db.customStatement(
         isSuperAdmin
-            ? 'DELETE FROM expenditures WHERE project_id = ? AND kind = ?'
-            : 'DELETE FROM expenditures WHERE company_id = ? AND project_id = ? AND kind = ?',
+            ? "UPDATE expenditures SET status = 'archived', is_active = 0, updated_at = ? WHERE project_id = ? AND kind = ?"
+            : "UPDATE expenditures SET status = 'archived', is_active = 0, updated_at = ? WHERE company_id = ? AND project_id = ? AND kind = ?",
         isSuperAdmin
-            ? [projectId, 'project']
-            : [companyId, projectId, 'project'],
+            ? [nowIso, projectId, 'project']
+            : [nowIso, companyId, projectId, 'project'],
       );
 
-      // Delete the project
+      // Soft delete the project
       await widget.db.customStatement(
         isSuperAdmin
-            ? 'DELETE FROM expenditure_projects WHERE id = ?'
-            : 'DELETE FROM expenditure_projects WHERE company_id = ? AND id = ?',
-        isSuperAdmin ? [projectId] : [companyId, projectId],
+            ? "UPDATE expenditure_projects SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?"
+            : "UPDATE expenditure_projects SET status = 'archived', is_active = 0, updated_at = ? WHERE company_id = ? AND id = ?",
+        isSuperAdmin ? [nowIso, projectId] : [nowIso, companyId, projectId],
       );
 
-      // Delete from Firestore
+      // Soft delete in Firestore
       if (Firebase.apps.isNotEmpty) {
         try {
-          // Delete all expense documents
+          // Mark all expense documents
           final expensesSnapshot = await FirebaseFirestore.instance
               .collection('expenditures')
               .where('projectId', isEqualTo: projectId)
@@ -1124,15 +1133,31 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
           
           final batch = FirebaseFirestore.instance.batch();
           for (final doc in expensesSnapshot.docs) {
-            batch.delete(doc.reference);
+            batch.set(
+              doc.reference,
+              {
+                'status': 'archived',
+                'is_active': 0,
+                'isActive': 0,
+                'updated_at': nowIso,
+                'deleted_at': nowIso,
+              },
+              SetOptions(merge: true),
+            );
           }
           await batch.commit();
 
-          // Delete project document
-          await FirebaseFirestore.instance
-              .collection('expenditure_projects')
-              .doc(projectId)
-              .delete();
+          // Mark project document
+          await FirebaseFirestore.instance.collection('expenditure_projects').doc(projectId).set(
+            {
+              'status': 'archived',
+              'is_active': 0,
+              'isActive': 0,
+              'updated_at': nowIso,
+              'deleted_at': nowIso,
+            },
+            SetOptions(merge: true),
+          );
         } catch (e) {
           debugPrint('Error deleting from Firestore: $e');
         }
@@ -4338,28 +4363,29 @@ class _ClosedProjectsPageState extends State<ClosedProjectsPage> {
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
 
     try {
-      // Delete all expenses for this project
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      // Soft delete all expenses for this project
       await widget.db.customStatement(
         isSuperAdmin
-            ? 'DELETE FROM expenditures WHERE project_id = ? AND kind = ?'
-            : 'DELETE FROM expenditures WHERE company_id = ? AND project_id = ? AND kind = ?',
+            ? "UPDATE expenditures SET status = 'archived', is_active = 0, updated_at = ? WHERE project_id = ? AND kind = ?"
+            : "UPDATE expenditures SET status = 'archived', is_active = 0, updated_at = ? WHERE company_id = ? AND project_id = ? AND kind = ?",
         isSuperAdmin
-            ? [projectId, 'project']
-            : [companyId, projectId, 'project'],
+            ? [nowIso, projectId, 'project']
+            : [nowIso, companyId, projectId, 'project'],
       );
 
-      // Delete the project
+      // Soft delete the project
       await widget.db.customStatement(
         isSuperAdmin
-            ? 'DELETE FROM expenditure_projects WHERE id = ?'
-            : 'DELETE FROM expenditure_projects WHERE company_id = ? AND id = ?',
-        isSuperAdmin ? [projectId] : [companyId, projectId],
+            ? "UPDATE expenditure_projects SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?"
+            : "UPDATE expenditure_projects SET status = 'archived', is_active = 0, updated_at = ? WHERE company_id = ? AND id = ?",
+        isSuperAdmin ? [nowIso, projectId] : [nowIso, companyId, projectId],
       );
 
-      // Delete from Firestore
+      // Soft delete in Firestore
       if (Firebase.apps.isNotEmpty) {
         try {
-          // Delete all expense documents
+          // Mark all expense documents
           final expensesSnapshot = await FirebaseFirestore.instance
               .collection('expenditures')
               .where('projectId', isEqualTo: projectId)
@@ -4367,15 +4393,31 @@ class _ClosedProjectsPageState extends State<ClosedProjectsPage> {
           
           final batch = FirebaseFirestore.instance.batch();
           for (final doc in expensesSnapshot.docs) {
-            batch.delete(doc.reference);
+            batch.set(
+              doc.reference,
+              {
+                'status': 'archived',
+                'is_active': 0,
+                'isActive': 0,
+                'updated_at': nowIso,
+                'deleted_at': nowIso,
+              },
+              SetOptions(merge: true),
+            );
           }
           await batch.commit();
 
-          // Delete project document
-          await FirebaseFirestore.instance
-              .collection('expenditure_projects')
-              .doc(projectId)
-              .delete();
+          // Mark project document
+          await FirebaseFirestore.instance.collection('expenditure_projects').doc(projectId).set(
+            {
+              'status': 'archived',
+              'is_active': 0,
+              'isActive': 0,
+              'updated_at': nowIso,
+              'deleted_at': nowIso,
+            },
+            SetOptions(merge: true),
+          );
         } catch (e) {
           debugPrint('Error deleting from Firestore: $e');
         }

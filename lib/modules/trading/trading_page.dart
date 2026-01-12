@@ -209,64 +209,80 @@ class _TradingFilePageState extends State<TradingFilePage> {
       );
 
       _firestoreSub = query.snapshots().listen((snapshot) async {
-        final changes = List<DocumentChange>.from(snapshot.docChanges);
-        
-        if (changes.isNotEmpty) {
-          try {
-            await widget.db.batch((batch) {
-              for (final change in changes) {
-                final doc = change.doc;
-                final data = doc.data() as Map<String, dynamic>;
-                final id = (data['id'] ?? doc.id).toString();
-                
-                if (change.type == DocumentChangeType.removed) {
-                  batch.customStatement('DELETE FROM trading_file_entries WHERE id = ?', [id]);
-                  continue;
+        try {
+          final changes = List<DocumentChange>.from(snapshot.docChanges);
+          
+          if (changes.isNotEmpty) {
+            try {
+              await widget.db.batch((batch) {
+                for (final change in changes) {
+                  try {
+                    final doc = change.doc;
+                    final data = doc.data() as Map<String, dynamic>;
+                    final id = (data['id'] ?? doc.id).toString();
+                    
+                    if (change.type == DocumentChangeType.removed) {
+                      batch.customStatement(
+                        "UPDATE trading_file_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
+                        [DateTime.now().toUtc().toIso8601String(), id],
+                      );
+                      continue;
+                    }
+
+                    // Sync trading file entry data to SQLite
+                    final type = (data['type'] ?? '').toString();
+                    final buyOption = (data['buy_option'] ?? data['buyOption'] ?? '').toString();
+                    final sellOption = (data['sell_option'] ?? data['sellOption'] ?? '').toString();
+                    final date = (data['date'] ?? '').toString();
+                    final mobile = (data['mobile'] ?? '').toString();
+                    final personName = (data['person_name'] ?? data['personName'] ?? '').toString();
+                    final estate = (data['estate'] ?? '').toString();
+                    final quantity = (data['quantity'] ?? '').toString();
+                    final payment = (data['payment'] is num) ? (data['payment'] as num).toDouble() : double.tryParse(data['payment']?.toString() ?? '') ?? 0.0;
+                    final status = (data['status'] ?? 'Pending').toString();
+                    final comments = (data['comments'] ?? '').toString();
+                    final createdBy = (data['created_by'] ?? data['createdBy'])?.toString();
+                    final cid = (data['company_id'] ?? data['companyId'])?.toString();
+                    final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
+
+                    batch.customStatement(
+                      'INSERT OR REPLACE INTO trading_file_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, estate, quantity, payment, status, is_active, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 1), ?, ?)',
+                      [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, estate, quantity, payment, status, data['is_active'] ?? data['isActive'], comments, updatedAt],
+                    );
+                  } catch (e) {
+                    debugPrint('Skipping trading_file_entries change due to error: $e');
+                  }
                 }
-
-                // Sync trading file entry data to SQLite
-                final type = (data['type'] ?? '').toString();
-                final buyOption = (data['buy_option'] ?? data['buyOption'] ?? '').toString();
-                final sellOption = (data['sell_option'] ?? data['sellOption'] ?? '').toString();
-                final date = (data['date'] ?? '').toString();
-                final mobile = (data['mobile'] ?? '').toString();
-                final personName = (data['person_name'] ?? data['personName'] ?? '').toString();
-                final estate = (data['estate'] ?? '').toString();
-                final quantity = (data['quantity'] ?? '').toString();
-                final payment = (data['payment'] is num) ? (data['payment'] as num).toDouble() : double.tryParse(data['payment']?.toString() ?? '') ?? 0.0;
-                final status = (data['status'] ?? 'Pending').toString();
-                final comments = (data['comments'] ?? '').toString();
-                final createdBy = (data['created_by'] ?? data['createdBy'])?.toString();
-                final cid = (data['company_id'] ?? data['companyId'])?.toString();
-                final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
-
-                batch.customStatement(
-                  'INSERT OR REPLACE INTO trading_file_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, estate, quantity, payment, status, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                  [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, estate, quantity, payment, status, comments, updatedAt],
-                );
-              }
-            });
-            
-            // Update UI on main thread
-            Future.microtask(() async {
-              if (!mounted) return;
-              _syncState.startLoading();
-              _syncState.finishLoading(synced: true);
-              await _loadEntries(); // Reload to show updated data
-              if (!mounted) return;
-              setState(() => _firestoreReady = true);
-            });
-          } catch (e) {
-            debugPrint('Error syncing Firestore changes to SQLite (trading_file_entries): $e');
+              });
+              
+              // Update UI on main thread
+              Future.microtask(() async {
+                if (!mounted) return;
+                _syncState.startLoading();
+                _syncState.finishLoading(synced: true);
+                await _loadEntries(); // Reload to show updated data
+                if (!mounted) return;
+                setState(() => _firestoreReady = true);
+              });
+            } catch (e) {
+              debugPrint('Error syncing Firestore changes to SQLite (trading_file_entries): $e');
+              Future.microtask(() {
+                if (!mounted) return;
+                _syncState.finishLoading(synced: false, errorMessage: e.toString());
+                setState(() => _firestoreReady = true);
+              });
+            }
+          } else {
             Future.microtask(() {
               if (!mounted) return;
-              _syncState.finishLoading(synced: false, errorMessage: e.toString());
               setState(() => _firestoreReady = true);
             });
           }
-        } else {
+        } catch (e) {
+          debugPrint('Firestore snapshot handling error (trading_file_entries): $e');
           Future.microtask(() {
             if (!mounted) return;
+            _syncState.finishLoading(synced: false, errorMessage: e.toString());
             setState(() => _firestoreReady = true);
           });
         }
@@ -305,6 +321,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
           quantity INTEGER,
           payment REAL,
           status TEXT NOT NULL DEFAULT 'Pending',
+          is_active INTEGER NOT NULL DEFAULT 1,
           comments TEXT,
           updated_at TEXT NOT NULL
         )
@@ -367,6 +384,14 @@ class _TradingFilePageState extends State<TradingFilePage> {
             "ALTER TABLE trading_file_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'Pending'",
           );
         }
+        final hasIsActive = columns.any(
+          (row) => (row.data['name'] as String?) == 'is_active',
+        );
+        if (!hasIsActive) {
+          await widget.db.customStatement(
+            'ALTER TABLE trading_file_entries ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+          );
+        }
       } catch (_) {
         // If PRAGMA or ALTER fails, ignore â€“ worst case status updates will still fail
         // but the rest of the screen will continue to work.
@@ -385,6 +410,18 @@ class _TradingFilePageState extends State<TradingFilePage> {
       } catch (_) {
         // Old column might not exist, safe to ignore.
       }
+
+      // Add index to speed up status/is_active filtered queries
+      try {
+        await widget.db.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_trading_file_entries_active ON trading_file_entries(status, is_active, updated_at)',
+        );
+      } catch (_) {}
+      try {
+        await widget.db.customStatement(
+          'UPDATE trading_file_entries SET is_active = 1 WHERE is_active IS NULL',
+        );
+      } catch (_) {}
     } catch (e) {
       // Table might already exist, ignore
     }
@@ -408,12 +445,13 @@ class _TradingFilePageState extends State<TradingFilePage> {
         return;
       }
 
+      final activeFilter = " (status IS NULL OR status != 'archived') AND (is_active IS NULL OR is_active = 1) ";
       final results = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT * FROM trading_file_entries ORDER BY updated_at DESC'
+            ? 'SELECT * FROM trading_file_entries WHERE $activeFilter ORDER BY updated_at DESC'
             : (isAgent
-                ? 'SELECT * FROM trading_file_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) ORDER BY updated_at DESC'
-                : 'SELECT * FROM trading_file_entries WHERE company_id = ? ORDER BY updated_at DESC'),
+                ? 'SELECT * FROM trading_file_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) AND $activeFilter ORDER BY updated_at DESC'
+                : 'SELECT * FROM trading_file_entries WHERE company_id = ? AND $activeFilter ORDER BY updated_at DESC'),
         variables: isSuperAdmin
             ? []
             : [
@@ -453,7 +491,37 @@ class _TradingFilePageState extends State<TradingFilePage> {
         _loading = false;
       });
     } catch (e) {
-      setState(() => _loading = false);
+      // Fallback if is_active column missing: fetch without filter so UI still shows data
+      try {
+        final fallback = await widget.db.customSelect(
+          'SELECT * FROM trading_file_entries ORDER BY updated_at DESC',
+        ).get();
+        final loadedEntries = fallback.map((row) {
+          final data = row.data;
+          return _TradingFileEntry(
+            id: data['id'] as String,
+            type: (data['type'] as String) == 'buy' ? _TradingFileFormType.buy : _TradingFileFormType.sell,
+            buyOption: data['buy_option'] as String?,
+            sellOption: data['sell_option'] as String?,
+            date: DateTime.parse(data['date'] as String),
+            mobile: data['mobile'] as String? ?? '',
+            personName: data['person_name'] as String? ?? '',
+            estate: data['estate'] as String? ?? '',
+            quantity: data['quantity'] as int? ?? 0,
+            payment: (data['payment'] as num?)?.toDouble() ?? 0.0,
+            status: data['status']?.toString() ?? 'Pending',
+            comments: data['comments'] as String? ?? '',
+          );
+        }).toList();
+        setState(() {
+          _entries
+            ..clear()
+            ..addAll(loadedEntries);
+          _loading = false;
+        });
+      } catch (_) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -476,8 +544,8 @@ class _TradingFilePageState extends State<TradingFilePage> {
       await widget.db.customStatement('''
         INSERT OR REPLACE INTO trading_file_entries (
           id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, estate,
-          quantity, payment, status, comments, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantity, payment, status, is_active, comments, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
         entry.id,
         companyId,
@@ -492,6 +560,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
         entry.quantity,
         entry.payment,
         entry.status,
+        1,
         entry.comments,
         DateTime.now().toUtc().toIso8601String(),
       ]);
@@ -586,39 +655,35 @@ class _TradingFilePageState extends State<TradingFilePage> {
   }
 
   Future<void> _deleteEntry(String entryId) async {
-    // Permission check: Only allow delete if user has full_access
-    if (!PermissionHelper.canDeleteModule(_currentUser, 'trading')) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('You do not have permission to delete trading entries.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
-    
     try {
+      final nowIso = DateTime.now().toUtc().toIso8601String();
       final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       if (isSuperAdmin) {
-        await widget.db.customStatement('''
-          DELETE FROM trading_file_entries 
-          WHERE id = ?
-        ''', [entryId]);
+        await widget.db.customStatement(
+          "UPDATE trading_file_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
+          [nowIso, entryId],
+        );
       } else {
-        await widget.db.customStatement('''
-          DELETE FROM trading_file_entries 
-          WHERE id = ? AND company_id = ?
-        ''', [entryId, companyId]);
+        await widget.db.customStatement(
+          "UPDATE trading_file_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ? AND company_id = ?",
+          [nowIso, entryId, companyId],
+        );
       }
 
-      // RootIsolateToken check removed - not available in this Flutter version
       Future.microtask(() async {
         try {
           if (Firebase.apps.isNotEmpty) {
-            await FirebaseFirestore.instance.collection('trading_file_entries').doc(entryId).delete();
+            await FirebaseFirestore.instance.collection('trading_file_entries').doc(entryId).set(
+              {
+                'status': 'archived',
+                'is_active': 0,
+                'isActive': 0,
+                'updated_at': nowIso,
+                'deleted_at': nowIso,
+              },
+              SetOptions(merge: true),
+            );
             FirestoreCacheService().invalidateCache('trading_file_entries', entryId);
           }
         } catch (_) {}
@@ -626,13 +691,13 @@ class _TradingFilePageState extends State<TradingFilePage> {
       await _loadEntries();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Entry deleted successfully')),
+          const SnackBar(content: Text('Entry archived')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete entry: $e')),
+          SnackBar(content: Text('Failed to archive entry: $e')),
         );
       }
     }
@@ -2593,7 +2658,10 @@ class _TradingFormPageState extends State<TradingFormPage> {
                 final id = (data['id'] ?? doc.id).toString();
                 
                 if (change.type == DocumentChangeType.removed) {
-                  batch.customStatement('DELETE FROM trading_entries WHERE id = ?', [id]);
+                  batch.customStatement(
+                    "UPDATE trading_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
+                    [DateTime.now().toUtc().toIso8601String(), id],
+                  );
                   continue;
                 }
 
@@ -2619,8 +2687,8 @@ class _TradingFormPageState extends State<TradingFormPage> {
                 final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
 
                 batch.customStatement(
-                  'INSERT OR REPLACE INTO trading_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission, quantity, payment, status, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                  [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, buyerName, sellerName, estateName, plotNo, block, commission, quantity, payment, status, comments, updatedAt],
+                  'INSERT OR REPLACE INTO trading_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission, quantity, payment, status, is_active, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 1), ?, ?)',
+                  [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, buyerName, sellerName, estateName, plotNo, block, commission, quantity, payment, status, data['is_active'] ?? data['isActive'], comments, updatedAt],
                 );
               }
             });
@@ -2698,6 +2766,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
           quantity INTEGER,
           payment REAL,
           status TEXT NOT NULL DEFAULT 'Pending',
+          is_active INTEGER NOT NULL DEFAULT 1,
           comments TEXT,
           updated_at TEXT NOT NULL
         )
@@ -2766,6 +2835,14 @@ class _TradingFormPageState extends State<TradingFormPage> {
             "ALTER TABLE trading_entries ADD COLUMN status TEXT NOT NULL DEFAULT 'Pending'",
           );
         }
+        final hasIsActive = columns.any(
+          (row) => (row.data['name'] as String?) == 'is_active',
+        );
+        if (!hasIsActive) {
+          await widget.db.customStatement(
+            'ALTER TABLE trading_entries ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+          );
+        }
       } catch (_) {
         // If PRAGMA or ALTER fails, ignore â€“ worst case status updates will still fail
         // but the rest of the screen will continue to work.
@@ -2784,6 +2861,18 @@ class _TradingFormPageState extends State<TradingFormPage> {
       } catch (_) {
         // Old column might not exist, safe to ignore.
       }
+
+      // Add index to speed up status/is_active filtered queries
+      try {
+        await widget.db.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_trading_entries_active ON trading_entries(status, is_active, updated_at)',
+        );
+      } catch (_) {}
+      try {
+        await widget.db.customStatement(
+          'UPDATE trading_entries SET is_active = 1 WHERE is_active IS NULL',
+        );
+      } catch (_) {}
     } catch (e) {
       // Table might already exist, ignore
     }
@@ -2804,12 +2893,13 @@ class _TradingFormPageState extends State<TradingFormPage> {
         });
         return;
       }
+      final activeFilter = " (status IS NULL OR status != 'archived') AND (is_active IS NULL OR is_active = 1) ";
       final results = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT * FROM trading_entries ORDER BY updated_at DESC'
+            ? 'SELECT * FROM trading_entries WHERE $activeFilter ORDER BY updated_at DESC'
             : (isAgent
-                ? 'SELECT * FROM trading_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) ORDER BY updated_at DESC'
-                : 'SELECT * FROM trading_entries WHERE company_id = ? ORDER BY updated_at DESC'),
+                ? 'SELECT * FROM trading_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) AND $activeFilter ORDER BY updated_at DESC'
+                : 'SELECT * FROM trading_entries WHERE company_id = ? AND $activeFilter ORDER BY updated_at DESC'),
         variables: isSuperAdmin
             ? []
             : [
@@ -2878,8 +2968,8 @@ class _TradingFormPageState extends State<TradingFormPage> {
       await widget.db.customStatement('''
         INSERT OR REPLACE INTO trading_entries (
           id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission,
-          quantity, payment, status, comments, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantity, payment, status, is_active, comments, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
         entry.id,
         companyId,
@@ -2899,6 +2989,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
         entry.quantity,
         entry.payment,
         entry.status,
+        1,
         entry.comments,
         DateTime.now().toUtc().toIso8601String(),
       ]);
@@ -2993,39 +3084,35 @@ class _TradingFormPageState extends State<TradingFormPage> {
   }
 
   Future<void> _deleteEntry(String entryId) async {
-    // Permission check: Only allow delete if user has full_access
-    if (!PermissionHelper.canDeleteModule(_currentUser, 'trading')) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('You do not have permission to delete trading entries.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
-    
     try {
+      final nowIso = DateTime.now().toUtc().toIso8601String();
       final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       if (isSuperAdmin) {
-        await widget.db.customStatement('''
-          DELETE FROM trading_entries 
-          WHERE id = ?
-        ''', [entryId]);
+        await widget.db.customStatement(
+          "UPDATE trading_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
+          [nowIso, entryId],
+        );
       } else {
-        await widget.db.customStatement('''
-          DELETE FROM trading_entries 
-          WHERE id = ? AND company_id = ?
-        ''', [entryId, companyId]);
+        await widget.db.customStatement(
+          "UPDATE trading_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ? AND company_id = ?",
+          [nowIso, entryId, companyId],
+        );
       }
 
-      // RootIsolateToken check removed - not available in this Flutter version
       Future.microtask(() async {
         try {
           if (Firebase.apps.isNotEmpty) {
-            await FirebaseFirestore.instance.collection('trading_entries').doc(entryId).delete();
+            await FirebaseFirestore.instance.collection('trading_entries').doc(entryId).set(
+              {
+                'status': 'archived',
+                'is_active': 0,
+                'isActive': 0,
+                'updated_at': nowIso,
+                'deleted_at': nowIso,
+              },
+              SetOptions(merge: true),
+            );
             FirestoreCacheService().invalidateCache('trading_entries', entryId);
           }
         } catch (_) {}
@@ -3033,13 +3120,13 @@ class _TradingFormPageState extends State<TradingFormPage> {
       await _loadEntries();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Entry deleted successfully')),
+          const SnackBar(content: Text('Entry archived')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete entry: $e')),
+          SnackBar(content: Text('Failed to archive entry: $e')),
         );
       }
     }
@@ -5195,7 +5282,10 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                 final id = (data['id'] ?? doc.id).toString();
                 
                 if (change.type == DocumentChangeType.removed) {
-                  batch.customStatement('DELETE FROM trading_file_entries WHERE id = ?', [id]);
+                  batch.customStatement(
+                    "UPDATE trading_file_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
+                    [DateTime.now().toUtc().toIso8601String(), id],
+                  );
                   continue;
                 }
                 
@@ -5215,8 +5305,8 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                 final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
                 
                 batch.customStatement(
-                  'INSERT OR REPLACE INTO trading_file_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, estate, quantity, payment, status, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                  [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, estate, quantity, payment, status, comments, updatedAt],
+                  'INSERT OR REPLACE INTO trading_file_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, estate, quantity, payment, status, is_active, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 1), ?, ?)',
+                  [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, estate, quantity, payment, status, data['is_active'] ?? data['isActive'], comments, updatedAt],
                 );
               }
             });
@@ -5279,12 +5369,13 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
         return;
       }
       
+      final activeFilter = " (status IS NULL OR status != 'archived') AND (is_active IS NULL OR is_active = 1) ";
       final results = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT * FROM trading_file_entries ORDER BY updated_at DESC'
+            ? 'SELECT * FROM trading_file_entries WHERE $activeFilter ORDER BY updated_at DESC'
             : (isAgent
-                ? 'SELECT * FROM trading_file_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) ORDER BY updated_at DESC'
-                : 'SELECT * FROM trading_file_entries WHERE company_id = ? ORDER BY updated_at DESC'),
+                ? 'SELECT * FROM trading_file_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) AND $activeFilter ORDER BY updated_at DESC'
+                : 'SELECT * FROM trading_file_entries WHERE company_id = ? AND $activeFilter ORDER BY updated_at DESC'),
         variables: isSuperAdmin
             ? []
             : [
@@ -5323,7 +5414,37 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
         _fileLoading = false;
       });
     } catch (e) {
-      setState(() => _fileLoading = false);
+      // Fallback if is_active column missing: fetch without filter
+      try {
+        final fallback = await widget.db.customSelect(
+          'SELECT * FROM trading_file_entries ORDER BY updated_at DESC',
+        ).get();
+        final loadedEntries = fallback.map((row) {
+          final data = row.data;
+          return _TradingFileEntry(
+            id: data['id'] as String,
+            type: (data['type'] as String) == 'buy' ? _TradingFileFormType.buy : _TradingFileFormType.sell,
+            buyOption: data['buy_option'] as String?,
+            sellOption: data['sell_option'] as String?,
+            date: DateTime.parse(data['date'] as String),
+            mobile: data['mobile'] as String? ?? '',
+            personName: data['person_name'] as String? ?? '',
+            estate: data['estate'] as String? ?? '',
+            quantity: data['quantity'] as int? ?? 0,
+            payment: (data['payment'] as num?)?.toDouble() ?? 0.0,
+            status: data['status']?.toString() ?? 'Pending',
+            comments: data['comments'] as String? ?? '',
+          );
+        }).toList();
+        setState(() {
+          _fileEntries
+            ..clear()
+            ..addAll(loadedEntries);
+          _fileLoading = false;
+        });
+      } catch (_) {
+        setState(() => _fileLoading = false);
+      }
     }
   }
   
@@ -5350,10 +5471,20 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
           quantity INTEGER,
           payment REAL,
           status TEXT NOT NULL DEFAULT 'Pending',
+          is_active INTEGER NOT NULL DEFAULT 1,
           comments TEXT,
           updated_at TEXT NOT NULL
         )
       ''');
+      try {
+        final columns = await widget.db.customSelect('PRAGMA table_info(trading_entries)').get();
+        final hasIsActive = columns.any((row) => (row.data['name'] as String?) == 'is_active');
+        if (!hasIsActive) {
+          await widget.db.customStatement(
+            'ALTER TABLE trading_entries ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+          );
+        }
+      } catch (_) {}
     } catch (e) {
       // Table might already exist, ignore
     }
@@ -5391,63 +5522,78 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       );
       
       _formFirestoreSub = query.snapshots().listen((snapshot) async {
-        final changes = List<DocumentChange>.from(snapshot.docChanges);
-        
-        if (changes.isNotEmpty) {
-          try {
-            await widget.db.batch((batch) {
-              for (final change in changes) {
-                final doc = change.doc;
-                final data = doc.data() as Map<String, dynamic>;
-                final id = (data['id'] ?? doc.id).toString();
-                
-                if (change.type == DocumentChangeType.removed) {
-                  batch.customStatement('DELETE FROM trading_entries WHERE id = ?', [id]);
-                  continue;
+        try {
+          final changes = List<DocumentChange>.from(snapshot.docChanges);
+          
+          if (changes.isNotEmpty) {
+            try {
+              await widget.db.batch((batch) {
+                for (final change in changes) {
+                  try {
+                    final doc = change.doc;
+                    final data = doc.data() as Map<String, dynamic>;
+                    final id = (data['id'] ?? doc.id).toString();
+                    
+                    if (change.type == DocumentChangeType.removed) {
+                      batch.customStatement(
+                        "UPDATE trading_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
+                        [DateTime.now().toUtc().toIso8601String(), id],
+                      );
+                      continue;
+                    }
+                    
+                    final type = (data['type'] ?? '').toString();
+                    final buyOption = (data['buy_option'] ?? data['buyOption'] ?? '').toString();
+                    final sellOption = (data['sell_option'] ?? data['sellOption'] ?? '').toString();
+                    final date = (data['date'] ?? '').toString();
+                    final mobile = (data['mobile'] ?? '').toString();
+                    final personName = (data['person_name'] ?? data['personName'] ?? '').toString();
+                    final buyerName = (data['buyer_name'] ?? data['buyerName'] ?? '').toString();
+                    final sellerName = (data['seller_name'] ?? data['sellerName'] ?? '').toString();
+                    final estateName = (data['estate_name'] ?? data['estateName'] ?? '').toString();
+                    final plotNo = (data['plot_no'] ?? data['plotNo'] ?? '').toString();
+                    final block = (data['block'] ?? '').toString();
+                    final commission = (data['commission'] is num) ? (data['commission'] as num).toDouble() : double.tryParse(data['commission']?.toString() ?? '') ?? 0.0;
+                    final quantity = (data['quantity'] is num) ? (data['quantity'] as num).toInt() : int.tryParse(data['quantity']?.toString() ?? '') ?? 0;
+                    final payment = (data['payment'] is num) ? (data['payment'] as num).toDouble() : double.tryParse(data['payment']?.toString() ?? '') ?? 0.0;
+                    final status = (data['status'] ?? 'Pending').toString();
+                    final comments = (data['comments'] ?? '').toString();
+                    final createdBy = (data['created_by'] ?? data['createdBy'])?.toString();
+                    final cid = (data['company_id'] ?? data['companyId'])?.toString();
+                    final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
+                    
+                    batch.customStatement(
+                      'INSERT OR REPLACE INTO trading_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission, quantity, payment, status, is_active, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 1), ?, ?)',
+                      [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, buyerName, sellerName, estateName, plotNo, block, commission, quantity, payment, status, data['is_active'] ?? data['isActive'], comments, updatedAt],
+                    );
+                  } catch (e) {
+                    debugPrint('Skipping trading_entries change due to error: $e');
+                  }
                 }
-                
-                final type = (data['type'] ?? '').toString();
-                final buyOption = (data['buy_option'] ?? data['buyOption'] ?? '').toString();
-                final sellOption = (data['sell_option'] ?? data['sellOption'] ?? '').toString();
-                final date = (data['date'] ?? '').toString();
-                final mobile = (data['mobile'] ?? '').toString();
-                final personName = (data['person_name'] ?? data['personName'] ?? '').toString();
-                final buyerName = (data['buyer_name'] ?? data['buyerName'] ?? '').toString();
-                final sellerName = (data['seller_name'] ?? data['sellerName'] ?? '').toString();
-                final estateName = (data['estate_name'] ?? data['estateName'] ?? '').toString();
-                final plotNo = (data['plot_no'] ?? data['plotNo'] ?? '').toString();
-                final block = (data['block'] ?? '').toString();
-                final commission = (data['commission'] is num) ? (data['commission'] as num).toDouble() : double.tryParse(data['commission']?.toString() ?? '') ?? 0.0;
-                final quantity = (data['quantity'] is num) ? (data['quantity'] as num).toInt() : int.tryParse(data['quantity']?.toString() ?? '') ?? 0;
-                final payment = (data['payment'] is num) ? (data['payment'] as num).toDouble() : double.tryParse(data['payment']?.toString() ?? '') ?? 0.0;
-                final status = (data['status'] ?? 'Pending').toString();
-                final comments = (data['comments'] ?? '').toString();
-                final createdBy = (data['created_by'] ?? data['createdBy'])?.toString();
-                final cid = (data['company_id'] ?? data['companyId'])?.toString();
-                final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
-                
-                batch.customStatement(
-                  'INSERT OR REPLACE INTO trading_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission, quantity, payment, status, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                  [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, buyerName, sellerName, estateName, plotNo, block, commission, quantity, payment, status, comments, updatedAt],
-                );
-              }
-            });
-            
-            // Update UI on main thread
-            Future.microtask(() async {
-              if (!mounted) return;
-              await _loadFormEntries();
-              if (!mounted) return;
-              setState(() => _formFirestoreReady = true);
-            });
-          } catch (e) {
-            debugPrint('Error syncing Firestore changes to SQLite (trading_entries): $e');
+              });
+              
+              // Update UI on main thread
+              Future.microtask(() async {
+                if (!mounted) return;
+                await _loadFormEntries();
+                if (!mounted) return;
+                setState(() => _formFirestoreReady = true);
+              });
+            } catch (e) {
+              debugPrint('Error syncing Firestore changes to SQLite (trading_entries): $e');
+              Future.microtask(() {
+                if (!mounted) return;
+                setState(() => _formFirestoreReady = true);
+              });
+            }
+          } else {
             Future.microtask(() {
               if (!mounted) return;
               setState(() => _formFirestoreReady = true);
             });
           }
-        } else {
+        } catch (e) {
+          debugPrint('Firestore snapshot handling error (trading_entries): $e');
           Future.microtask(() {
             if (!mounted) return;
             setState(() => _formFirestoreReady = true);
@@ -5501,12 +5647,13 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
         return;
       }
       
+      final activeFilter = " (status IS NULL OR status != 'archived') AND (is_active IS NULL OR is_active = 1) ";
       final results = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT * FROM trading_entries ORDER BY updated_at DESC'
+            ? 'SELECT * FROM trading_entries WHERE $activeFilter ORDER BY updated_at DESC'
             : (isAgent
-                ? 'SELECT * FROM trading_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) ORDER BY updated_at DESC'
-                : 'SELECT * FROM trading_entries WHERE company_id = ? ORDER BY updated_at DESC'),
+                ? 'SELECT * FROM trading_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) AND $activeFilter ORDER BY updated_at DESC'
+                : 'SELECT * FROM trading_entries WHERE company_id = ? AND $activeFilter ORDER BY updated_at DESC'),
         variables: isSuperAdmin
             ? []
             : [
@@ -5550,7 +5697,42 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
         _formLoading = false;
       });
     } catch (e) {
-      setState(() => _formLoading = false);
+      // Fallback if is_active column missing: fetch without filter
+      try {
+        final fallback = await widget.db.customSelect(
+          'SELECT * FROM trading_entries ORDER BY updated_at DESC',
+        ).get();
+        final loadedEntries = fallback.map((row) {
+          final data = row.data;
+          return _TradingClientEntry(
+            id: data['id'] as String,
+            type: (data['type'] as String) == 'buy' ? _TradingFormType.buy : _TradingFormType.sell,
+            buyOption: data['buy_option'] as String?,
+            sellOption: data['sell_option'] as String?,
+            date: DateTime.parse(data['date'] as String),
+            mobile: data['mobile'] as String? ?? '',
+            personName: data['person_name'] as String? ?? '',
+            buyerName: data['buyer_name'] as String? ?? '',
+            sellerName: data['seller_name'] as String? ?? '',
+            estateName: data['estate_name'] as String? ?? '',
+            plotNo: data['plot_no'] as String? ?? '',
+            block: data['block'] as String? ?? '',
+            commission: (data['commission'] as num?)?.toDouble() ?? 0.0,
+            quantity: data['quantity'] as int? ?? 0,
+            payment: (data['payment'] as num?)?.toDouble() ?? 0.0,
+            status: data['status']?.toString() ?? 'Pending',
+            comments: data['comments'] as String? ?? '',
+          );
+        }).toList();
+        setState(() {
+          _formEntries
+            ..clear()
+            ..addAll(loadedEntries);
+          _formLoading = false;
+        });
+      } catch (_) {
+        setState(() => _formLoading = false);
+      }
     }
   }
   
@@ -5894,14 +6076,14 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       await widget.db.customStatement('''
         INSERT OR REPLACE INTO trading_file_entries (
           id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, estate,
-          quantity, payment, status, comments, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantity, payment, status, is_active, comments, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
         entry.id, companyId, createdBy,
         entry.type == _TradingFileFormType.buy ? 'buy' : 'sell',
         entry.buyOption, entry.sellOption, entry.date.toIso8601String(),
         entry.mobile, entry.personName, entry.estate, entry.quantity, entry.payment,
-        entry.status, entry.comments, DateTime.now().toUtc().toIso8601String(),
+        entry.status, 1, entry.comments, DateTime.now().toUtc().toIso8601String(),
       ]);
     } catch (e) {
       debugPrint('Error saving entry: $e');
@@ -6334,15 +6516,15 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       await widget.db.customStatement('''
         INSERT OR REPLACE INTO trading_entries (
           id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission,
-          quantity, payment, status, comments, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          quantity, payment, status, is_active, comments, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
         entry.id, companyId, createdBy,
         entry.type == _TradingFormType.buy ? 'buy' : 'sell',
         entry.buyOption, entry.sellOption, entry.date.toIso8601String(),
         entry.mobile, entry.personName, entry.buyerName, entry.sellerName,
         entry.estateName, entry.plotNo, entry.block, entry.commission,
-        entry.quantity, entry.payment, entry.status, entry.comments,
+        entry.quantity, entry.payment, entry.status, 1, entry.comments,
         DateTime.now().toUtc().toIso8601String(),
       ]);
     } catch (e) {
