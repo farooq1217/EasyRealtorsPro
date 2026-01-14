@@ -3355,12 +3355,40 @@ class _UsersPageState extends State<UsersPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _guardUnauthorized();
       await _ensureActiveColumns();
       await _loadCurrentUser();
       await _syncUsersFromFirestore();
       await _loadCompanies();
       await _load();
     });
+  }
+
+  void _guardUnauthorized() {
+    final role = (_currentUser?['role'] ?? '').toString().toLowerCase();
+    final isAgent = RoleUtils.isAgent(_currentUser);
+    final isUserRole = role == 'user';
+    if (isAgent || isUserRole) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Permission Denied'),
+            content: const Text('You are not authorized to view Users.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        if (mounted) {
+          Navigator.of(context).maybePop();
+        }
+      });
+    }
   }
 
   @override
@@ -3794,8 +3822,13 @@ class _UsersPageState extends State<UsersPage> {
     setState(() => _loading = true);
     try {
       await _syncUsersFromFirestore();
+      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
+      final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final result = await widget.db.customSelect(
-        "SELECT * FROM users WHERE (status IS NULL OR (status != 'archived' AND status != 'deleted')) ORDER BY updated_at DESC",
+        isSuperAdmin
+            ? "SELECT * FROM users WHERE (status IS NULL OR (status != 'archived' AND status != 'deleted')) ORDER BY updated_at DESC"
+            : "SELECT * FROM users WHERE company_id = ? AND (status IS NULL OR (status != 'archived' AND status != 'deleted')) ORDER BY updated_at DESC",
+        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
         readsFrom: {widget.db.users},
       ).get();
       final rows = result.map((r) => Map<String, dynamic>.from(r.data)).toList();
@@ -4388,7 +4421,7 @@ class _UsersPageState extends State<UsersPage> {
     }
 
     // Force form to always be visible - removed _currentUser null check
-    final isSuperAdmin = true; // Hardcoded to always allow access
+    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
     final isCompanyAdmin = RoleUtils.isCompanyAdmin(_currentUser);
     // Removed: if (!isSuperAdmin && !isCompanyAdmin) return const SizedBox.shrink();
     final myCompanyId = RoleUtils.getUserCompanyId(_currentUser);
@@ -4761,26 +4794,19 @@ class _UsersPageState extends State<UsersPage> {
                             if (kDebugMode) {
                               debugPrint('AddUser: form validate -> $isValid');
                             }
-                            if (!isValid) return;
+                      if (!isValid) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Please fill all required fields'), backgroundColor: Colors.red),
+                        );
+                        return;
+                      }
 
-                            if (_currentUser == null) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Permission Denied'), backgroundColor: Colors.red),
-                                );
-                              }
-                              return;
-                            }
-
-                            final canManageUsers = !RoleUtils.isAgent(_currentUser);
-                            if (!canManageUsers) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Permission Denied'), backgroundColor: Colors.red),
-                                );
-                              }
-                              return;
-                            }
+                        if (existing == null && passwordCtl.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Temporary Password is required'), backgroundColor: Colors.red),
+                          );
+                          return;
+                        }
 
                             try {
                               final id = existing != null ? (existing!['id'] as String) : DateTime.now().millisecondsSinceEpoch.toString();
@@ -4959,24 +4985,93 @@ class _UsersPageState extends State<UsersPage> {
                               };
                               final permissionsJson = jsonEncode(permissionsMap);
 
+                              // Firestore restore check: see if a deleted/old account exists for this email
+                              String restoreUserId = id;
+                              String restoreCreatedAt = createdIso;
+                              bool restoreFound = false;
+                              if (existing == null) {
+                                try {
+                                  if (Firebase.apps.isNotEmpty) {
+                                    final snap = await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .where('email', isEqualTo: email.toLowerCase())
+                                        .limit(1)
+                                        .get();
+                                    if (snap.docs.isNotEmpty) {
+                                      final doc = snap.docs.first;
+                                      final data = doc.data();
+                                      final wasDeleted = (data['isDeleted'] == true) || (data['is_deleted'] == true);
+                                      final prevCreated = data['created_at'] ?? data['createdAt'];
+                                      bool restore = false;
+                                      if (wasDeleted) {
+                                        restore = await showDialog<bool>(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                title: const Text('Restore or Create Fresh?'),
+                                                content: const Text('This email was used before and is marked deleted. Restore old data or create a fresh account with a new UID?'),
+                                                actions: [
+                                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Create Fresh')),
+                                                  ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Restore')),
+                                                ],
+                                              ),
+                                            ) ??
+                                            false;
+                                      }
+                                      if (restore) {
+                                        restoreFound = true;
+                                        restoreUserId = doc.id;
+                                        if (prevCreated is String && prevCreated.isNotEmpty) {
+                                          restoreCreatedAt = prevCreated;
+                                        }
+                                      } else {
+                                        restoreFound = false;
+                                        restoreUserId = id;
+                                        restoreCreatedAt = createdIso;
+                                      }
+                                    }
+                                  }
+                                } catch (_) {}
+                              }
+
                               // Insert or update user using raw SQL to include all new fields
                               if (existing == null) {
                                 await widget.db.customStatement(
                                   'INSERT INTO users (id, username, password_hash, salt, iterations, user_id, name, email, contact_no, permissions, company_id, status, is_active, is_first_login, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                                  [id, username, hashedPassword, salt, iterations, userIdCtl.text.trim(), name, email, contactNo, permissionsJson, effectiveCompanyId, 'active', 1, isFirstLogin, createdIso, nowIso],
+                                  [
+                                    restoreUserId,
+                                    username,
+                                    hashedPassword,
+                                    salt,
+                                    iterations,
+                                    userIdCtl.text.trim(),
+                                    name,
+                                    email,
+                                    contactNo,
+                                    permissionsJson,
+                                    effectiveCompanyId,
+                                    'active',
+                                    1,
+                                    isFirstLogin,
+                                    restoreCreatedAt,
+                                    nowIso
+                                  ],
                                 );
                                 if (kDebugMode) {
-                                  debugPrint('AddUser: inserted locally userId=$id companyId=$effectiveCompanyId role=$selectedRole');
+                                  debugPrint('AddUser: inserted locally userId=$restoreUserId companyId=$effectiveCompanyId role=$selectedRole');
                                 }
 
                                 try {
                                   if (Firebase.apps.isNotEmpty) {
                                     final createdAtTs = Timestamp.fromDate(DateTime.tryParse(createdIso)?.toUtc() ?? DateTime.now().toUtc());
-                                    await FirebaseFirestore.instance.collection('users').doc(id).set({
-                                      'id': id,
+                                    await FirebaseFirestore.instance.collection('users').doc(restoreUserId).set({
+                                      'id': restoreUserId,
+                                      'user_uid': restoreUserId,
                                       'username': username,
                                       'user_id': userIdCtl.text.trim(),
                                       'userId': userIdCtl.text.trim(),
+                                      'password_hash': hashedPassword,
+                                      'salt': salt,
+                                      'iterations': iterations,
                                       'name': name,
                                       'email': email,
                                       'contact_no': contactNo,
@@ -4987,32 +5082,23 @@ class _UsersPageState extends State<UsersPage> {
                                       'is_deleted': false,
                                       'role': selectedRole,
                                       'permissions': permissionsMap,
-                                      'created_at': createdAtTs,
+                                      'created_at': restoreCreatedAt.isNotEmpty ? restoreCreatedAt : createdAtTs,
                                       'updated_at': nowIso,
                                     }, SetOptions(merge: true));
                                   }
                                 } catch (e) {
                                   if (kDebugMode) {
-                                    debugPrint('Firestore sync failed for users/$id: $e');
+                                    debugPrint('Firestore sync failed for users/$restoreUserId: $e');
                                   }
                                 }
                               } else {
-                                if (isCompanyAdmin) {
-                                  final existingCompanyId = existing?['company_id']?.toString();
-                                  if (existingCompanyId == null || existingCompanyId != myCompanyId) {
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Permission Denied'), backgroundColor: Colors.red),
-                                      );
-                                    }
-                                    return;
-                                  }
-                                }
+                                debugPrint('DEBUG: SQLite Update Started (update user $id)');
                                 // Update existing user (don't change password or is_first_login)
                                 await widget.db.customStatement(
                                   'UPDATE users SET username = ?, user_id = ?, name = ?, email = ?, contact_no = ?, permissions = ?, company_id = ?, updated_at = ? WHERE id = ?',
                                   [username, userIdCtl.text.trim(), name, email, contactNo, permissionsJson, effectiveCompanyId, nowIso, id],
                                 );
+                                debugPrint('DEBUG: SQLite Update Finished (update user $id)');
                                 if (kDebugMode) {
                                   debugPrint('AddUser: updated locally userId=$id companyId=$effectiveCompanyId role=$selectedRole');
                                 }
@@ -5031,6 +5117,9 @@ class _UsersPageState extends State<UsersPage> {
                                       'username': username,
                                       'user_id': userIdCtl.text.trim(),
                                       'userId': userIdCtl.text.trim(),
+                                      if (hashedPassword != null) 'password_hash': hashedPassword,
+                                      if (salt != null) 'salt': salt,
+                                      if (iterations != null) 'iterations': iterations,
                                       'name': name,
                                       'email': email,
                                       'contact_no': contactNo,
@@ -5056,10 +5145,16 @@ class _UsersPageState extends State<UsersPage> {
                               if (mounted) {
                                 final wasAdding = existing == null;
                                 final navContext = dialogContext ?? context;
-                                Navigator.of(navContext).pop();
-                                _resetUserForm();
+                                // Refresh list before closing to avoid snackbar on deactivated widget
                                 await _load();
+                                _resetUserForm();
+                                if (mounted) {
+                                  Navigator.of(navContext).pop();
+                                }
                                 if (wasAdding && mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('User created successfully with active status')),
+                                  );
                                   // Show credentials if Company Admin was created
                                   if (selectedRole == 'company_admin' && tempPassword != null) {
                                     showDialog(
@@ -5299,10 +5394,12 @@ class _UsersPageState extends State<UsersPage> {
     if (!ok) return;
 
     final nowIso = DateTime.now().toUtc().toIso8601String();
+    debugPrint('DEBUG: SQLite Update Started (toggle user $id -> $nextStatus)');
     await widget.db.customStatement(
       'UPDATE users SET status = ?, is_active = ?, updated_at = ? WHERE id = ?',
       [nextStatus, activate ? 1 : 0, nowIso, id],
     );
+    debugPrint('DEBUG: SQLite Update Finished (toggle user $id)');
     setState(() {}); // force repaint
     await _load(); // refresh UI immediately after local update
 
@@ -5354,10 +5451,12 @@ class _UsersPageState extends State<UsersPage> {
     if (!ok) return;
 
     final nowIso = DateTime.now().toUtc().toIso8601String();
+    debugPrint('DEBUG: SQLite Update Started (delete user $id)');
     await widget.db.customStatement(
       "UPDATE users SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
       [nowIso, id],
     );
+    debugPrint('DEBUG: SQLite Update Finished (delete user $id)');
     // Instant UI removal
     if (mounted) {
       setState(() {
@@ -5401,14 +5500,7 @@ class _UsersPageState extends State<UsersPage> {
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Firestore archive failed ($e). Verify admin email has write access.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      debugPrint('Firestore archive failed for user $id: $e');
     }
 
     await _load();
@@ -5708,7 +5800,22 @@ class _UsersPageState extends State<UsersPage> {
                       final name = r['name']?.toString() ?? r['username']?.toString() ?? 'N/A';
                       final normalizedUserId = (displayUserId ?? '').trim();
                       final nameWithUserId = normalizedUserId.isEmpty ? name : '$name ($normalizedUserId)';
-                      final titleText = isInactive ? '$nameWithUserId (Inactive)' : nameWithUserId;
+                      final titleText = nameWithUserId;
+                              final statusLabel = Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: isInactive ? Colors.red.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  isInactive ? 'Inactive' : 'Active',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: isInactive ? Colors.red : Colors.green,
+                                  ),
+                                ),
+                              );
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
                         elevation: 2,
@@ -5727,16 +5834,19 @@ class _UsersPageState extends State<UsersPage> {
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (normalizedUserId.isNotEmpty) Text('User ID: $normalizedUserId', style: GoogleFonts.poppins(fontSize: 12)),
+                              Row(
+                                children: [
+                                  statusLabel,
+                                  if (normalizedUserId.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Text('User ID: $normalizedUserId', style: GoogleFonts.poppins(fontSize: 12)),
+                                  ],
+                                ],
+                              ),
                               if (r['email'] != null)
                                 Text('Email: ${r['email']}', style: GoogleFonts.poppins(fontSize: 12)),
                               if (r['contact_no'] != null)
                                 Text('Contact: ${r['contact_no']}', style: GoogleFonts.poppins(fontSize: 12)),
-                              if (isInactive)
-                                Text(
-                                  'Status: $status',
-                                  style: GoogleFonts.poppins(fontSize: 12, color: Colors.red.shade700),
-                                ),
                               if (r['permissions'] != null)
                                 Text(
                                   'Permissions: ${_getPermissionLabel(r['permissions'])}',
@@ -5874,10 +5984,38 @@ class _CompaniesPageState extends State<CompaniesPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _guardUnauthorizedCompanies();
       await _ensureActiveColumns();
       await _loadCurrentUser();
       await _load(forceSync: true); // initial sync once, later loads rely on local data unless forced
     });
+  }
+
+  void _guardUnauthorizedCompanies() {
+    final role = (_currentUser?['role'] ?? '').toString().toLowerCase();
+    final isAgent = RoleUtils.isAgent(_currentUser);
+    final isUserRole = role == 'user';
+    if (isAgent || isUserRole) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Permission Denied'),
+            content: const Text('You are not authorized to view Companies.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        if (mounted) {
+          Navigator.of(context).maybePop();
+        }
+      });
+    }
   }
 
   Future<void> _ensureActiveColumns() async {
@@ -5902,7 +6040,10 @@ class _CompaniesPageState extends State<CompaniesPage> {
       final authToken = s['authToken'] as String?;
       if (authToken != null) {
         final user = await AuthService().getCurrentUser(authToken);
-        if (mounted) setState(() => _currentUser = user);
+        if (mounted) {
+          setState(() => _currentUser = user);
+          _guardUnauthorizedCompanies();
+        }
       }
     } catch (_) {}
   }
@@ -6515,12 +6656,18 @@ class _CompaniesPageState extends State<CompaniesPage> {
         "UPDATE users SET status = 'archived', is_active = 0, updated_at = ? WHERE company_id = ?",
         [nowIso, id],
       );
-      if (mounted) {
-        setState(() {
-          _rows.removeWhere((r) => (r['id']?.toString() ?? '') == id);
-        });
-      }
-      await _load();
+    } catch (e) {
+      debugPrint('Local archive failed for company $id: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        _rows.removeWhere((r) => (r['id']?.toString() ?? '') == id);
+      });
+    }
+    await _load();
+
+    try {
       if (Firebase.apps.isNotEmpty) {
         await FirebaseFirestore.instance.collection('companies').doc(id).set(
           {
@@ -6544,18 +6691,15 @@ class _CompaniesPageState extends State<CompaniesPage> {
           'deleted_by_email': (_currentUser?['email'] ?? _currentUser?['username'])?.toString(),
         });
       }
-      await _load();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Company archived (soft deleted)')),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to archive company: $e')),
-        );
-      }
+      debugPrint('Firestore archive failed for company $id: $e');
+    }
+
+    await _load();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Company archived (soft deleted)')),
+      );
     }
   }
 

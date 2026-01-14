@@ -76,6 +76,11 @@ class _LoginPageState extends State<LoginPage> {
         setState(() { _isLoading = false; });
 
         if (result['success'] == true) {
+          if ((result['synced'] == true || result['security_updated'] == true) && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Account Synced Successfully'), backgroundColor: Colors.green, duration: Duration(seconds: 2)),
+            );
+          }
           if (result['requires2FASetup'] == true) {
             // Show 2FA setup dialog after first login
             setState(() {

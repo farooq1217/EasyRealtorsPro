@@ -37,5 +37,21 @@ void main() async {
     // App will continue to run but Firebase features won't work
     debugPrint('Firebase initialization failed: $e');
   }
+
+  // One-time migration: force non-archived users to active (is_active = 1) so legacy records do not block login.
+  await _activateNonArchivedUsers();
+
   runApp(const AdminApp());
+}
+
+Future<void> _activateNonArchivedUsers() async {
+  if (kIsWeb) return;
+  try {
+    final db = await AppDatabase.instance();
+    await db.customStatement(
+      "UPDATE users SET is_active = 1, status = 'active' WHERE (status IS NULL OR LOWER(status) != 'archived') AND (is_active IS NULL OR is_active = 0)",
+    );
+  } catch (e) {
+    debugPrint('Failed to normalize user active flags: $e');
+  }
 }

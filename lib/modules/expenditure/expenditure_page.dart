@@ -85,6 +85,11 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   bool _loadingMoreProjects = false;
   bool _hasMoreProjects = true;
 
+  String get _expenditureLevel => PermissionHelper.getModulePermissionLevel(_currentUser, 'expenditure');
+  bool get _canAddExpenditure => PermissionHelper.canAddModule(_currentUser, 'expenditure');
+  bool get _canEditExpenditure => PermissionHelper.canEditModule(_currentUser, 'expenditure');
+  bool get _canDeleteExpenditure => PermissionHelper.canDeleteModule(_currentUser, 'expenditure');
+
   @override
   void initState() {
     super.initState();
@@ -1971,25 +1976,26 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                             color: const Color(0xFFFF6B35),
                           ),
                         ),
-                        PopupMenuButton<String>(
-                          onSelected: (value) async {
-                            if (value == 'delete') {
-                              await _deleteOfficeCategory(category.id);
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            PopupMenuItem(
-                              value: 'delete',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.delete, color: Colors.red.shade700),
-                                  const SizedBox(width: 8),
-                                  const Text('Delete Category'),
-                                ],
+                        if (_canDeleteExpenditure)
+                          PopupMenuButton<String>(
+                            onSelected: (value) async {
+                              if (value == 'delete') {
+                                await _deleteOfficeCategory(category.id);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete, color: Colors.red.shade700),
+                                    const SizedBox(width: 8),
+                                    const Text('Delete Category'),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
                       ],
                     ),
                     onTap: () async {
@@ -2123,16 +2129,17 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                       ],
                     ),
                   ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete, size: 18, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text('Delete', style: TextStyle(color: Colors.red)),
-                      ],
+                  if (_canDeleteExpenditure)
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete, size: 18, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text('Delete', style: TextStyle(color: Colors.red)),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
                 onSelected: (value) async {
                   if (value == 'view') {
@@ -2147,7 +2154,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                       ),
                     );
                     await _loadClosedProjects(reset: true);
-                  } else if (value == 'delete') {
+                  } else if (value == 'delete' && _canDeleteExpenditure) {
                     await _deleteProject(project.id, project.name);
                   }
                 },
@@ -2252,11 +2259,13 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
           },
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _selectedTab == 'Office Expense' ? _showCreateCategoryDialog : _showCreateProjectDialog,
-        icon: const Icon(Icons.add),
-        label: Text(_selectedTab == 'Office Expense' ? 'Add Expense Category' : 'Add Project'),
-      ),
+      floatingActionButton: _canAddExpenditure
+          ? FloatingActionButton.extended(
+              onPressed: _selectedTab == 'Office Expense' ? _showCreateCategoryDialog : _showCreateProjectDialog,
+              icon: const Icon(Icons.add),
+              label: Text(_selectedTab == 'Office Expense' ? 'Add Expense Category' : 'Add Project'),
+            )
+          : null,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared/shared.dart';
 import '../core/services/app_storage.dart' show AppStorage;
+import '../core/services/permission_helper.dart';
+import '../core/services/auth_service.dart';
 
 // Note: This sidebar widget is designed to work independently and can be used
 // with any theme management system by passing themeMode and onThemeChanged callbacks.
@@ -18,6 +20,7 @@ class ModernSidebar extends StatelessWidget {
   final bool isOpen;
   final ThemeMode? themeMode;
   final ValueChanged<String>? onThemeChanged;
+  final Map<String, dynamic>? currentUser;
 
   const ModernSidebar({
     super.key,
@@ -31,6 +34,7 @@ class ModernSidebar extends StatelessWidget {
     this.badgeRentals,
     this.themeMode,
     this.onThemeChanged,
+    this.currentUser,
   });
 
   @override
@@ -38,6 +42,12 @@ class ModernSidebar extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final isDarkMode = isDark || themeMode == ThemeMode.dark;
+    final isBypass = PermissionHelper.isBypassUser(currentUser);
+    bool _canSee(String moduleKey) {
+      if (isBypass) return true;
+      final level = PermissionHelper.getModulePermissionLevel(currentUser, moduleKey);
+      return level != 'no_access';
+    }
 
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 280),
@@ -120,37 +130,42 @@ class ModernSidebar extends StatelessWidget {
                     selectedIcon: Icons.insert_drive_file,
                     label: 'Inventory',
                     isSelected: selectedIndex == 1,
-                    onTap: () => onDestinationSelected(1),
+                    onTap: _canSee('inventory') ? () => onDestinationSelected(1) : null,
                     badge: badgeFiles,
+                    visible: _canSee('inventory'),
                   ),
                   SidebarMenuItem(
                     icon: Icons.support_agent_outlined,
                     selectedIcon: Icons.support_agent,
                     label: 'Agent Working',
                     isSelected: selectedIndex == 2,
-                    onTap: () => onDestinationSelected(2),
+                    onTap: _canSee('agent_working') ? () => onDestinationSelected(2) : null,
+                    visible: _canSee('agent_working'),
                   ),
                   SidebarMenuItem(
                     icon: Icons.chair_outlined,
                     selectedIcon: Icons.chair,
                     label: 'Rental Items',
                     isSelected: selectedIndex == 3,
-                    onTap: () => onDestinationSelected(3),
+                    onTap: _canSee('rental_items') ? () => onDestinationSelected(3) : null,
                     badge: badgeRentals,
+                    visible: _canSee('rental_items'),
                   ),
                   SidebarMenuItem(
                     icon: Icons.checklist_outlined,
                     selectedIcon: Icons.checklist,
                     label: 'To-Do',
                     isSelected: selectedIndex == 4,
-                    onTap: () => onDestinationSelected(4),
+                    onTap: _canSee('todo') ? () => onDestinationSelected(4) : null,
+                    visible: _canSee('todo'),
                   ),
                   SidebarMenuItem(
                     icon: Icons.payments_outlined,
                     selectedIcon: Icons.payments,
                     label: 'Expenditure',
                     isSelected: selectedIndex == 10,
-                    onTap: () => onDestinationSelected(10),
+                    onTap: _canSee('expenditure') ? () => onDestinationSelected(10) : null,
+                    visible: _canSee('expenditure'),
                   ),
                   // Trading - Direct Navigation
                   if (onTradingTap != null)
@@ -159,7 +174,8 @@ class ModernSidebar extends StatelessWidget {
                       selectedIcon: Icons.currency_exchange,
                       label: 'Trading',
                       isSelected: selectedIndex == 6 || selectedIndex == 7,
-                      onTap: onTradingTap!,
+                      onTap: _canSee('trading') ? onTradingTap! : null,
+                      visible: _canSee('trading'),
                     ),
                   SidebarMenuItem(
                     icon: Icons.settings_outlined,
@@ -230,9 +246,10 @@ class SidebarMenuItem extends StatelessWidget {
   final IconData selectedIcon;
   final String label;
   final bool isSelected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool isSubItem;
   final int? badge;
+  final bool visible;
 
   const SidebarMenuItem({
     super.key,
@@ -243,10 +260,12 @@ class SidebarMenuItem extends StatelessWidget {
     required this.onTap,
     this.isSubItem = false,
     this.badge,
+    this.visible = true,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (!visible) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return InkWell(
       onTap: onTap,

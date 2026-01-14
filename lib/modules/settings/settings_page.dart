@@ -665,6 +665,99 @@ class _SettingsPageState extends State<SettingsPage> {
     final email = _currentUser?['email']?.toString() ?? 
                  _currentUser?['gmail']?.toString() ?? 
                  'N/A';
+    final isAgentRole = RoleUtils.isAgent(_currentUser) ||
+        (RoleUtils.getUserRole(_currentUser)?.toLowerCase() == 'agent') ||
+        ((_currentUser?['role'] ?? '').toString().toLowerCase() == 'user');
+
+    Widget profileCard = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFFFF6B35).withOpacity(0.1),
+            const Color(0xFF4A90E2).withOpacity(0.1),
+          ],
+        ),
+      ),
+      child: Card(
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: const Color(0xFFFF6B35),
+                    child: Text(
+                      fullName.isNotEmpty && fullName != 'N/A' 
+                          ? fullName[0].toUpperCase() 
+                          : 'U',
+                      style: const TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'User Profile',
+                          style: GoogleFonts.poppins(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildProfileField('Company Name', companyName),
+                        const SizedBox(height: 12),
+                        _buildProfileField('Full Name', fullName),
+                        const SizedBox(height: 12),
+                        _buildProfileField('Phone', phone),
+                        const SizedBox(height: 12),
+                        _buildProfileField('Email', email),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (isAgentRole) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('My Profile'),
+          backgroundColor: const Color(0xFFFF6B35),
+        ),
+        body: SingleChildScrollView(
+          child: Column(
+            children: [
+              profileCard,
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'System settings are restricted for your role. You can view and update your own profile here.',
+                  style: GoogleFonts.poppins(color: Colors.grey.shade700, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -674,72 +767,7 @@ class _SettingsPageState extends State<SettingsPage> {
       body: Column(
         children: [
           // Profile Section
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFFFF6B35).withOpacity(0.1),
-                  const Color(0xFF4A90E2).withOpacity(0.1),
-                ],
-              ),
-            ),
-            child: Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 50,
-                          backgroundColor: const Color(0xFFFF6B35),
-                          child: Text(
-                            fullName.isNotEmpty && fullName != 'N/A' 
-                                ? fullName[0].toUpperCase() 
-                                : 'U',
-                            style: const TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 24),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'User Profile',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              _buildProfileField('Company Name', companyName),
-                              const SizedBox(height: 12),
-                              _buildProfileField('Full Name', fullName),
-                              const SizedBox(height: 12),
-                              _buildProfileField('Phone', phone),
-                              const SizedBox(height: 12),
-                              _buildProfileField('Email', email),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          profileCard,
           // System Config Section (Societies & Blocks)
           Expanded(
             child: Row(

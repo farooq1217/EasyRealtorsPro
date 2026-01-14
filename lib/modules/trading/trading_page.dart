@@ -135,19 +135,8 @@ class _TradingFilePageState extends State<TradingFilePage> {
   @override
   void initState() {
     super.initState();
-    // Force companyId = 'GLOBAL_ADMIN' at the beginning of initState
     Future.microtask(() async {
       await _loadCurrentUser();
-      // Force companyId = 'GLOBAL_ADMIN' - ensure it's set before any operations
-      if (_currentUser == null) {
-        _currentUser = {'companyId': 'GLOBAL_ADMIN', 'company_id': 'GLOBAL_ADMIN', 'role': 'super_admin'};
-      } else {
-        final userMap = Map<String, dynamic>.from(_currentUser ?? {});
-        userMap['companyId'] = 'GLOBAL_ADMIN';
-        userMap['company_id'] = 'GLOBAL_ADMIN';
-        userMap['role'] = 'super_admin';
-        _currentUser = userMap;
-      }
       await _initializeTable();
       await _startFirestoreListener();
       await _loadEntries();
@@ -2294,7 +2283,8 @@ class _TradingFilePageState extends State<TradingFilePage> {
           ),
         ],
       ),
-      floatingActionButton: Row(
+      floatingActionButton: (PermissionHelper.isBypassUser(_currentUser) || PermissionHelper.canAddModule(_currentUser, 'trading'))
+          ? Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 FloatingActionButton.extended(
@@ -2311,7 +2301,8 @@ class _TradingFilePageState extends State<TradingFilePage> {
                   backgroundColor: Colors.blue,
                 ),
               ],
-            ),
+            )
+          : null,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -2563,19 +2554,8 @@ class _TradingFormPageState extends State<TradingFormPage> {
   @override
   void initState() {
     super.initState();
-    // Force companyId = 'GLOBAL_ADMIN' at the beginning of initState
     Future.microtask(() async {
       await _loadCurrentUser();
-      // Force companyId = 'GLOBAL_ADMIN' - ensure it's set before any operations
-      if (_currentUser == null) {
-        _currentUser = {'companyId': 'GLOBAL_ADMIN', 'company_id': 'GLOBAL_ADMIN', 'role': 'super_admin'};
-      } else {
-        final userMap = Map<String, dynamic>.from(_currentUser ?? {});
-        userMap['companyId'] = 'GLOBAL_ADMIN';
-        userMap['company_id'] = 'GLOBAL_ADMIN';
-        userMap['role'] = 'super_admin';
-        _currentUser = userMap;
-      }
       await _initializeTable();
       await _startFirestoreListener();
       await _loadEntries();
@@ -5082,19 +5062,8 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     _tabController.index = 0;
     _loadedTabs.add(0);
     
-    // Force companyId = 'GLOBAL_ADMIN' at the beginning of initState
     Future.microtask(() async {
       await _loadCurrentUser();
-      // Force companyId = 'GLOBAL_ADMIN' - ensure it's set before any operations
-      if (_currentUser == null) {
-        _currentUser = {'companyId': 'GLOBAL_ADMIN', 'company_id': 'GLOBAL_ADMIN', 'role': 'super_admin'};
-      } else {
-        final userMap = Map<String, dynamic>.from(_currentUser ?? {});
-        userMap['companyId'] = 'GLOBAL_ADMIN';
-        userMap['company_id'] = 'GLOBAL_ADMIN';
-        userMap['role'] = 'super_admin';
-        _currentUser = userMap;
-      }
       await _initializeFileTable();
       await _initializeFormTable();
       await _startFileFirestoreListener();

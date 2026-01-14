@@ -822,10 +822,26 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   }
 
   Future<void> _handleMarkAsSold(Map<String, dynamic> entry) async {
+    if (!PermissionHelper.canEditModule(_currentUser, 'rental_items')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You do not have permission to update rental items'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
     await _updateRentalStatus(entry['id'] as String, 'Sold');
   }
 
   Future<void> _handleMarkAsNotSold(Map<String, dynamic> entry) async {
+    if (!PermissionHelper.canEditModule(_currentUser, 'rental_items')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You do not have permission to update rental items'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
     await _updateRentalStatus(entry['id'] as String, 'Not Sold');
   }
 
@@ -986,6 +1002,10 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
     final rows = _q.isEmpty
         ? filteredRows
         : filteredRows.where((r) => r.values.any((v) => (v?.toString().toLowerCase() ?? '').contains(_q.toLowerCase()))).toList();
+    final canAddRental = PermissionHelper.canAddModule(_currentUser, 'rental_items');
+    final canEditRental = PermissionHelper.canEditModule(_currentUser, 'rental_items');
+    final canDeleteRental = PermissionHelper.canDeleteModule(_currentUser, 'rental_items');
+    final showActionMenu = canEditRental || canDeleteRental;
     return Scaffold(
       appBar: AppBar(
         title: Text('Rental Items', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
@@ -1011,11 +1031,13 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddFormDialog(),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Rental Item'),
-      ),
+      floatingActionButton: canAddRental
+          ? FloatingActionButton.extended(
+              onPressed: () => _showAddFormDialog(),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Rental Item'),
+            )
+          : null,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isMobile = constraints.maxWidth < 900;
@@ -1110,57 +1132,61 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                           },
                                         ),
                                         const SizedBox(width: 8),
-                                        PopupMenuButton<String>(
-                                          icon: const Icon(Icons.more_vert),
-                                          itemBuilder: (context) => [
-                                            PopupMenuItem<String>(
-                                              child: Row(
-                                                children: [
-                                                  Icon(Icons.check_circle, size: 18, color: Colors.green.shade700),
-                                                  const SizedBox(width: 8),
-                                                  const Text('Mark as Sold'),
-                                                ],
-                                              ),
-                                              onTap: () async {
-                                                await Future.delayed(const Duration(milliseconds: 100));
-                                                if (mounted) {
-                                                  await _handleMarkAsSold(r);
-                                                }
-                                              },
-                                            ),
-                                            PopupMenuItem<String>(
-                                              child: Row(
-                                                children: [
-                                                  Icon(Icons.close, size: 18, color: Colors.orange.shade700),
-                                                  const SizedBox(width: 8),
-                                                  const Text('Mark as Not Sold'),
-                                                ],
-                                              ),
-                                              onTap: () async {
-                                                await Future.delayed(const Duration(milliseconds: 100));
-                                                if (mounted) {
-                                                  await _handleMarkAsNotSold(r);
-                                                }
-                                              },
-                                            ),
-                                            const PopupMenuDivider(),
-                                            if (true) // Bypass permission check
-                                              PopupMenuItem<String>(
-                                                child: const Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text('Edit')]),
-                                                onTap: () => Future.delayed(const Duration(milliseconds: 100), () => _showAddFormDialog(existing: r)),
-                                              ),
-                                            PopupMenuItem<String>(
-                                              child: Row(
-                                                children: [
-                                                  Icon(Icons.delete, size: 18, color: Colors.red.shade700),
-                                                  const SizedBox(width: 8),
-                                                  const Text('Delete'),
-                                                ],
-                                              ),
-                                              onTap: () => Future.delayed(const Duration(milliseconds: 100), () => _delete(r['id'] as String)),
-                                            ),
-                                          ],
-                                        ),
+                                        if (showActionMenu)
+                                          PopupMenuButton<String>(
+                                            icon: const Icon(Icons.more_vert),
+                                            itemBuilder: (context) => [
+                                              if (canEditRental)
+                                                PopupMenuItem<String>(
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.check_circle, size: 18, color: Colors.green.shade700),
+                                                      const SizedBox(width: 8),
+                                                      const Text('Mark as Sold'),
+                                                    ],
+                                                  ),
+                                                  onTap: () async {
+                                                    await Future.delayed(const Duration(milliseconds: 100));
+                                                    if (mounted) {
+                                                      await _handleMarkAsSold(r);
+                                                    }
+                                                  },
+                                                ),
+                                              if (canEditRental)
+                                                PopupMenuItem<String>(
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.close, size: 18, color: Colors.orange.shade700),
+                                                      const SizedBox(width: 8),
+                                                      const Text('Mark as Not Sold'),
+                                                    ],
+                                                  ),
+                                                  onTap: () async {
+                                                    await Future.delayed(const Duration(milliseconds: 100));
+                                                    if (mounted) {
+                                                      await _handleMarkAsNotSold(r);
+                                                    }
+                                                  },
+                                                ),
+                                              if (canEditRental) const PopupMenuDivider(),
+                                              if (canEditRental)
+                                                PopupMenuItem<String>(
+                                                  child: const Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text('Edit')]),
+                                                  onTap: () => Future.delayed(const Duration(milliseconds: 100), () => _showAddFormDialog(existing: r)),
+                                                ),
+                                              if (canDeleteRental)
+                                                PopupMenuItem<String>(
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.delete, size: 18, color: Colors.red.shade700),
+                                                      const SizedBox(width: 8),
+                                                      const Text('Delete'),
+                                                    ],
+                                                  ),
+                                                  onTap: () => Future.delayed(const Duration(milliseconds: 100), () => _delete(r['id'] as String)),
+                                                ),
+                                            ],
+                                          ),
                                       ],
                                     ),
                                     const SizedBox(height: 8),
@@ -1553,6 +1579,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _timer;
   Timer? _exportTimer;
   Timer? _rentalExportTimer;
+  Timer? _badgeTimer;
+  Timer? _dashboardStatsTimer;
   Timer? _inactivityTimer;
   Timer? _inactivityWarningTimer;
   OverlayEntry? _inactivityWarningOverlay;
@@ -1805,12 +1833,26 @@ class _HomeScreenState extends State<HomeScreen> {
     _rentalExportTimer = Timer.periodic(const Duration(hours: 1), (_) => _runRentalExport());
     // Badges
     await _refreshBadges();
-    Timer.periodic(const Duration(minutes: 2), (_) => _refreshBadges());
+    _badgeTimer = Timer.periodic(const Duration(minutes: 2), (_) => _refreshBadges());
     // Dashboard statistics
     await _loadDashboardStats();
-    Timer.periodic(const Duration(minutes: 5), (_) => _loadDashboardStats());
+    _dashboardStatsTimer = Timer.periodic(const Duration(minutes: 5), (_) => _loadDashboardStats());
     // Initialize notifications
     await _initNotifications();
+  }
+
+  @override
+  void dispose() {
+    _instance = null;
+    _badgeTimer?.cancel();
+    _dashboardStatsTimer?.cancel();
+    _timer?.cancel();
+    _exportTimer?.cancel();
+    _rentalExportTimer?.cancel();
+    _inactivityTimer?.cancel();
+    _inactivityWarningTimer?.cancel();
+    _inactivityWarningOverlay?.remove();
+    super.dispose();
   }
 
   Future<void> _persistSidebarCollapsed(bool collapsed) async {
@@ -1838,7 +1880,11 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _canAccessNavIndex(int index) {
     if (_currentUser == null) return true;
     final isAgent = RoleUtils.isAgent(_currentUser);
+    final roleStr = (_currentUser?['role'] ?? '').toString().toLowerCase();
+    final isUserRole = roleStr == 'user';
+    final isBypass = PermissionHelper.isBypassUser(_currentUser);
     final isCompanyAdmin = RoleUtils.isCompanyAdmin(_currentUser);
+    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
     // Always allow Dashboard + My Profile/Settings
     if (index == 0 || index == 5) return true;
     String? moduleKey;
@@ -1859,6 +1905,12 @@ class _HomeScreenState extends State<HomeScreen> {
       case 7:
         moduleKey = 'trading';
         break;
+      case 8:
+        moduleKey = 'users';
+        break;
+      case 9:
+        moduleKey = 'companies';
+        break;
       case 10:
         moduleKey = 'expenditure';
         break;
@@ -1866,12 +1918,14 @@ class _HomeScreenState extends State<HomeScreen> {
         moduleKey = null;
     }
     if (moduleKey != null && !PermissionHelper.canViewModule(_currentUser, moduleKey)) return false;
-    // Agent role restrictions
-    if (isAgent && (index == 7 || index == 8)) return false;
-    // Companies always accessible
-    // if (index == 9 && !(_isSuperAdmin || isCompanyAdmin)) return false;
-    // Users restricted to non-agents (Company Admin or Super Admin)
-    if (index == 8 && isAgent) return false;
+    // Agent/User role restrictions
+    if (!isBypass && (isAgent || isUserRole)) {
+      if (index == 2 || index == 8 || index == 9) return false;
+    }
+    // Company Admin should not access Companies
+    if (!isBypass && isCompanyAdmin && index == 9 && !isSuperAdmin) return false;
+    // Users restricted to admins (Company Admin or Super Admin)
+    if (!isBypass && index == 8 && !(isSuperAdmin || isCompanyAdmin)) return false;
     return true;
   }
 
@@ -2123,6 +2177,8 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('Error loading pending trades: $e');
     }
 
+    if (!mounted) return;
+
     setState(() {
       _totalFiles = totalFiles.data['c'] as int;
       _filesForSale = filesForSale.data['c'] as int;
@@ -2144,12 +2200,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _runRetention() async {
     if (_drive == null) return;
+    if (!mounted) return;
     setState(() { _status = 'Running retention...'; });
     try {
       final service = DriveRetentionService(_drive!);
       final deleted = await service.enforceRetention(widget.folderId);
+      if (!mounted) return;
       setState(() { _status = 'Retention done. Deleted ${deleted.length} old files.'; });
     } catch (e) {
+      if (!mounted) return;
       setState(() { _status = 'Retention failed: $e'; });
     }
   }
@@ -3458,13 +3517,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final isAgent = RoleUtils.isAgent(_currentUser);
+    final roleStr = (_currentUser?['role'] ?? '').toString().toLowerCase();
+    final isUserRole = roleStr == 'user';
+    final isAgentRole = isAgent || isUserRole;
+    final isBypass = PermissionHelper.isBypassUser(_currentUser);
+    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
+    final isCompanyAdmin = RoleUtils.isCompanyAdmin(_currentUser);
     final canViewInventory = PermissionHelper.canViewModule(_currentUser, 'inventory');
-    final canViewAgentWorking = PermissionHelper.canViewModule(_currentUser, 'agent_working');
+    final canViewAgentWorking = !isAgentRole && PermissionHelper.canViewModule(_currentUser, 'agent_working');
     final canViewRental = PermissionHelper.canViewModule(_currentUser, 'rental_items');
     final canViewTodo = PermissionHelper.canViewModule(_currentUser, 'todo');
     final canViewExpenditure = PermissionHelper.canViewModule(_currentUser, 'expenditure');
     final canViewTrading = PermissionHelper.canViewModule(_currentUser, 'trading');
-    final settingsLabel = isAgent ? 'My Profile' : 'Settings';
+    final showUsers = (isBypass || isSuperAdmin || isCompanyAdmin) && PermissionHelper.canViewModule(_currentUser, 'users');
+    final showCompanies = (isBypass || isSuperAdmin) && PermissionHelper.canViewModule(_currentUser, 'companies');
+    final settingsLabel = isAgentRole ? 'My Profile' : 'Settings';
 
     // Build menu items for ResponsiveSidebar
     final menuItems = <Widget>[
@@ -3613,14 +3680,14 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
       const Divider(),
-      if (_currentUser != null && !RoleUtils.isAgent(_currentUser))
+      if (showUsers)
         ListTile(
           leading: Icon(_navIndex == 8 ? Icons.people : Icons.people_outlined),
           title: const Text('Users'),
           selected: _navIndex == 8,
           selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
           onTap: () {
-            if (_currentUser == null || RoleUtils.isAgent(_currentUser)) {
+            if (!_canAccessNavIndex(8)) {
               _denyAndGoDashboard('Permission Denied');
               return;
             }
@@ -3630,19 +3697,19 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           },
         ),
-      // Companies management - Always visible
-      ListTile(
-        leading: Icon(_navIndex == 9 ? Icons.business : Icons.business_outlined),
-        title: const Text('Companies'),
-        selected: _navIndex == 9,
-        selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-        onTap: () {
-          setState(() => _navIndex = 9);
-          if (MediaQuery.of(context).size.width < 900) {
-            Navigator.pop(context);
-          }
-        },
-      ),
+      if (showCompanies)
+        ListTile(
+          leading: Icon(_navIndex == 9 ? Icons.business : Icons.business_outlined),
+          title: const Text('Companies'),
+          selected: _navIndex == 9,
+          selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
+          onTap: () {
+            setState(() => _navIndex = 9);
+            if (MediaQuery.of(context).size.width < 900) {
+              Navigator.pop(context);
+            }
+          },
+        ),
       const Divider(),
       ListTile(
         leading: const Icon(Icons.logout),
@@ -3743,20 +3810,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    if (_instance == this) {
-      _instance = null;
-    }
-    _inactivityTimer?.cancel();
-    _inactivityWarningTimer?.cancel();
-    _removeInactivityWarningOverlay();
-    _timer?.cancel();
-    _exportTimer?.cancel();
-    _rentalExportTimer?.cancel();
-    super.dispose();
   }
 
 }
@@ -10041,12 +10094,55 @@ class _CompaniesPageState extends State<CompaniesPage> {
                             ? (existing!['created_at']?.toString() ?? nowIso)
                             : nowIso;
                         
+                        // Restore check: see if a deleted/archived company with same name exists in Firestore
+                        String restoreCompanyId = id;
+                        String restoreCreatedAt = createdAt;
+                        try {
+                          if (existing == null && Firebase.apps.isNotEmpty) {
+                            final snap = await FirebaseFirestore.instance
+                                .collection('companies')
+                                .where('name', isEqualTo: name)
+                                .limit(1)
+                                .get();
+                            if (snap.docs.isNotEmpty) {
+                              final doc = snap.docs.first;
+                              final data = doc.data();
+                              final wasDeleted = (data['isDeleted'] == true) || (data['is_deleted'] == true);
+                              final prevCreated = data['created_at'] ?? data['createdAt'];
+                              bool restore = false;
+                              if (wasDeleted) {
+                                restore = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text('Restore Company?'),
+                                        content: const Text('A previously deleted company with this name was found. Restore old data or create a fresh record?'),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Create Fresh')),
+                                          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Restore')),
+                                        ],
+                                      ),
+                                    ) ??
+                                    false;
+                              }
+                              if (restore) {
+                                restoreCompanyId = doc.id;
+                                if (prevCreated is String && prevCreated.isNotEmpty) {
+                                  restoreCreatedAt = prevCreated;
+                                }
+                              } else {
+                                restoreCompanyId = id;
+                                restoreCreatedAt = createdAt;
+                              }
+                            }
+                          }
+                        } catch (_) {}
+
                         // Insert or update company using raw SQL
                         if (existing == null) {
                           await widget.db.customStatement(
                             'INSERT INTO companies (id, name, status, metadata, logo_url, address, contact, max_user_limit, subscription_tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                             [
-                              id,
+                              restoreCompanyId,
                               name,
                               selectedStatus,
                               metadata.isEmpty ? null : metadata,
@@ -10055,7 +10151,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                               contact.isEmpty ? null : contact,
                               maxUserLimit,
                               tier,
-                              createdAt,
+                              restoreCreatedAt,
                               nowIso,
                             ],
                           );
@@ -10079,8 +10175,8 @@ class _CompaniesPageState extends State<CompaniesPage> {
 
                         try {
                           if (Firebase.apps.isNotEmpty) {
-                            await FirebaseFirestore.instance.collection('companies').doc(id).set({
-                              'id': id,
+                            await FirebaseFirestore.instance.collection('companies').doc(restoreCompanyId).set({
+                              'id': restoreCompanyId,
                               'name': name,
                               'status': selectedStatus,
                               'metadata': metadata.isEmpty ? null : metadata,
@@ -10092,7 +10188,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                               'maxUserLimit': maxUserLimit,
                               'subscription_tier': tier,
                               'subscriptionTier': tier,
-                              'created_at': createdAt,
+                              'created_at': restoreCreatedAt,
                               'updated_at': nowIso,
                             }, SetOptions(merge: true));
                           }
@@ -10445,6 +10541,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
       }
     }
   }
+
 }
 
 /// Sub-menu item for hover menu
