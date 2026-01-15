@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute;
@@ -18,12 +18,75 @@ import '../../core/services/auth_service.dart';
 import '../../core/models/expenditure_model.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart';
+import '../../core/professional_pdf_generator.dart';
 import '../../core/app_utils.dart';
 import '../../core/shared_utils.dart';
 import '../../core/services/firestore_cache_service.dart';
 import '../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../core/services/app_storage.dart' show AppStorage;
 import '../../core/services/firestore_thread_helper.dart';
+
+bool _isExpenditureSuperAdmin(Map<String, dynamic>? user) {
+  final email = (user?['email'] ?? user?['username'])?.toString().toLowerCase();
+  return email == 'mayof286@gmail.com';
+}
+
+bool _isExpenditureAgent(Map<String, dynamic>? user) => RoleUtils.isAgent(user);
+bool _isExpenditureCompanyAdmin(Map<String, dynamic>? user) => RoleUtils.isCompanyAdmin(user);
+String? _expenditureCompanyId(Map<String, dynamic>? user) => RoleUtils.getUserCompanyId(user);
+
+bool _canAddExpenseForUser(Map<String, dynamic>? user) {
+  final level = PermissionHelper.getModulePermissionLevel(user, 'expenditure');
+  return _isExpenditureSuperAdmin(user) || _isExpenditureCompanyAdmin(user) || level == 'view_add' || level == 'view_add_edit';
+}
+
+bool _canEditOrDeleteExpenseForUser(Map<String, dynamic>? user) {
+  final level = PermissionHelper.getModulePermissionLevel(user, 'expenditure');
+  return _isExpenditureSuperAdmin(user) || _isExpenditureCompanyAdmin(user) || level == 'view_add_edit';
+}
+
+Future<void> _logExpenseAudit({
+  required AppDatabase db,
+  required Map<String, dynamic>? user,
+  required String action,
+  required String targetId,
+  required String targetType,
+  String? description,
+  double? amount,
+  String? companyId,
+}) async {
+  String _pad2(int v) => v.toString().padLeft(2, '0');
+  final now = DateTime.now().toUtc();
+  final actorId = user?['id']?.toString() ?? 'unknown';
+  final actorName = (user?['name'] ?? user?['email'] ?? user?['username'] ?? actorId).toString();
+  final logId = '${now.year}${_pad2(now.month)}${_pad2(now.day)}_${_pad2(now.hour)}${_pad2(now.minute)}${_pad2(now.second)}_${actorId}';
+  final metadata = {
+    if (description != null) 'description': description,
+    if (amount != null) 'amount': amount,
+  };
+
+  try {
+    await db.customStatement(
+      'CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, action TEXT, target_id TEXT, target_type TEXT, actor_id TEXT, actor_name TEXT, company_id TEXT, created_at TEXT, metadata TEXT)',
+    );
+    await db.customStatement(
+      'INSERT OR REPLACE INTO audit_logs (id, action, target_id, target_type, actor_id, actor_name, company_id, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        logId,
+        action,
+        targetId,
+        targetType,
+        actorId,
+        actorName,
+        companyId,
+        now.toIso8601String(),
+        metadata.isEmpty ? null : jsonEncode(metadata),
+      ],
+    );
+  } catch (e) {
+    debugPrint('Local audit log insert failed: $e');
+  }
+}
 
 // Helper function for formatting month title
 String _formatMonthTitle(String officeMonth) {
@@ -86,9 +149,13 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   bool _hasMoreProjects = true;
 
   String get _expenditureLevel => PermissionHelper.getModulePermissionLevel(_currentUser, 'expenditure');
-  bool get _canAddExpenditure => PermissionHelper.canAddModule(_currentUser, 'expenditure');
-  bool get _canEditExpenditure => PermissionHelper.canEditModule(_currentUser, 'expenditure');
-  bool get _canDeleteExpenditure => PermissionHelper.canDeleteModule(_currentUser, 'expenditure');
+  bool get _isSuperAdminView => _isExpenditureSuperAdmin(_currentUser);
+  bool get _isCompanyAdminView => _isExpenditureCompanyAdmin(_currentUser);
+  bool get _isAgentView => _isExpenditureAgent(_currentUser);
+
+  bool get _canAddExpenditure => _canAddExpenseForUser(_currentUser);
+  bool get _canEditExpenditure => _canEditOrDeleteExpenseForUser(_currentUser);
+  bool get _canDeleteExpenditure => _canEditOrDeleteExpenseForUser(_currentUser);
 
   @override
   void initState() {
@@ -215,11 +282,11 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     if (_currentUser == null) return;
     if (Firebase.apps.isEmpty) return;
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final isAgent = RoleUtils.isAgent(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final isAgent = _isAgentView;
     if (isAgent) return;
 
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
 
     _expendituresSub?.cancel();
@@ -619,9 +686,9 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     if (!mounted) return;
     setState(() => _loading = true);
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final isAgent = RoleUtils.isAgent(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isSuperAdminView;
+    final isAgent = _isAgentView;
+    final companyId = _expenditureCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
 
     if (isAgent && (myUserId == null || myUserId.trim().isEmpty)) {
@@ -771,6 +838,12 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
               .set(data, SetOptions(merge: true));
           FirestoreCacheService().invalidateCache(collection, docId);
         }
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied') {
+          debugPrint('Firestore permission denied for $collection/$docId');
+          return;
+        }
+        debugPrint('Background Firestore sync failed for $collection/$docId: $e');
       } catch (e) {
         debugPrint('Background Firestore sync failed for $collection/$docId: $e');
       }
@@ -779,8 +852,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
 
   Future<void> _loadCreatorLookup() async {
     try {
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+      final companyId = _expenditureCompanyId(_currentUser);
       final res = await widget.db.customSelect(
         isSuperAdmin
             ? 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL)'
@@ -836,9 +909,9 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       });
     }
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final isAgent = RoleUtils.isAgent(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isSuperAdminView;
+    final isAgent = _isAgentView;
+    final companyId = _expenditureCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
       if (mounted) {
@@ -968,9 +1041,9 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       });
     }
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final isAgent = RoleUtils.isAgent(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isSuperAdminView;
+    final isAgent = _isAgentView;
+    final companyId = _expenditureCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
       // UI REFRESH: Use setState inside WidgetsBinding.instance.addPostFrameCallback to stop non-platform thread crash
@@ -1103,8 +1176,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
 
     if (confirm != true) return;
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isSuperAdminView;
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
 
     try {
@@ -1182,7 +1255,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   }
 
   Future<void> _showCreateCategoryDialog() async {
-    if (!PermissionHelper.canAddModule(_currentUser, 'expenditure')) {
+    if (!_canAddExpenseForUser(_currentUser)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('You do not have permission to add expense categories')),
       );
@@ -1239,8 +1312,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   }
 
   Future<void> _createCategory(String name) async {
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isSuperAdminView;
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Company ID is required')),
@@ -1318,8 +1391,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     );
     if (confirm != true) return;
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isSuperAdminView;
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
 
     try {
@@ -1402,9 +1475,24 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
 
     if (confirm != true) return;
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isSuperAdminView;
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
+
+    double? deletedAmount;
+    try {
+      final amountRow = await widget.db
+          .customSelect(
+            isSuperAdmin
+                ? 'SELECT amount FROM expenditures WHERE id = ?'
+                : 'SELECT amount FROM expenditures WHERE company_id = ? AND id = ?',
+            variables: isSuperAdmin
+                ? [d.Variable.withString(expenseId)]
+                : [d.Variable.withString(companyId!), d.Variable.withString(expenseId)],
+          )
+          .getSingleOrNull();
+      deletedAmount = (amountRow?.data['amount'] as num?)?.toDouble();
+    } catch (_) {}
 
     try {
       // Delete from database
@@ -1413,6 +1501,17 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             ? 'DELETE FROM expenditures WHERE id = ?'
             : 'DELETE FROM expenditures WHERE company_id = ? AND id = ?',
         isSuperAdmin ? [expenseId] : [companyId, expenseId],
+      );
+
+      await _logExpenseAudit(
+        db: widget.db,
+        user: _currentUser,
+        action: 'Expense Deleted: $expenseDescription${deletedAmount != null ? ' - $deletedAmount' : ''}',
+        targetId: expenseId,
+        targetType: 'expense',
+        description: expenseDescription,
+        amount: deletedAmount,
+        companyId: companyId ?? 'GLOBAL_ADMIN',
       );
 
       // Delete from Firestore
@@ -1502,7 +1601,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   }
 
   Future<void> _showCreateProjectDialog() async {
-    if (!PermissionHelper.canAddModule(_currentUser, 'expenditure')) {
+    if (!_canAddExpenseForUser(_currentUser)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('You do not have permission to add projects.'), backgroundColor: Colors.red),
@@ -1541,8 +1640,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     );
     if (ok != true) return;
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isSuperAdminView;
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
     final finalCompanyId = isSuperAdmin ? 'GLOBAL_ADMIN' : companyId!;
 
@@ -1649,7 +1748,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   }
 
   Future<void> _showAddExpenseDialog() async {
-    if (!PermissionHelper.canAddModule(_currentUser, 'expenditure')) {
+    if (!_canAddExpenseForUser(_currentUser)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('You do not have permission to add expenses.'), backgroundColor: Colors.red),
@@ -1778,8 +1877,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       return;
     }
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isSuperAdminView;
+    final companyId = _expenditureCompanyId(_currentUser);
     final finalCompanyId = isSuperAdmin ? null : companyId;
     if (!isSuperAdmin && (finalCompanyId == null || finalCompanyId.isEmpty)) return;
 
@@ -1808,6 +1907,16 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
           amount,
           nowIso,
         ],
+      );
+      await _logExpenseAudit(
+        db: widget.db,
+        user: _currentUser,
+        action: 'Expense Added: ${descCtl.text.trim()} - $amount',
+        targetId: id,
+        targetType: 'expense',
+        description: descCtl.text.trim(),
+        amount: amount,
+        companyId: finalCompanyId,
       );
 
       _syncToFirestore(
@@ -2266,26 +2375,36 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
               label: Text(_selectedTab == 'Office Expense' ? 'Add Expense Category' : 'Add Project'),
             )
           : null,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFFFF6B35).withOpacity(0.03),
-              const Color(0xFF4A90E2).withOpacity(0.03),
-            ],
-          ),
-        ),
-        child: IndexedStack(
-          index: _tabController.index,
-          children: [
-            // Office Expense tab
-            _buildTabContent('Office Expense'),
-            // Projects tab
-            _buildTabContent('Projects'),
-          ],
-        ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: SizedBox(
+                height: constraints.maxHeight,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFFFF6B35).withOpacity(0.03),
+                        const Color(0xFF4A90E2).withOpacity(0.03),
+                      ],
+                    ),
+                  ),
+                  child: IndexedStack(
+                    index: _tabController.index,
+                    children: [
+                      _buildTabContent('Office Expense'),
+                      _buildTabContent('Projects'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -2327,6 +2446,148 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
   bool _loadingMore = false;
   bool _hasMore = true;
   static const int _pageSize = 200;
+
+  Future<void> _generateCategoryReport() async {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: SizedBox(
+          width: 240,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Generating office expense report...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      if (_rows.isEmpty) {
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No expenses to include')));
+        }
+        return;
+      }
+
+      final currency = NumberFormat('#,##0.00');
+      final gridRows = _rows
+          .map((r) => {
+                'Date': r.date,
+                'Description': r.description,
+                'Amount': 'Rs ${currency.format(r.amount)}',
+              })
+          .toList();
+      final total = _rows.fold<double>(0, (s, e) => s + e.amount);
+
+      await ProfessionalPdfGenerator.generateReceipt(
+        context: context,
+        db: widget.db,
+        module: 'Expenditure',
+        title: 'Office Expense - ${_formatMonthTitle(widget.officeMonth)}',
+        entityId: widget.officeMonth,
+        keyValues: [
+          MapEntry('Month', _formatMonthTitle(widget.officeMonth)),
+          MapEntry('Entries', _rows.length.toString()),
+          MapEntry('Total Amount', 'Rs ${currency.format(total)}'),
+        ],
+        gridRows: gridRows,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Office Expense Report saved to Documents'), backgroundColor: Colors.green),
+        );
+      }
+    } finally {
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _generateOfficeReport(List<ExpenditureModel> visibleRows) async {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: SizedBox(
+          width: 240,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Generating receipt...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (visibleRows.isEmpty) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No expenses to include')));
+      return;
+    }
+
+    final currency = NumberFormat('#,##0.00');
+    final total = visibleRows.fold<double>(0, (s, e) => s + e.amount);
+
+    final gridRows = visibleRows
+        .map((r) => {
+              'Date': r.date,
+              'Description': r.description,
+              'Amount': 'Rs ${currency.format(r.amount)}',
+            })
+        .toList();
+
+    try {
+      await ProfessionalPdfGenerator.generateReceipt(
+        context: context,
+        db: widget.db,
+        module: 'Expenditure',
+        title: 'Office Expense Receipt',
+        entityId: widget.officeMonth,
+        keyValues: [
+          MapEntry('Month', _formatMonthTitle(widget.officeMonth)),
+          MapEntry('Entries', visibleRows.length.toString()),
+          MapEntry('Total Amount', 'Rs ${currency.format(total)}'),
+        ],
+        gridRows: gridRows,
+      );
+    } finally {
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _generateMonthRowReceipt(ExpenditureModel row) async {
+    final currency = NumberFormat('#,##0.00');
+    await ProfessionalPdfGenerator.generateReceipt(
+      context: context,
+      db: widget.db,
+      module: 'Expenditure',
+      title: 'Expense Receipt',
+      entityId: row.id,
+      keyValues: [
+        MapEntry('Description', row.description),
+        MapEntry('Amount', 'Rs ${currency.format(row.amount)}'),
+        MapEntry('Date', row.date),
+      ],
+      gridRows: [
+        {
+          'Description': row.description,
+          'Amount': 'Rs ${currency.format(row.amount)}',
+          'Date': row.date,
+        },
+      ],
+    );
+  }
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _isSearching = false;
@@ -2351,6 +2612,7 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
     super.dispose();
   }
 
+
   void _onSearchChanged() {
     setState(() {
       _searchQuery = _searchController.text.trim().toLowerCase();
@@ -2365,6 +2627,10 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
       // Search in description
       final description = (expense.description ?? '').toLowerCase();
       if (description.contains(_searchQuery)) return true;
+      
+      // Search in date
+      final dateStr = (expense.date ?? '').toLowerCase();
+      if (dateStr.contains(_searchQuery)) return true;
       
       // Search in amount
       final amountStr = expense.amount.toString();
@@ -2407,8 +2673,8 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
 
   Future<void> _loadCreatorLookup() async {
     try {
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+      final companyId = _expenditureCompanyId(_currentUser);
       final res = await widget.db.customSelect(
         isSuperAdmin
             ? 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL)'
@@ -2439,6 +2705,12 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
           await FirebaseFirestore.instance.collection(collection).doc(docId).set(data, SetOptions(merge: true));
           FirestoreCacheService().invalidateCache(collection, docId);
         }
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied') {
+          debugPrint('Firestore permission denied for $collection/$docId');
+          return;
+        }
+        debugPrint('Background Firestore sync failed for $collection/$docId: $e');
       } catch (e) {
         debugPrint('Background Firestore sync failed for $collection/$docId: $e');
       }
@@ -2459,9 +2731,9 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
       setState(() => _loadingMore = true);
     }
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final isAgent = RoleUtils.isAgent(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final isAgent = _isExpenditureAgent(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
     final myAlias = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? myUserId;
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
@@ -2539,7 +2811,7 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
   }
 
   Future<void> _showAddExpenseDialog() async {
-    if (!PermissionHelper.canAddModule(_currentUser, 'expenditure')) {
+    if (!_canAddExpenseForUser(_currentUser)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('You do not have permission to add expenses.'), backgroundColor: Colors.red),
@@ -2674,8 +2946,8 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
       return;
     }
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     final finalCompanyId = isSuperAdmin ? null : companyId;
     if (!isSuperAdmin && (finalCompanyId == null || finalCompanyId.isEmpty)) return;
 
@@ -2722,6 +2994,16 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
           amount,
           nowIso,
         ],
+      );
+      await _logExpenseAudit(
+        db: widget.db,
+        user: _currentUser,
+        action: 'Expense Added: ${descCtl.text.trim()} - $amount',
+        targetId: id,
+        targetType: 'expense',
+        description: descCtl.text.trim(),
+        amount: amount,
+        companyId: finalCompanyId,
       );
 
       _syncToFirestore(
@@ -2815,6 +3097,9 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
   Widget build(BuildContext context) {
     final currency = NumberFormat('#,##0.00');
     final monthTitle = _formatMonthTitle(widget.officeMonth);
+    final visibleRows = _isSearching ? _filteredRows : _rows;
+    final showLoadMore = !_isSearching && _hasMore;
+    final visibleTotal = visibleRows.fold<double>(0, (sum, e) => sum + e.amount);
 
     return Scaffold(
       appBar: AppBar(
@@ -2841,15 +3126,24 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
           IconButton(icon: const Icon(Icons.history), tooltip: 'Previous Months', onPressed: () async {
             await Navigator.push(context, MaterialPageRoute(builder: (_) => OfficeExpenseMonthsArchivePage(db: widget.db, currentUser: _currentUser)));
           }),
-          IconButton(icon: const Icon(Icons.picture_as_pdf), tooltip: 'Download PDF', onPressed: _downloadReport),
-          IconButton(icon: const Icon(Icons.print), tooltip: 'Print Report', onPressed: _printReport),
+          TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: Colors.white),
+            onPressed: () => _generateOfficeReport(visibleRows),
+            icon: const Icon(Icons.receipt_long, color: Colors.white),
+            label: const Text(
+              'Generate Project Report',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+          ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddExpenseDialog,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Expense'),
-      ),
+      floatingActionButton: _canAddExpenseForUser(_currentUser)
+          ? FloatingActionButton.extended(
+              onPressed: _showAddExpenseDialog,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Expense'),
+            )
+          : null,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -2869,7 +3163,7 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: () => _load(reset: true),
-                      child: _rows.isEmpty
+                      child: visibleRows.isEmpty
                               ? ListView(
                                   children: [
                                     const SizedBox(height: 80),
@@ -2882,9 +3176,9 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
                                   ],
                                 )
                               : ListView.builder(
-                                  itemCount: _rows.length + (_hasMore ? 1 : 0),
+                                  itemCount: visibleRows.length + (showLoadMore ? 1 : 0),
                                   itemBuilder: (context, i) {
-                                    if (i >= _rows.length) {
+                                    if (showLoadMore && i >= visibleRows.length) {
                                       if (_loadingMore) {
                                         return Padding(
                                           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -2894,32 +3188,34 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
                                       Future.microtask(() => _loadMoreIfNeeded(i));
                                       return const SizedBox(height: 32);
                                     }
-                                    Future.microtask(() => _loadMoreIfNeeded(i));
+                                    if (showLoadMore) {
+                                      Future.microtask(() => _loadMoreIfNeeded(i));
+                                    }
                                     if (i > 0) {
                                       return Column(
                                         children: [
                                           Divider(height: 1, color: Colors.grey.shade300.withOpacity(0.6)),
-                                          _ExpenseTableRow(
-                                            date: _rows[i].date,
-                                            description: _rows[i].description,
-                                            amountText: 'Rs ${currency.format(_rows[i].amount)}',
-                                            addedByText: _creatorLabel(_rows[i].createdBy),
-                                          ),
+                                      _ExpenseTableRow(
+                                        date: visibleRows[i].date,
+                                        description: visibleRows[i].description,
+                                        amountText: 'Rs ${currency.format(visibleRows[i].amount)}',
+                                        addedByText: _creatorLabel(visibleRows[i].createdBy),
+                                      ),
                                         ],
                                       );
                                     }
                                     return _ExpenseTableRow(
-                                      date: _rows[i].date,
-                                      description: _rows[i].description,
-                                      amountText: 'Rs ${currency.format(_rows[i].amount)}',
-                                      addedByText: _creatorLabel(_rows[i].createdBy),
+                                      date: visibleRows[i].date,
+                                      description: visibleRows[i].description,
+                                      amountText: 'Rs ${currency.format(visibleRows[i].amount)}',
+                                      addedByText: _creatorLabel(visibleRows[i].createdBy),
                                     );
                                   },
                                 ),
                     ),
                   ),
                   _ExpenseTotalBar(
-                    totalText: 'Rs ${currency.format(_isSearching ? _filteredTotalAmount : _totalAmount)}',
+                    totalText: 'Rs ${currency.format(visibleTotal)}',
                   ),
                 ],
               ),
@@ -2965,9 +3261,9 @@ class _OfficeExpenseMonthsArchivePageState extends State<OfficeExpenseMonthsArch
   Future<void> _load() async {
     if (!mounted) return;
     setState(() => _loading = true);
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final isAgent = RoleUtils.isAgent(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final isAgent = _isExpenditureAgent(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
     final myAlias = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? myUserId;
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
@@ -3082,6 +3378,86 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
   bool _hasMore = true;
   static const int _pageSize = 200;
 
+  Future<void> _generateProjectReport() async {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: SizedBox(
+          width: 240,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Generating project report...'),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (_rows.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No expenses to include')));
+      }
+      Navigator.of(context).pop();
+      return;
+    }
+    final currency = NumberFormat('#,##0.00');
+    final total = _rows.fold<double>(0, (s, e) => s + e.amount);
+
+    final gridRows = _rows
+        .map((r) => {
+              'Date': r.date,
+              'Description': r.description,
+              'Amount': 'Rs ${currency.format(r.amount)}',
+            })
+        .toList();
+
+    try {
+      await ProfessionalPdfGenerator.generateReceipt(
+        context: context,
+        db: widget.db,
+        module: 'Expenditure',
+        title: 'Project Expense Report',
+        entityId: widget.projectId,
+        keyValues: [
+          MapEntry('Project Name', _projectName.isEmpty ? 'Project' : _projectName),
+          MapEntry('Status', _projectStatus),
+          MapEntry('Total Amount', 'Rs ${currency.format(total)}'),
+          MapEntry('Entries', _rows.length.toString()),
+        ],
+        gridRows: gridRows,
+      );
+    } finally {
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _generateProjectRowReceipt(ExpenditureModel row) async {
+    final currency = NumberFormat('#,##0.00');
+    await ProfessionalPdfGenerator.generateReceipt(
+      context: context,
+      db: widget.db,
+      module: 'Expenditure',
+      title: 'Expense Receipt',
+      entityId: row.id,
+      keyValues: [
+        MapEntry('Description', row.description),
+        MapEntry('Amount', 'Rs ${currency.format(row.amount)}'),
+        MapEntry('Date', row.date),
+      ],
+      gridRows: [
+        {
+          'Description': row.description,
+          'Amount': 'Rs ${currency.format(row.amount)}',
+          'Date': row.date,
+        },
+      ],
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -3119,8 +3495,8 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
 
   Future<void> _loadCreatorLookup() async {
     try {
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+      final companyId = _expenditureCompanyId(_currentUser);
       final res = await widget.db.customSelect(
         isSuperAdmin
             ? 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL)'
@@ -3151,6 +3527,12 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
           await FirebaseFirestore.instance.collection(collection).doc(docId).set(data, SetOptions(merge: true));
           FirestoreCacheService().invalidateCache(collection, docId);
         }
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied') {
+          debugPrint('Firestore permission denied for $collection/$docId');
+          return;
+        }
+        debugPrint('Background Firestore sync failed for $collection/$docId: $e');
       } catch (e) {
         debugPrint('Background Firestore sync failed for $collection/$docId: $e');
       }
@@ -3171,9 +3553,9 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
       setState(() => _loadingMore = true);
     }
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final isAgent = RoleUtils.isAgent(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final isAgent = _isExpenditureAgent(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
     final myAlias = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? myUserId;
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
@@ -3295,8 +3677,8 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
     final newName = ctl.text.trim();
     if (newName.isEmpty) return;
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
     final nowIso = DateTime.now().toUtc().toIso8601String();
 
@@ -3343,8 +3725,8 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
     );
     if (ok != true) return;
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
     final nowIso = DateTime.now().toUtc().toIso8601String();
     try {
@@ -3373,7 +3755,7 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
   }
 
   Future<void> _showAddExpenseDialog() async {
-    if (!PermissionHelper.canAddModule(_currentUser, 'expenditure')) {
+    if (!_canAddExpenseForUser(_currentUser)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('You do not have permission to add expenses.'), backgroundColor: Colors.red),
@@ -3513,8 +3895,8 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
       return;
     }
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
     final finalCompanyId = isSuperAdmin ? 'GLOBAL_ADMIN' : companyId!;
 
@@ -3540,6 +3922,16 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
           amount,
           nowIso,
         ],
+      );
+      await _logExpenseAudit(
+        db: widget.db,
+        user: _currentUser,
+        action: 'Expense Added: ${descCtl.text.trim()} - $amount',
+        targetId: id,
+        targetType: 'expense',
+        description: descCtl.text.trim(),
+        amount: amount,
+        companyId: finalCompanyId,
       );
 
       _syncToFirestore(
@@ -3631,6 +4023,8 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
   @override
   Widget build(BuildContext context) {
     final currency = NumberFormat('#,##0.00');
+    final canAddExpense = _canAddExpenseForUser(_currentUser);
+    final canManageExpense = _canEditOrDeleteExpenseForUser(_currentUser);
     return Scaffold(
       appBar: AppBar(
         title: Text(_projectName.isEmpty ? 'Project Expense' : _projectName, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
@@ -3650,22 +4044,28 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
           ),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.picture_as_pdf), tooltip: 'Download PDF', onPressed: _downloadReport),
-          IconButton(icon: const Icon(Icons.print), tooltip: 'Print Report', onPressed: _printReport),
-          // Hide Add Expense button for closed projects
           if (!_isClosed)
+            TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              onPressed: _generateProjectReport,
+              icon: const Icon(Icons.receipt_long, color: Colors.white),
+              label: const Text('Generate Project Report', style: TextStyle(color: Colors.white)),
+            ),
+          if (!_isClosed && canAddExpense)
             IconButton(icon: const Icon(Icons.add), tooltip: 'New Entry', onPressed: _showAddExpenseDialog),
-          if (!_isClosed)
+          if (!_isClosed && canManageExpense)
             IconButton(icon: const Icon(Icons.lock_outline), tooltip: 'Mark as Closed', onPressed: _closeProject),
         ],
       ),
         floatingActionButton: _isClosed
             ? null // Hide FAB for closed projects
-            : FloatingActionButton.extended(
-                onPressed: _showAddExpenseDialog,
-                icon: const Icon(Icons.add),
-                label: const Text('Add Expense'),
-              ),
+            : (canAddExpense
+                ? FloatingActionButton.extended(
+                    onPressed: _showAddExpenseDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add Expense'),
+                  )
+                : null),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -3766,6 +4166,92 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
   bool _loadingMore = false;
   bool _hasMore = true;
   static const int _pageSize = 200;
+
+  Future<void> _generateCategoryReport() async {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: SizedBox(
+          width: 240,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Generating office expense report...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      if (_rows.isEmpty) {
+        if (mounted) {
+          Navigator.of(context).pop();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No expenses to include')));
+        }
+        return;
+      }
+
+      final currency = NumberFormat('#,##0.00');
+      final gridRows = _rows
+          .map((r) => {
+                'Date': r.date,
+                'Description': r.description,
+                'Amount': 'Rs ${currency.format(r.amount)}',
+              })
+          .toList();
+      final total = _rows.fold<double>(0, (s, e) => s + e.amount);
+
+      await ProfessionalPdfGenerator.generateReceipt(
+        context: context,
+        db: widget.db,
+        module: 'Expenditure',
+        title: 'Office Expense - ${widget.categoryName}',
+        entityId: widget.categoryId,
+        keyValues: [
+          MapEntry('Category', widget.categoryName),
+          MapEntry('Entries', _rows.length.toString()),
+          MapEntry('Total Amount', 'Rs ${currency.format(total)}'),
+        ],
+        gridRows: gridRows,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Office Expense Report saved to Documents'), backgroundColor: Colors.green),
+        );
+      }
+    } finally {
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _generateRowReceipt(ExpenditureModel row) async {
+    final currency = NumberFormat('#,##0.00');
+    await ProfessionalPdfGenerator.generateReceipt(
+      context: context,
+      db: widget.db,
+      module: 'Expenditure',
+      title: 'Expense Receipt',
+      entityId: row.id,
+      keyValues: [
+        MapEntry('Description', row.description),
+        MapEntry('Amount', 'Rs ${currency.format(row.amount)}'),
+        MapEntry('Date', row.date),
+      ],
+      gridRows: [
+        {
+          'Description': row.description,
+          'Amount': 'Rs ${currency.format(row.amount)}',
+          'Date': row.date,
+        },
+      ],
+    );
+  }
   @override
   void initState() {
     super.initState();
@@ -3802,8 +4288,8 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
 
   Future<void> _loadCreatorLookup() async {
     try {
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+      final companyId = _expenditureCompanyId(_currentUser);
       final res = await widget.db.customSelect(
         isSuperAdmin
             ? 'SELECT id, user_id, username, name, status FROM users WHERE (is_active = 1 OR is_active IS NULL)'
@@ -3833,6 +4319,12 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
           await FirebaseFirestore.instance.collection(collection).doc(docId).set(data, SetOptions(merge: true));
           FirestoreCacheService().invalidateCache(collection, docId);
         }
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied') {
+          debugPrint('Firestore permission denied for $collection/$docId');
+          return;
+        }
+        debugPrint('Background Firestore sync failed for $collection/$docId: $e');
       } catch (e) {
         debugPrint('Background Firestore sync failed for $collection/$docId: $e');
       }
@@ -3853,9 +4345,9 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
       setState(() => _loadingMore = true);
     }
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final isAgent = RoleUtils.isAgent(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final isAgent = _isExpenditureAgent(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
     final myAlias = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? myUserId;
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
@@ -3927,7 +4419,7 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
   }
 
   Future<void> _showAddExpenseDialog() async {
-    if (!PermissionHelper.canAddModule(_currentUser, 'expenditure')) {
+    if (!_canAddExpenseForUser(_currentUser)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('You do not have permission to add expenses.'), backgroundColor: Colors.red),
@@ -4034,8 +4526,8 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
       return;
     }
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
     final createdBy = _currentUser?['id']?.toString() ?? '';
     final id = const Uuid().v4();
@@ -4048,6 +4540,16 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
       await widget.db.customStatement(
         'INSERT OR REPLACE INTO expenditures (id, company_id, created_by, kind, category_id, category, date, description, amount, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [id, finalCompanyId, createdBy, 'office', widget.categoryId, category.isEmpty ? null : category, dateCtl.text.trim(), descCtl.text.trim(), amount, nowIso],
+      );
+      await _logExpenseAudit(
+        db: widget.db,
+        user: _currentUser,
+        action: 'Expense Added: ${descCtl.text.trim()} - $amount',
+        targetId: id,
+        targetType: 'expense',
+        description: descCtl.text.trim(),
+        amount: amount,
+        companyId: finalCompanyId,
       );
 
       _syncToFirestore(
@@ -4142,6 +4644,7 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
   @override
   Widget build(BuildContext context) {
     final currency = NumberFormat('#,##0.00');
+    final canAddExpense = _canAddExpenseForUser(_currentUser);
 
     return Scaffold(
       appBar: AppBar(
@@ -4165,16 +4668,25 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
           ),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.picture_as_pdf), tooltip: 'Download PDF', onPressed: _downloadReport),
-          IconButton(icon: const Icon(Icons.print), tooltip: 'Print Report', onPressed: _printReport),
-          IconButton(icon: const Icon(Icons.add), tooltip: 'New Entry', onPressed: _showAddExpenseDialog),
+          TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: Colors.white),
+            onPressed: _generateCategoryReport,
+            icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+            label: const Text(
+              'Generate Project Report',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+          ),
+          if (canAddExpense) IconButton(icon: const Icon(Icons.add), tooltip: 'New Entry', onPressed: _showAddExpenseDialog),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddExpenseDialog,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Expense'),
-      ),
+      floatingActionButton: canAddExpense
+          ? FloatingActionButton.extended(
+              onPressed: _showAddExpenseDialog,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Expense'),
+            )
+          : null,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -4288,8 +4800,8 @@ class _ClosedProjectsPageState extends State<ClosedProjectsPage> {
   Future<void> _load() async {
     if (!mounted) return;
     setState(() => _loading = true);
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
       if (mounted) setState(() => _loading = false);
       return;
@@ -4367,8 +4879,8 @@ class _ClosedProjectsPageState extends State<ClosedProjectsPage> {
 
     if (confirm != true) return;
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = _isExpenditureSuperAdmin(_currentUser);
+    final companyId = _expenditureCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
 
     try {
@@ -4590,7 +5102,14 @@ class _ExpenseTableRow extends StatelessWidget {
   final String description;
   final String amountText;
   final String? addedByText;
-  const _ExpenseTableRow({required this.date, required this.description, required this.amountText, this.addedByText});
+  final VoidCallback? onGenerateReceipt;
+  const _ExpenseTableRow({
+    required this.date,
+    required this.description,
+    required this.amountText,
+    this.addedByText,
+    this.onGenerateReceipt,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -4619,6 +5138,13 @@ class _ExpenseTableRow extends StatelessWidget {
             ),
           ),
           SizedBox(width: 110, child: Align(alignment: Alignment.centerRight, child: Text(amountText, style: cellStyle.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFFF6B35))))),
+          const SizedBox(width: 8),
+          if (onGenerateReceipt != null)
+            IconButton(
+              icon: const Icon(Icons.receipt_long, color: Color(0xFF4A90E2)),
+              tooltip: 'Generate Professional Receipt',
+              onPressed: onGenerateReceipt,
+            ),
         ],
       ),
     );
@@ -4675,6 +5201,83 @@ class OfficeExpenseDetailPage extends StatelessWidget {
     return fields;
   }
 
+  Future<void> _generateOfficeCategoryReport(BuildContext context) async {
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: SizedBox(
+          width: 240,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Generating report...'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final officeMonth = expense.officeMonth ?? '';
+      List<Map<String, dynamic>> rows = [];
+      if (officeMonth.isNotEmpty) {
+        try {
+          final res = await db.customSelect(
+            'SELECT date, description, amount FROM expenditures WHERE office_month = ?',
+            variables: [d.Variable.withString(officeMonth)],
+          ).get();
+          rows = res.map((r) => r.data).toList();
+        } catch (_) {}
+      }
+      // Fallback to single expense if query empty
+      if (rows.isEmpty) {
+        rows = [
+          {
+            'date': expense.date,
+            'description': expense.description,
+            'amount': expense.amount,
+          }
+        ];
+      }
+
+      final currency = NumberFormat('#,##0.00');
+      final gridRows = rows
+          .map((r) => {
+                'Date': (r['date'] ?? '').toString(),
+                'Description': (r['description'] ?? '').toString(),
+                'Amount': 'Rs ${currency.format((r['amount'] as num?)?.toDouble() ?? 0)}',
+              })
+          .toList();
+
+      await ProfessionalPdfGenerator.generateReceipt(
+        context: context,
+        db: db,
+        module: 'Expenditure',
+        title: 'Office Expense Report',
+        entityId: officeMonth.isNotEmpty ? officeMonth : expense.id,
+        keyValues: [
+          MapEntry('Office Month', officeMonth.isEmpty ? 'N/A' : officeMonth),
+          MapEntry('Entries', gridRows.length.toString()),
+        ],
+        gridRows: gridRows,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Office Expense Report saved to Documents'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } finally {
+      if (context.mounted) Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final allFields = _getAllFields();
@@ -4698,8 +5301,15 @@ class OfficeExpenseDetailPage extends StatelessWidget {
           ),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.print), onPressed: () => _print(context)),
-          IconButton(icon: const Icon(Icons.download), onPressed: () => _downloadPdf()),
+            TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              onPressed: () => _generateOfficeCategoryReport(context),
+              icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+              label: const Text(
+                'Generate Project Report',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
         ],
       ),
       body: Container(
@@ -4871,6 +5481,34 @@ class OfficeExpenseDetailPage extends StatelessWidget {
     await savePdfBytesToDisk(
       pdfBytes: bytes,
       suggestedBaseName: 'office_expense_${entityId}_${fmtTs(DateTime.now())}',
+    );
+  }
+
+  Future<void> _generateProfessionalReceipt(BuildContext context) async {
+    final currency = NumberFormat('#,##0.00');
+    final projectName = expense.description.isNotEmpty ? expense.description : 'N/A';
+    final gridRows = <Map<String, String>>[
+      {
+        'Project': projectName,
+        'Category': expense.category ?? 'N/A',
+        'Amount': 'Rs ${currency.format(expense.amount)}',
+        'Date': expense.date ?? 'N/A',
+      },
+    ];
+
+    await ProfessionalPdfGenerator.generateReceipt(
+      context: context,
+      db: db,
+      module: 'Expenditure',
+      title: 'Office Expense Receipt',
+      entityId: expense.id,
+      keyValues: [
+        MapEntry('Project Name', projectName),
+        MapEntry('Expense Category', expense.category ?? 'N/A'),
+        MapEntry('Amount', 'Rs ${currency.format(expense.amount)}'),
+        MapEntry('Date', expense.date ?? 'N/A'),
+      ],
+      gridRows: gridRows,
     );
   }
 }

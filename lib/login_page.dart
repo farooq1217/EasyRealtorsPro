@@ -139,7 +139,14 @@ class _LoginPageState extends State<LoginPage> {
             );
             await Future.delayed(const Duration(milliseconds: 300));
             if (mounted) {
-              Navigator.of(context).pushReplacementNamed('/home');
+              final navArgs = result['requiresProfileCompletion'] == true
+                  ? {
+                      'initialNavIndex': 5,
+                      'initialNotice': (result['profileRedirectMessage'] as String?) ??
+                          'Please complete your profile to continue',
+                    }
+                  : null;
+              Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
             }
           }
         } else if (result['requires2FA'] == true) {

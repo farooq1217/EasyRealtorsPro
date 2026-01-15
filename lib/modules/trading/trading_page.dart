@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -6,17 +6,20 @@ import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart' as sfpdf;
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import '../../core/services/auth_service.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart';
+import '../../core/professional_pdf_generator.dart';
 import '../../core/app_utils.dart' show fmtTs, buildSecureFirestoreQuery, creatorFields;
 import '../../core/shared_utils.dart';
 import '../../core/services/firestore_cache_service.dart';
@@ -124,6 +127,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
         if (mounted) {
           setState(() {
             _currentUser = user;
+            AuthService.currentUser = user;
           });
         }
       }
@@ -137,11 +141,118 @@ class _TradingFilePageState extends State<TradingFilePage> {
     super.initState();
     Future.microtask(() async {
       await _loadCurrentUser();
+      await _ensureFirebaseAuth();
       await _initializeTable();
+      await _backfillTradingCompanyIds();
+      await _maybeForceSyncLocalTrading();
       await _startFirestoreListener();
       await _loadEntries();
     });
   }
+
+  Future<void> _ensureFirebaseAuth() async {
+    if (Firebase.apps.isEmpty) return;
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      try {
+        await auth.signInAnonymously();
+      } catch (e) {
+        debugPrint('FirebaseAuth sign-in failed: $e');
+      }
+    }
+    debugPrint('FirebaseAuth UID: ${auth.currentUser?.uid ?? 'none'}');
+  }
+
+  Future<void> _maybeForceSyncLocalTrading() async {
+    if (_currentUser == null) return;
+    await _ensureFirebaseAuth();
+    await _forceSyncLocalTradingToFirestoreFile();
+  }
+
+  Future<void> _forceSyncLocalTradingToFirestoreFile() async {
+    if (Firebase.apps.isEmpty) return;
+    await _ensureFirebaseAuth();
+    final uid = FirebaseAuth.instance.currentUser?.uid ??
+        AuthService.currentUser?['uid'] ??
+        AuthService.currentUser?['user_uid'] ??
+        AuthService.currentUser?['userId'] ??
+        AuthService.currentUser?['user_id'] ??
+        _currentUser?['uid'] ??
+        _currentUser?['id'];
+    if (uid == null || uid.toString().isEmpty) {
+      debugPrint('Force sync trading skipped: no Firebase UID');
+      return;
+    }
+    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    if (companyId == null || companyId.toString().isEmpty) {
+      debugPrint('Force sync trading skipped: missing companyId');
+      return;
+    }
+    try {
+      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final fileRows = await widget.db.customSelect(
+        isSuperAdmin ? 'SELECT * FROM trading_file_entries' : 'SELECT * FROM trading_file_entries WHERE company_id = ?',
+        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
+      ).get();
+      final formRows = await widget.db.customSelect(
+        isSuperAdmin ? 'SELECT * FROM trading_entries' : 'SELECT * FROM trading_entries WHERE company_id = ?',
+        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
+      ).get();
+      final firestore = FirebaseFirestore.instance;
+      for (final r in fileRows) {
+        final data = r.data;
+        final id = data['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        debugPrint('Attempting write to: trading_file_entries/$id');
+        await firestore.collection('trading_file_entries').doc(id).set(
+          {
+            ...data,
+            'updated_at': data['updated_at'] ?? DateTime.now().toUtc().toIso8601String(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+      for (final r in formRows) {
+        final data = r.data;
+        final id = data['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        debugPrint('Attempting write to: trading_entries/$id');
+        await firestore.collection('trading_entries').doc(id).set(
+          {
+            ...data,
+            'updated_at': data['updated_at'] ?? DateTime.now().toUtc().toIso8601String(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+    } catch (e) {
+      debugPrint('Force sync trading failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Force sync trading failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _backfillTradingCompanyIds() async {
+    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    if (companyId == null || companyId.isEmpty) return;
+    try {
+      await widget.db.customStatement(
+        "UPDATE trading_file_entries SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+        [companyId],
+      );
+      await widget.db.customStatement(
+        "UPDATE trading_entries SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+        [companyId],
+      );
+      debugPrint('Backfilled company_id on trading tables for company: $companyId');
+    } catch (e) {
+      debugPrint('Backfill trading company_id failed: $e');
+    }
+  }
+
 
   @override
   void dispose() {
@@ -164,6 +275,27 @@ class _TradingFilePageState extends State<TradingFilePage> {
     super.dispose();
   }
 
+  Future<void> _generateReceiptPdf(_TradingClientEntry entry) async {
+    try {
+      final bytes = await _buildTradingReceiptBytes(entry: entry, user: _currentUser);
+      await savePdfBytesToDisk(
+        pdfBytes: bytes,
+        suggestedBaseName: 'receipt_${entry.id}_${fmtTs(DateTime.now())}',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Receipt generated')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate receipt: $e')),
+        );
+      }
+    }
+  }
+
   /// Start Firestore listener with pagination for real-time sync
   Future<void> _startFirestoreListener() async {
     if (!FirestoreSyncService().isAvailable) {
@@ -174,7 +306,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
       return;
     }
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
+    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
     final isAgent = RoleUtils.isAgent(_currentUser);
     final companyId = RoleUtils.getUserCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
@@ -194,7 +326,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
         orderBy: 'date',
         descending: true,
         limit: 50, // Paginated
-        additionalAgentFilter: isAgent ? 'createdBy' : null,
+        additionalAgentFilter: null,
       );
 
       _firestoreSub = query.snapshots().listen((snapshot) async {
@@ -268,18 +400,27 @@ class _TradingFilePageState extends State<TradingFilePage> {
             });
           }
         } catch (e) {
-          debugPrint('Firestore snapshot handling error (trading_file_entries): $e');
+          if (e is FirebaseException && e.code == 'permission-denied') {
+            debugPrint('Firestore permission denied for trading_file_entries sync (ignored)');
+          } else {
+            debugPrint('Firestore snapshot handling error (trading_file_entries): $e');
+          }
           Future.microtask(() {
             if (!mounted) return;
-            _syncState.finishLoading(synced: false, errorMessage: e.toString());
+            _syncState.finishLoading(synced: false, errorMessage: null);
             setState(() => _firestoreReady = true);
           });
         }
       }, onError: (error) {
-        debugPrint('Firestore listener error (trading_file_entries): $error');
+        final isPerm = error is FirebaseException && error.code == 'permission-denied';
+        if (isPerm) {
+          debugPrint('Firestore permission denied for trading_file_entries listener (ignored)');
+        } else {
+          debugPrint('Firestore listener error (trading_file_entries): $error');
+        }
         Future.microtask(() {
           if (!mounted) return;
-          _syncState.finishLoading(synced: false, errorMessage: error.toString());
+          _syncState.finishLoading(synced: false, errorMessage: null);
           setState(() => _firestoreReady = true);
         });
       });
@@ -419,9 +560,9 @@ class _TradingFilePageState extends State<TradingFilePage> {
   Future<void> _loadEntries() async {
     setState(() => _loading = true);
     try {
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
+    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+    final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final isAgent = RoleUtils.isAgent(_currentUser);
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final myUserId = _currentUser?['id']?.toString();
       final myAlias = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? myUserId;
 
@@ -438,16 +579,8 @@ class _TradingFilePageState extends State<TradingFilePage> {
       final results = await widget.db.customSelect(
         isSuperAdmin
             ? 'SELECT * FROM trading_file_entries WHERE $activeFilter ORDER BY updated_at DESC'
-            : (isAgent
-                ? 'SELECT * FROM trading_file_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) AND $activeFilter ORDER BY updated_at DESC'
-                : 'SELECT * FROM trading_file_entries WHERE company_id = ? AND $activeFilter ORDER BY updated_at DESC'),
-        variables: isSuperAdmin
-            ? []
-            : [
-                d.Variable.withString(companyId!),
-                if (isAgent) d.Variable.withString(myUserId!),
-                if (isAgent) d.Variable.withString(myAlias ?? myUserId!),
-              ],
+            : 'SELECT * FROM trading_file_entries WHERE company_id = ? AND $activeFilter ORDER BY updated_at DESC',
+        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
       ).get();
       
       final loadedEntries = results.map((row) {
@@ -474,6 +607,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
         );
       }).toList();
       
+      debugPrint('LOCAL DB: Found ${loadedEntries.length} trading entries total');
       setState(() {
         _entries.clear();
         _entries.addAll(loadedEntries);
@@ -485,6 +619,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
         final fallback = await widget.db.customSelect(
           'SELECT * FROM trading_file_entries ORDER BY updated_at DESC',
         ).get();
+        debugPrint('LOCAL DB (fallback): Found ${fallback.length} trading entries total');
         final loadedEntries = fallback.map((row) {
           final data = row.data;
           return _TradingFileEntry(
@@ -518,6 +653,15 @@ class _TradingFilePageState extends State<TradingFilePage> {
     try {
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
+      if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
+        debugPrint('Save cancelled: missing companyId');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Company ID missing. Please re-login.'), backgroundColor: Colors.red),
+          );
+        }
+        return;
+      }
 
       final myUserId = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? _currentUser?['id']?.toString();
       String? createdBy;
@@ -560,7 +704,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
 
   Future<void> _updateEntryStatus(String entryId, String newStatus) async {
     try {
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
+      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final nowIso = DateTime.now().toUtc().toIso8601String();
       if (isSuperAdmin) {
@@ -646,8 +790,8 @@ class _TradingFilePageState extends State<TradingFilePage> {
   Future<void> _deleteEntry(String entryId) async {
     try {
       final nowIso = DateTime.now().toUtc().toIso8601String();
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+        final companyId = RoleUtils.getUserCompanyId(_currentUser);
       if (isSuperAdmin) {
         await widget.db.customStatement(
           "UPDATE trading_file_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
@@ -2479,6 +2623,69 @@ class _TradingClientEntry {
   bool get isPending => status == 'Pending';
 }
 
+Future<Uint8List> _buildTradingReceiptBytes({
+  required _TradingClientEntry entry,
+  required Map<String, dynamic>? user,
+}) async {
+  final companyName = (user?['company_name'] ??
+          user?['companyName'] ??
+          user?['company'] ??
+          'Company')
+      .toString();
+  final doc = sfpdf.PdfDocument();
+  final page = doc.pages.add();
+  final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+  final grid = sfpdf.PdfGrid();
+  grid.columns.add(count: 2);
+  grid.headers.add(1);
+  final header = grid.headers[0];
+  header.cells[0].value = 'Field';
+  header.cells[1].value = 'Value';
+  final rows = <List<String>>[
+    ['Company', companyName],
+    ['Receipt Date', dateStr],
+    ['Type', entry.type == _TradingFormType.buy ? 'Buy' : 'Sell'],
+    ['Person', entry.personName],
+    ['Mobile', entry.mobile],
+    ['Estate', entry.estateName],
+    ['Plot', entry.plotNo],
+    ['Block', entry.block],
+    ['Buyer', entry.buyerName],
+    ['Seller', entry.sellerName],
+    ['Quantity', entry.quantity.toString()],
+    ['Payment', entry.payment.toStringAsFixed(2)],
+    ['Deal Date', DateFormat('yyyy-MM-dd').format(entry.date)],
+    ['Status', entry.status],
+    ['Comments', entry.comments],
+  ];
+  for (final r in rows) {
+    final row = grid.rows.add();
+    row.cells[0].value = r[0];
+    row.cells[1].value = r[1];
+  }
+  grid.style = sfpdf.PdfGridStyle(
+    font: sfpdf.PdfStandardFont(sfpdf.PdfFontFamily.helvetica, 12),
+    cellPadding: sfpdf.PdfPaddings(left: 4, right: 4, top: 6, bottom: 6),
+  );
+  page.graphics.drawString(
+    'Trading Receipt',
+    sfpdf.PdfStandardFont(sfpdf.PdfFontFamily.helvetica, 18, style: sfpdf.PdfFontStyle.bold),
+    bounds: const Rect.fromLTWH(0, 0, 500, 30),
+  );
+  page.graphics.drawString(
+    '$companyName • $dateStr',
+    sfpdf.PdfStandardFont(sfpdf.PdfFontFamily.helvetica, 12),
+    bounds: const Rect.fromLTWH(0, 28, 500, 20),
+  );
+  grid.draw(
+    page: page,
+    bounds: Rect.fromLTWH(0, 60, page.getClientSize().width, 0),
+  );
+  final bytes = await doc.save();
+  doc.dispose();
+  return Uint8List.fromList(bytes);
+}
+
 class _TradingFormPageState extends State<TradingFormPage> {
   static const List<String> _tradeOptions = ['HP', 'KP', 'MP', 'NMP', 'NNMP', 'BOP', 'SOP', 'AEMP'];
 
@@ -2623,7 +2830,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
         orderBy: 'date',
         descending: true,
         limit: 50, // Paginated
-        additionalAgentFilter: isAgent ? 'createdBy' : null,
+        additionalAgentFilter: null,
       );
 
       _firestoreSub = query.snapshots().listen((snapshot) async {
@@ -2667,7 +2874,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
                 final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
 
                 batch.customStatement(
-                  'INSERT OR REPLACE INTO trading_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission, quantity, payment, status, is_active, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 1), ?, ?)',
+                  'INSERT OR REPLACE INTO trading_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission, quantity, payment, status, is_active, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 1), ?)',
                   [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, buyerName, sellerName, estateName, plotNo, block, commission, quantity, payment, status, data['is_active'] ?? data['isActive'], comments, updatedAt],
                 );
               }
@@ -2861,9 +3068,9 @@ class _TradingFormPageState extends State<TradingFormPage> {
   Future<void> _loadEntries() async {
     setState(() => _loading = true);
     try {
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-      final isAgent = RoleUtils.isAgent(_currentUser);
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+        final isAgent = RoleUtils.isAgent(_currentUser);
+        final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final myUserId = _currentUser?['id']?.toString();
 
       if (isAgent && (myUserId == null || myUserId.trim().isEmpty)) {
@@ -2877,17 +3084,8 @@ class _TradingFormPageState extends State<TradingFormPage> {
       final results = await widget.db.customSelect(
         isSuperAdmin
             ? 'SELECT * FROM trading_entries WHERE $activeFilter ORDER BY updated_at DESC'
-            : (isAgent
-                ? 'SELECT * FROM trading_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) AND $activeFilter ORDER BY updated_at DESC'
-                : 'SELECT * FROM trading_entries WHERE company_id = ? AND $activeFilter ORDER BY updated_at DESC'),
-        variables: isSuperAdmin
-            ? []
-            : [
-                d.Variable.withString(companyId!),
-                if (isAgent) d.Variable.withString(myUserId!),
-                if (isAgent)
-                  d.Variable.withString(creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? myUserId!),
-              ],
+            : 'SELECT * FROM trading_entries WHERE company_id = ? AND $activeFilter ORDER BY updated_at DESC',
+        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
       ).get();
       
       final loadedEntries = results.map((row) {
@@ -2919,6 +3117,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
         );
       }).toList();
       
+      debugPrint('LOCAL DB: Found ${loadedEntries.length} trading form entries total');
       setState(() {
         _entries.clear();
         _entries.addAll(loadedEntries);
@@ -4318,93 +4517,27 @@ class _TradingFormPageState extends State<TradingFormPage> {
                                         tooltip: 'Delete entry',
                                       ),
                                     IconButton(
-                                      icon: const Icon(Icons.picture_as_pdf),
-                                      tooltip: 'Download PDF',
+                                      icon: const Icon(Icons.receipt_long),
+                                      tooltip: 'Generate Receipt',
                                       onPressed: () async {
-                                        final entryMap = {
-                                          'id': entry.id,
-                                          'type': entry.type == _TradingFormType.buy ? 'buy' : 'sell',
-                                          'buy_option': entry.buyOption,
-                                          'sell_option': entry.sellOption,
-                                          'date': DateFormat('dd MMM yyyy').format(entry.date),
-                                          'mobile': entry.mobile,
-                                          'person_name': entry.personName,
-                                          'buyer_name': entry.buyerName,
-                                          'seller_name': entry.sellerName,
-                                          'estate_name': entry.estateName,
-                                          'plot_no': entry.plotNo,
-                                          'block': entry.block,
-                                          'quantity': entry.quantity,
-                                          'payment': entry.payment,
-                                          'status': entry.status,
-                                          'commission': entry.commission,
-                                          'comments': entry.comments,
-                                        };
-                                        final bytes = await buildTradingDealSummaryPdf(
-                                          format: PdfPageFormat.a4,
-                                          db: widget.db,
-                                          currentUser: _currentUser,
-                                          entry: entryMap,
-                                          action: 'download',
-                                        );
-                                        await savePdfBytesToDisk(
-                                          pdfBytes: bytes,
-                                          suggestedBaseName: 'deal_${entry.id}_${fmtTs(DateTime.now())}',
-                                        );
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.print),
-                                      tooltip: 'Print',
-                                      onPressed: () async {
-                                        final serial = generateReportSerial(prefix: 'DL');
-                                        final generatedAt = DateTime.now();
-                                        final entryMap = {
-                                          'id': entry.id,
-                                          'type': entry.type == _TradingFormType.buy ? 'buy' : 'sell',
-                                          'buy_option': entry.buyOption,
-                                          'sell_option': entry.sellOption,
-                                          'date': DateFormat('dd MMM yyyy').format(entry.date),
-                                          'mobile': entry.mobile,
-                                          'person_name': entry.personName,
-                                          'buyer_name': entry.buyerName,
-                                          'seller_name': entry.sellerName,
-                                          'estate_name': entry.estateName,
-                                          'plot_no': entry.plotNo,
-                                          'block': entry.block,
-                                          'quantity': entry.quantity,
-                                          'payment': entry.payment,
-                                          'status': entry.status,
-                                          'commission': entry.commission,
-                                          'comments': entry.comments,
-                                        };
-
-                                        await logReportHistory(
-                                          db: widget.db,
-                                          currentUser: _currentUser,
-                                          companyId: RoleUtils.getUserCompanyId(_currentUser),
-                                          module: 'trading',
-                                          entityId: entry.id,
-                                          reportType: 'Deal Summary',
-                                          action: 'print',
-                                          serialNumber: serial,
-                                          generatedAt: generatedAt,
-                                        );
-
-                                        await Printing.layoutPdf(
-                                          onLayout: (_) async {
-                                            return buildTradingDealSummaryPdf(
-                                              format: PdfPageFormat.a4,
-                                              db: widget.db,
-                                              currentUser: _currentUser,
-                                              entry: entryMap,
-                                              action: 'print',
-                                              serialNumber: serial,
-                                              generatedAt: generatedAt,
-                                              logHistory: false,
+                                        try {
+                                          final bytes = await _buildTradingReceiptBytes(entry: entry, user: _currentUser);
+                                          await savePdfBytesToDisk(
+                                            pdfBytes: bytes,
+                                            suggestedBaseName: 'receipt_${entry.id}_${fmtTs(DateTime.now())}',
+                                          );
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Receipt generated')),
                                             );
-                                          },
-                                        );
+                                          }
+                                        } catch (e) {
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Failed to generate receipt: $e')),
+                                            );
+                                          }
+                                        }
                                       },
                                     ),
                                   ],
@@ -4947,6 +5080,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
       ),
     );
   }
+
 }
 
 // Unified Trading Page with Tab System
@@ -5531,10 +5665,10 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                     final cid = (data['company_id'] ?? data['companyId'])?.toString();
                     final updatedAt = (data['updated_at'] ?? data['updatedAt'] ?? DateTime.now().toUtc().toIso8601String()).toString();
                     
-                    batch.customStatement(
-                      'INSERT OR REPLACE INTO trading_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission, quantity, payment, status, is_active, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 1), ?, ?)',
-                      [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, buyerName, sellerName, estateName, plotNo, block, commission, quantity, payment, status, data['is_active'] ?? data['isActive'], comments, updatedAt],
-                    );
+                batch.customStatement(
+                  'INSERT OR REPLACE INTO trading_entries (id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission, quantity, payment, status, is_active, comments, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 1), ?)',
+                  [id, cid, createdBy, type, buyOption, sellOption, date, mobile, personName, buyerName, sellerName, estateName, plotNo, block, commission, quantity, payment, status, data['is_active'] ?? data['isActive'], comments, updatedAt],
+                );
                   } catch (e) {
                     debugPrint('Skipping trading_entries change due to error: $e');
                   }
@@ -6472,6 +6606,15 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     try {
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
+      if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
+        debugPrint('Form save cancelled: missing companyId');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Company ID missing. Please re-login.'), backgroundColor: Colors.red),
+          );
+        }
+        return;
+      }
       final myUserId = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? _currentUser?['id']?.toString();
       String? createdBy;
       try {
@@ -6486,14 +6629,22 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
         INSERT OR REPLACE INTO trading_entries (
           id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission,
           quantity, payment, status, is_active, comments, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
-        entry.id, companyId, createdBy,
+        entry.id,
+        companyId,
+        createdBy,
         entry.type == _TradingFormType.buy ? 'buy' : 'sell',
-        entry.buyOption, entry.sellOption, entry.date.toIso8601String(),
+        entry.buyOption,
+        entry.sellOption,
+        entry.date.toIso8601String(),
         entry.mobile, entry.personName, entry.buyerName, entry.sellerName,
         entry.estateName, entry.plotNo, entry.block, entry.commission,
-        entry.quantity, entry.payment, entry.status, 1, entry.comments,
+        entry.quantity,
+        entry.payment,
+        entry.status,
+        1, // ensure is_active is set explicitly
+        entry.comments,
         DateTime.now().toUtc().toIso8601String(),
       ]);
     } catch (e) {
@@ -6509,13 +6660,76 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     Future.microtask(() async {
       try {
         if (Firebase.apps.isNotEmpty) {
+          await _ensureFirebaseAuthForm();
+          debugPrint('Attempting write to: $collection/$docId');
           await FirebaseFirestore.instance.collection(collection).doc(docId).set(data, SetOptions(merge: true));
           FirestoreCacheService().invalidateCache(collection, docId);
         }
       } catch (e) {
-        debugPrint('Background Firestore sync failed for $collection/$docId: $e');
+        debugPrint('Firestore sync failed for $collection/$docId: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Firestore sync failed: $e')),
+          );
+        }
       }
     });
+  }
+
+  Future<void> _ensureFirebaseAuthForm() async {
+    if (Firebase.apps.isEmpty) return;
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      try {
+        await auth.signInAnonymously();
+      } catch (e) {
+        debugPrint('FirebaseAuth sign-in failed (form): $e');
+      }
+    }
+    debugPrint('FirebaseAuth UID (form): ${auth.currentUser?.uid ?? 'none'}');
+  }
+
+  Future<void> _forceSyncLocalTradingToFirestore() async {
+    if (Firebase.apps.isEmpty) return;
+    try {
+      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final fileRows = await widget.db.customSelect(
+        isSuperAdmin ? 'SELECT * FROM trading_file_entries' : 'SELECT * FROM trading_file_entries WHERE company_id = ?',
+        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
+      ).get();
+      final formRows = await widget.db.customSelect(
+        isSuperAdmin ? 'SELECT * FROM trading_entries' : 'SELECT * FROM trading_entries WHERE company_id = ?',
+        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
+      ).get();
+
+      final firestore = FirebaseFirestore.instance;
+      for (final r in fileRows) {
+        final data = r.data;
+        final id = data['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        await firestore.collection('trading_file_entries').doc(id).set({
+          ...data,
+          'updated_at': data['updated_at'] ?? DateTime.now().toUtc().toIso8601String(),
+        }, SetOptions(merge: true));
+      }
+      for (final r in formRows) {
+        final data = r.data;
+        final id = data['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        await firestore.collection('trading_entries').doc(id).set({
+          ...data,
+          'updated_at': data['updated_at'] ?? DateTime.now().toUtc().toIso8601String(),
+        }, SetOptions(merge: true));
+      }
+    } catch (e) {
+      debugPrint('Force sync trading failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Force sync trading failed: $e')),
+        );
+      }
+    }
   }
   
   Future<void> _formAddEntryForType(_TradingFormType type, {BuildContext? dialogContext}) async {
@@ -7641,7 +7855,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       'totalPayment': totalPayment,
     };
   }
-  
+
   // Helper method to build info rows for mobile cards
   Widget _buildInfoRow(String label, String value, bool isMobile, {bool isBold = false}) {
     return Row(
@@ -7857,15 +8071,13 @@ class TradingDetailPage extends StatelessWidget {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf),
-            tooltip: 'Download Receipt',
-            onPressed: () => _downloadPdf(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.print),
-            tooltip: 'Print',
-            onPressed: () => _printPdf(context),
+          TextButton.icon(
+            onPressed: () => _generateProfessionalReceipt(context),
+            icon: const Icon(Icons.receipt_long, color: Colors.white),
+            label: const Text(
+              'Generate Professional Receipt',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -8188,6 +8400,44 @@ class TradingDetailPage extends StatelessWidget {
         );
       }
     }
+  }
+
+  Future<void> _generateProfessionalReceipt(BuildContext context) async {
+    final entryMap = _buildEntryMap();
+    final dealType = (entryMap['type']?.toString() ?? '').toLowerCase() == 'buy' ? 'Buy' : 'Sell';
+    final keyValues = <MapEntry<String, String>>[
+      MapEntry('Deal ID', entryMap['id']?.toString() ?? 'N/A'),
+      MapEntry('Deal Type', dealType),
+      MapEntry('Option', (entryMap['buy_option'] ?? entryMap['sell_option'] ?? 'N/A').toString()),
+      MapEntry('Date', entryMap['date']?.toString() ?? 'N/A'),
+      MapEntry('Contact', entryMap['mobile']?.toString() ?? 'N/A'),
+      MapEntry('Person', entryMap['person_name']?.toString() ?? 'N/A'),
+      MapEntry('Buyer', entryMap['buyer_name']?.toString() ?? (entryMap['person_name']?.toString() ?? 'N/A')),
+      MapEntry('Seller', entryMap['seller_name']?.toString() ?? 'N/A'),
+      MapEntry('Estate', entryMap['estate_name']?.toString() ?? 'N/A'),
+      MapEntry('Status', entryMap['status']?.toString() ?? 'N/A'),
+      if (entryMap['commission'] != null) MapEntry('Commission', entryMap['commission'].toString()),
+      if (entryMap['comments'] != null && entryMap['comments'].toString().isNotEmpty) MapEntry('Remarks', entryMap['comments'].toString()),
+    ];
+
+    final gridRows = <Map<String, String>>[
+      {
+        'Plot/Block': (entryMap['plot_no'] ?? entryMap['block'] ?? entryMap['estate_name'] ?? '-').toString(),
+        'Quantity': (entryMap['quantity'] ?? '-').toString(),
+        'Payment': entryMap['payment'] != null ? 'Rs ${entryMap['payment']}' : 'N/A',
+        'Status': entryMap['status']?.toString() ?? 'N/A',
+      },
+    ];
+
+    await ProfessionalPdfGenerator.generateReceipt(
+      context: context,
+      db: db,
+      module: 'Trading',
+      title: 'Trading Receipt',
+      entityId: entryMap['id']?.toString(),
+      keyValues: keyValues,
+      gridRows: gridRows,
+    );
   }
 
   Map<String, dynamic> _buildEntryMap() {

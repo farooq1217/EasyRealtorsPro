@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, compute;
@@ -27,6 +27,7 @@ import '../../core/services/auth_service.dart';
 import '../../login_page.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart' show buildKeyValueReportPdf, loadCurrentUserFromStorage, loadReportBranding, savePdfBytesToDisk, generateReportSerial, logReportHistory;
+import '../../core/professional_pdf_generator.dart';
 import '../../core/app_utils.dart';
 import '../../core/shared_utils.dart';
 import '../../core/services/firestore_cache_service.dart';
@@ -1092,41 +1093,19 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                         ),
                                         FilledButton.icon(
                                           icon: const Icon(Icons.visibility, size: 16),
-                                          label: const Text('Action'),
+                                          label: const Text('Details'),
                                           style: FilledButton.styleFrom(
                                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                             textStyle: const TextStyle(fontSize: 12),
                                           ),
                                           onPressed: () {
-                                            // Show detail dialog instead of navigating to detail page
-                                            showDialog(
-                                              context: context,
-                                              builder: (context) => AlertDialog(
-                                                title: Text(r['name']?.toString() ?? 'Rental Item Details'),
-                                                content: SingleChildScrollView(
-                                                  child: Column(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      if (r['price'] != null)
-                                                        Text('Price: ${r['price']}'),
-                                                      if (r['owner_name'] != null)
-                                                        Text('Owner: ${r['owner_name']}'),
-                                                      if (r['contact_no'] != null)
-                                                        Text('Contact: ${r['contact_no']}'),
-                                                      if (r['location'] != null)
-                                                        Text('Location: ${r['location']}'),
-                                                      if (r['sale_status'] != null)
-                                                        Text('Status: ${r['sale_status']}'),
-                                                    ],
-                                                  ),
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => RentalDetailPage(
+                                                  entry: r,
+                                                  db: widget.db,
                                                 ),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () => Navigator.pop(context),
-                                                    child: const Text('Close'),
-                                                  ),
-                                                ],
                                               ),
                                             );
                                           },
@@ -1607,6 +1586,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _currentUser; // Current logged-in user info
   bool _isSuperAdmin = true; // Force super admin - always true
   // Dashboard statistics
+  int _dashboardActiveFiles = 0;
+  double _dashboardMonthlyExpenditure = 0;
+  int _dashboardTotalAgents = 0;
   int _totalFiles = 0;
   int _filesForSale = 0;
   int _filesSoldThisMonth = 0;
@@ -1971,24 +1953,24 @@ class _HomeScreenState extends State<HomeScreen> {
     if (alreadyDone) return;
 
     final statements = <String>[
-      'UPDATE societies SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE blocks SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE properties SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE property_comments SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE files_table SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE file_comments SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE rental_items SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE rental_comments SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE working_progress SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE working_comments SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE trading_file_entries SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE trading_entries SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE expenditures SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE expenditure_projects SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE reports SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE deletions SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE sync_logs SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
-      'UPDATE clients SET company_id = ? WHERE company_id IS NULL OR company_id = ""',
+      "UPDATE societies SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE blocks SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE properties SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE property_comments SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE files_table SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE file_comments SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE rental_items SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE rental_comments SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE working_progress SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE working_comments SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE trading_file_entries SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE trading_entries SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE expenditures SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE expenditure_projects SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE reports SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE deletions SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE sync_logs SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE clients SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
     ];
 
     try {
@@ -2077,6 +2059,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_db == null) return;
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1).toUtc().toIso8601String();
+    final monthKey = DateFormat('yyyy-MM').format(now);
+    final isSuper = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+    final companyId = RoleUtils.getUserCompanyId(_currentUser);
     
     // Calculate previous month range
     final prevMonth = DateTime(now.year, now.month - 1, 1);
@@ -2087,6 +2072,28 @@ class _HomeScreenState extends State<HomeScreen> {
     final tomorrow = today.add(const Duration(days: 1));
     final todayStr = today.toIso8601String().split('T')[0];
     final tomorrowStr = tomorrow.toIso8601String().split('T')[0];
+
+    // Headline stats (company-scoped)
+    final activeFilesRow = await _db!.customSelect(
+      isSuper
+          ? "SELECT COUNT(*) AS c FROM trading_entries WHERE (status IS NULL OR status != 'archived') AND (is_active IS NULL OR is_active = 1)"
+          : "SELECT COUNT(*) AS c FROM trading_entries WHERE (status IS NULL OR status != 'archived') AND (is_active IS NULL OR is_active = 1) AND company_id = ?",
+      variables: isSuper ? [] : [d.Variable.withString(companyId ?? '')],
+    ).getSingle();
+    final monthlyExpenditureRow = await _db!.customSelect(
+      isSuper
+          ? "SELECT COALESCE(SUM(amount), 0) AS total FROM expenditures WHERE kind = 'office' AND office_month = ?"
+          : "SELECT COALESCE(SUM(amount), 0) AS total FROM expenditures WHERE company_id = ? AND kind = 'office' AND office_month = ?",
+      variables: isSuper
+          ? [d.Variable.withString(monthKey)]
+          : [d.Variable.withString(companyId ?? ''), d.Variable.withString(monthKey)],
+    ).getSingle();
+    final totalAgentsRow = await _db!.customSelect(
+      isSuper
+          ? "SELECT COUNT(*) AS c FROM users WHERE (is_active IS NULL OR is_active = 1) AND (status IS NULL OR LOWER(status) = 'active')"
+          : "SELECT COUNT(*) AS c FROM users WHERE (is_active IS NULL OR is_active = 1) AND (status IS NULL OR LOWER(status) = 'active') AND (company_id = ? OR company_id = ?)",
+      variables: isSuper ? [] : [d.Variable.withString(companyId ?? ''), d.Variable.withString(companyId ?? '')],
+    ).getSingle();
 
     // Filing System statistics
     final totalFiles = await _db!.customSelect('SELECT COUNT(*) AS c FROM files_table', readsFrom: {_db!.filesTable}).getSingle();
@@ -2180,6 +2187,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     setState(() {
+      _dashboardActiveFiles = activeFilesRow.data['c'] as int? ?? 0;
+      _dashboardMonthlyExpenditure = (monthlyExpenditureRow.data['total'] as num?)?.toDouble() ?? 0.0;
+      _dashboardTotalAgents = totalAgentsRow.data['c'] as int? ?? 0;
       _totalFiles = totalFiles.data['c'] as int;
       _filesForSale = filesForSale.data['c'] as int;
       _filesSoldThisMonth = filesSoldThisMonth.data['c'] as int;
@@ -3042,57 +3052,33 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: Row(
             children: [
-              // Filing System - Sold This Month
               Expanded(
                 child: StatCard(
-                  label: 'Sold This Month',
-                  value: '$_filesSoldThisMonth',
-                  icon: Icons.check_circle,
-                  color: Colors.green,
-                  trendText: _filesSoldLastMonth > 0 
-                    ? 'â–¼ ${(((_filesSoldThisMonth - _filesSoldLastMonth) / _filesSoldLastMonth) * 100).toStringAsFixed(0)}% vs. Last Month'
-                    : _filesSoldThisMonth > 0 
-                      ? 'â–² New this month'
-                      : null,
-                  onTap: () {
-                    _showDetailedData('Files Sold This Month', 'files', 'sold');
-                  },
+                  label: 'Total Active Files',
+                  value: '$_dashboardActiveFiles',
+                  icon: Icons.folder_copy,
+                  color: Colors.blue,
+                  onTap: () => _showDetailedData('Active Files', 'files', 'total'),
                 ),
               ),
               const SizedBox(width: 16),
-              // Properties - Sold This Month
               Expanded(
                 child: StatCard(
-                  label: 'Sold This Month',
-                  value: '$_propertiesSoldThisMonth',
-                  icon: Icons.check_circle,
-                  color: Colors.green,
-                  trendText: _propertiesSoldLastMonth > 0 
-                    ? 'â–¼ ${(((_propertiesSoldThisMonth - _propertiesSoldLastMonth) / _propertiesSoldLastMonth) * 100).toStringAsFixed(0)}% vs. Last Month'
-                    : _propertiesSoldThisMonth > 0 
-                      ? 'â–² New this month'
-                      : null,
-                  onTap: () {
-                    _showDetailedData('Properties Sold This Month', 'properties', 'sold');
-                  },
+                  label: 'Monthly Expenditure',
+                  value: NumberFormat('#,##0').format(_dashboardMonthlyExpenditure),
+                  icon: Icons.receipt_long,
+                  color: Colors.orange,
+                  onTap: () => _showDetailedData('Monthly Expenditure', 'expenditure', 'total'),
                 ),
               ),
               const SizedBox(width: 16),
-              // Rental Items - Rent This Month (renamed from Sold This Month)
               Expanded(
                 child: StatCard(
-                  label: 'Rent This Month',
-                  value: '$_rentalItemsSoldThisMonth',
-                  icon: Icons.check_circle,
-                  color: Colors.green,
-                  trendText: _rentalItemsSoldLastMonth > 0 
-                    ? 'â–¼ ${(((_rentalItemsSoldThisMonth - _rentalItemsSoldLastMonth) / _rentalItemsSoldLastMonth) * 100).toStringAsFixed(0)}% vs. Last Month'
-                    : _rentalItemsSoldThisMonth > 0 
-                      ? 'â–² New this month'
-                      : null,
-                  onTap: () {
-                    _showDetailedData('Rental Items Rent This Month', 'rental', 'sold');
-                  },
+                  label: 'Total Agents',
+                  value: '$_dashboardTotalAgents',
+                  icon: Icons.group,
+                  color: Colors.purple,
+                  onTap: () => _showDetailedData('Agents', 'users', 'agent'),
                 ),
               ),
             ],
@@ -6872,6 +6858,49 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
       }
     }
   }
+
+  Future<void> _generateProfessionalReceipt() async {
+    final entry = widget.entryData;
+    final isTransfer = entry['type']?.toString() == 'transfer' ||
+        (entry['type']?.toString()?.isEmpty ?? true && entry['category'] != null);
+    final title = isTransfer ? 'Transfer Receipt' : 'Client Requirements Receipt';
+
+    final keyValues = <MapEntry<String, String>>[
+      MapEntry('Reference', entry['id']?.toString() ?? 'N/A'),
+      MapEntry('Type', isTransfer ? 'Transfer' : 'Client Requirement'),
+      MapEntry('Status', entry['status']?.toString() ?? 'N/A'),
+      if (entry['category'] != null) MapEntry('Category', entry['category']?.toString() ?? 'N/A'),
+      MapEntry('Client Name', entry['name']?.toString() ?? 'N/A'),
+      MapEntry('Client Mobile', entry['clientMobile']?.toString() ?? 'N/A'),
+      if (entry['plotNo'] != null) MapEntry('Plot No.', entry['plotNo']?.toString() ?? 'N/A'),
+      if (entry['registryNumber'] != null) MapEntry('Registry/Transfer #', entry['registryNumber']?.toString() ?? 'N/A'),
+      if (entry['transferDate'] != null || entry['transfer_date'] != null)
+        MapEntry('Date', (entry['transferDate'] ?? entry['transfer_date'])?.toString().split('T').first ?? 'N/A'),
+      if (entry['nextWorkingDate'] != null || entry['next_working_date'] != null)
+        MapEntry('Next Working Date', (entry['nextWorkingDate'] ?? entry['next_working_date'])?.toString().split('T').first ?? 'N/A'),
+      MapEntry('Updated', (entry['updated_at'] ?? entry['updatedAt'])?.toString().split('T').first ?? 'N/A'),
+      if (entry['remarks'] != null && entry['remarks'].toString().trim().isNotEmpty) MapEntry('Remarks', entry['remarks'].toString()),
+    ];
+
+    final gridRows = <Map<String, String>>[
+      {
+        'Client': entry['name']?.toString() ?? 'N/A',
+        'Plot/Block': (entry['plotNo'] ?? entry['registryNumber'] ?? '-').toString(),
+        'Status': entry['status']?.toString() ?? 'N/A',
+        'Next Date': ((entry['nextWorkingDate'] ?? entry['next_working_date']) ?? '-').toString(),
+      },
+    ];
+
+    await ProfessionalPdfGenerator.generateReceipt(
+      context: context,
+      db: widget.db,
+      module: 'Rental',
+      title: title,
+      entityId: entry['id']?.toString(),
+      keyValues: keyValues,
+      gridRows: gridRows,
+    );
+  }
   
   /// Helper to load font bytes
   Future<Uint8List?> _tryLoadRobotoBytes(String assetPath) async {
@@ -7112,16 +7141,14 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
             ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf),
-              onPressed: _downloadPdf,
-              tooltip: 'Download PDF',
+          TextButton.icon(
+            onPressed: _generateProfessionalReceipt,
+            icon: const Icon(Icons.receipt_long, color: Colors.white),
+            label: const Text(
+              'Generate Professional Receipt',
+              style: TextStyle(color: Colors.white),
             ),
-            IconButton(
-              icon: const Icon(Icons.print),
-              onPressed: _printDocument,
-              tooltip: 'Print',
-            ),
+          ),
           ],
         ),
         body: Container(
@@ -7252,6 +7279,156 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
                 ),
               );
             },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class RentalDetailPage extends StatelessWidget {
+  final Map<String, dynamic> entry;
+  final AppDatabase db;
+
+  const RentalDetailPage({super.key, required this.entry, required this.db});
+
+  List<MapEntry<String, String>> _keyValues() {
+    return [
+      MapEntry('Property Type', entry['name']?.toString() ?? 'N/A'),
+      MapEntry('Owner Name', entry['owner_name']?.toString() ?? 'N/A'),
+      MapEntry('Monthly Rent', entry['price']?.toString() ?? 'N/A'),
+      MapEntry('Security', entry['security']?.toString() ?? 'N/A'),
+      MapEntry('Location', entry['location']?.toString() ?? 'N/A'),
+      MapEntry('Status', entry['sale_status']?.toString() ?? 'N/A'),
+      MapEntry('Contact', entry['contact_no']?.toString() ?? 'N/A'),
+      MapEntry('Updated At', entry['updated_at']?.toString().split('T').first ?? 'N/A'),
+      if ((entry['remarks'] ?? '').toString().trim().isNotEmpty) MapEntry('Remarks', entry['remarks'].toString()),
+    ];
+  }
+
+  List<Map<String, String>> _gridRows() {
+    return [
+      {
+        'Property Type': entry['name']?.toString() ?? 'N/A',
+        'Owner Name': entry['owner_name']?.toString() ?? 'N/A',
+        'Monthly Rent': entry['price']?.toString() ?? 'N/A',
+        'Security': entry['security']?.toString() ?? 'N/A',
+      },
+    ];
+  }
+
+  Future<void> _generateReceipt(BuildContext context) async {
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: SizedBox(
+          width: 240,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Generating receipt...'),
+            ],
+          ),
+        ),
+      ),
+    );
+    try {
+      await ProfessionalPdfGenerator.generateReceipt(
+        context: context,
+        db: db,
+        module: 'Rental',
+        title: 'Rental Receipt',
+        entityId: entry['id']?.toString(),
+        keyValues: _keyValues(),
+        gridRows: _gridRows(),
+      );
+    } finally {
+      if (context.mounted) Navigator.of(context).pop();
+    }
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 150,
+            child: Text(label, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+          ),
+          Expanded(child: Text(value, style: GoogleFonts.poppins())),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final kv = _keyValues();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Rental Details'),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFFF6B35), // Orange/Coral
+                Color(0xFF4A90E2), // Blue accent for contrast
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: Colors.white),
+            onPressed: () => _generateReceipt(context),
+            icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+            label: const Text(
+              'Generate Professional Receipt',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFFFF6B35).withOpacity(0.03),
+              const Color(0xFF4A90E2).withOpacity(0.03),
+            ],
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Card(
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(entry['name']?.toString() ?? 'Rental Item',
+                      style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 12),
+                  Divider(color: Colors.grey.shade300),
+                  const SizedBox(height: 12),
+                  ...kv.map((e) => _infoRow(e.key, e.value)),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -9202,15 +9379,48 @@ class _UsersPageState extends State<UsersPage> {
           SetOptions(merge: true),
         );
 
-        await FirebaseFirestore.instance.collection('user_audit_logs').add(
+        // Build readable log id: YYYYMMDD_HHMMSS_userId
+        String _pad2(int v) => v.toString().padLeft(2, '0');
+        final now = DateTime.now().toUtc();
+        final logId =
+            '${now.year}${_pad2(now.month)}${_pad2(now.day)}_${_pad2(now.hour)}${_pad2(now.minute)}${_pad2(now.second)}_${id.toString()}';
+        final actorName = (_currentUser?['name'] ?? _currentUser?['email'] ?? _currentUser?['username'])?.toString();
+        final companyId = RoleUtils.getUserCompanyId(_currentUser);
+
+        // Local audit log for offline visibility
+        try {
+          await widget.db.customStatement(
+            'CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, action TEXT, target_id TEXT, target_type TEXT, actor_id TEXT, actor_name TEXT, company_id TEXT, created_at TEXT, metadata TEXT)',
+          );
+          await widget.db.customStatement(
+            'INSERT OR REPLACE INTO audit_logs (id, action, target_id, target_type, actor_id, actor_name, company_id, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+              logId,
+              'User Deactivated',
+              id,
+              'user',
+              _currentUser?['id']?.toString(),
+              actorName,
+              companyId,
+              nowIso,
+              null
+            ],
+          );
+        } catch (e) {
+          debugPrint('Local audit log insert failed: $e');
+        }
+
+        await FirebaseFirestore.instance.collection('user_audit_logs').doc(logId).set(
           {
-            'action': 'user_deactivated',
+            'action': 'User Deactivated',
             'target_user_id': id,
             'deleted_at': nowIso,
             'deleted_by_id': _currentUser?['id']?.toString(),
-            'deleted_by_name': (_currentUser?['name'] ?? _currentUser?['email'] ?? _currentUser?['username'])?.toString(),
-            'company_id': RoleUtils.getUserCompanyId(_currentUser),
-            'companyId': RoleUtils.getUserCompanyId(_currentUser),
+            'deleted_by_name': actorName,
+            'company_id': companyId,
+            'companyId': companyId,
+            'created_at': nowIso,
+            'id': logId,
           },
         );
       } catch (e) {

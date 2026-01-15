@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle, KeyDownEvent, LogicalKeyboardKey, FilteringTextInputFormatter, Clipboard, ClipboardData;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -16,6 +17,7 @@ import 'package:drift/drift.dart' as d;
 import '../../core/services/auth_service.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart' show buildKeyValueReportPdf, loadCurrentUserFromStorage, loadReportBranding, savePdfBytesToDisk, generateReportSerial, logReportHistory;
+import '../../core/professional_pdf_generator.dart';
 import '../../core/app_utils.dart';
 import '../../core/shared_utils.dart';
 import '../../core/services/firestore_cache_service.dart';
@@ -126,9 +128,34 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
     }
     try {
       debugPrint('DEBUG: syncCompaniesFromFirestore started...');
-      final snap = await FirebaseFirestore.instance.collection('companies').get();
+      final firestore = FirebaseFirestore.instance;
+      final snap = await firestore.collection('companies').get();
       debugPrint('Firestore docs found: ${snap.docs.length}');
-      if (snap.docs.isEmpty) return;
+      if (snap.docs.isEmpty) {
+        final isSuper = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+        if (isSuper) {
+          final nowIso = DateTime.now().toUtc().toIso8601String();
+          final cid = RoleUtils.getUserCompanyId(_currentUser) ?? 'default_company';
+          final cname = (_currentUser?['company_name'] ?? _currentUser?['companyName'] ?? 'Default Company').toString();
+          final tier = (_currentUser?['subscription_tier'] ?? _currentUser?['subscriptionTier'] ?? 'Starter').toString();
+          final status = (_currentUser?['status'] ?? 'active').toString();
+          try {
+            debugPrint('No companies found; creating default company $cid');
+            await firestore.collection('companies').doc(cid).set({
+              'id': cid,
+              'name': cname,
+              'status': status,
+              'subscription_tier': tier,
+              'max_user_limit': _currentUser?['max_user_limit'] ?? 5,
+              'created_at': nowIso,
+              'updated_at': nowIso,
+            }, SetOptions(merge: true));
+          } on FirebaseException catch (e) {
+            debugPrint('Failed to auto-create default company: $e');
+          }
+        }
+        return;
+      }
 
       final nowIso = DateTime.now().toUtc().toIso8601String();
       await widget.db.batch((batch) {
@@ -195,9 +222,25 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
     _initNoteStreams();
     Future.microtask(() async {
       await _loadCurrentUser();
+      await _backfillLocalCompanyIds();
+      await _ensureFirebaseAuth();
       await _loadSavedEntries();
+      await _forceSyncLocalUsersToFirestore();
       _checkAndShowNotifications();
     });
+  }
+
+  Future<void> _ensureFirebaseAuth() async {
+    if (Firebase.apps.isEmpty) return;
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      try {
+        await auth.signInAnonymously();
+      } catch (e) {
+        debugPrint('FirebaseAuth sign-in failed: $e');
+      }
+    }
+    debugPrint('FirebaseAuth UID (agents): ${auth.currentUser?.uid ?? 'none'}');
   }
 
   /// Background sync to Firestore (non-blocking, doesn't delay UI)
@@ -211,16 +254,102 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
     Future.microtask(() async {
       try {
         if (Firebase.apps.isNotEmpty) {
+          await _ensureFirebaseAuth();
+          debugPrint('Attempting write to: $collection/$docId');
           final firestore = FirebaseFirestore.instance;
           await firestore.collection(collection).doc(docId).set(data, SetOptions(merge: true));
           // Invalidate cache after successful sync
           FirestoreCacheService().invalidateCache(collection, docId);
         }
       } catch (e) {
-        debugPrint('Background Firestore sync failed for $collection/$docId: $e');
-        // Sync will retry automatically when connectivity is restored
+        debugPrint('Firestore sync failed for $collection/$docId: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Firestore sync failed: $e')),
+          );
+        }
       }
     });
+  }
+
+  Future<void> _forceSyncLocalUsersToFirestore() async {
+    if (Firebase.apps.isEmpty) return;
+    await _ensureFirebaseAuth();
+    final uid = AuthService.currentUser?['uid'] ??
+        AuthService.currentUser?['user_uid'] ??
+        AuthService.currentUser?['userId'] ??
+        AuthService.currentUser?['user_id'] ??
+        _currentUser?['uid'] ??
+        _currentUser?['id'];
+    if (uid == null || uid.toString().isEmpty) {
+      debugPrint('Force sync users skipped: no Firebase UID');
+      return;
+    }
+    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    if (companyId == null || companyId.toString().isEmpty) {
+      debugPrint('Force sync users skipped: missing companyId');
+      return;
+    }
+    try {
+      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final users = await widget.db.customSelect(
+        isSuperAdmin ? 'SELECT * FROM users' : 'SELECT * FROM users WHERE company_id = ?',
+        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
+      ).get();
+      final firestore = FirebaseFirestore.instance;
+      for (final u in users) {
+        final data = u.data;
+        final idRaw = data['id']?.toString() ?? '';
+        final emailId = (data['email'] ?? '').toString().toLowerCase();
+        final docId = emailId.isNotEmpty ? emailId : idRaw;
+        if (docId.isEmpty) continue;
+        // Enforce company_id presence before upload
+        final cid = (data['company_id'] ?? data['companyId'])?.toString();
+        if (cid == null || cid.isEmpty) {
+          debugPrint("Skipping user ${data['email']} - missing company_id");
+          continue;
+        }
+        debugPrint("Uploading User ${data['email']} with Company ID: ${cid}");
+        debugPrint('Attempting write to: users/$docId');
+        await firestore.collection('users').doc(docId).set(
+          {
+            ...data,
+            'company_id': cid,
+            'updated_at': data['updated_at'] ?? DateTime.now().toUtc().toIso8601String(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+    } catch (e) {
+      debugPrint('Force sync users failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Force sync users failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _backfillLocalCompanyIds() async {
+    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    if (companyId == null || companyId.isEmpty) return;
+    try {
+      await widget.db.customStatement(
+        "UPDATE users SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+        [companyId],
+      );
+      await widget.db.customStatement(
+        "UPDATE trading_entries SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+        [companyId],
+      );
+      await widget.db.customStatement(
+        "UPDATE trading_file_entries SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+        [companyId],
+      );
+      debugPrint('Backfilled company_id to local users/trading for company: $companyId');
+    } catch (e) {
+      debugPrint('Backfill company_id failed: $e');
+    }
   }
 
   Future<void> _checkAndShowNotifications() async {
@@ -2832,6 +2961,45 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
       }
     }
   }
+
+  Future<void> _generateProfessionalReceipt() async {
+    final entry = widget.entryData;
+    final isTransfer = entry['type']?.toString() == 'transfer' ||
+        (entry['type']?.toString()?.isEmpty ?? true && entry['category'] != null);
+    final title = 'Agent Working Receipt';
+
+    final keyValues = <MapEntry<String, String>>[
+      MapEntry('ID', entry['id']?.toString() ?? 'N/A'),
+      MapEntry('Type', isTransfer ? 'Transfer' : 'Client Requirement'),
+      MapEntry('Status', entry['status']?.toString() ?? 'N/A'),
+      MapEntry('Category', entry['category']?.toString() ?? 'N/A'),
+      MapEntry('Client', entry['name']?.toString() ?? 'N/A'),
+      MapEntry('Client Mobile', entry['clientMobile']?.toString() ?? 'N/A'),
+      MapEntry('From User', entry['fromUser']?.toString() ?? 'N/A'),
+      MapEntry('To User', entry['toUser']?.toString() ?? 'N/A'),
+      MapEntry('Updated', (entry['updated_at'] ?? entry['updatedAt'])?.toString().split('T').first ?? 'N/A'),
+      if (entry['remarks'] != null && entry['remarks'].toString().trim().isNotEmpty) MapEntry('Remarks', entry['remarks'].toString()),
+    ];
+
+    final gridRows = <Map<String, String>>[
+      {
+        'Plot/Block': (entry['plotNo'] ?? entry['registryNumber'] ?? '-').toString(),
+        'Next Date': ((entry['nextWorkingDate'] ?? entry['next_working_date']) ?? '-').toString(),
+        'Status': entry['status']?.toString() ?? 'N/A',
+        'Company': entry['companyId']?.toString() ?? 'N/A',
+      },
+    ];
+
+    await ProfessionalPdfGenerator.generateReceipt(
+      context: context,
+      db: widget.db,
+      module: 'AgentWorking',
+      title: title,
+      entityId: entry['id']?.toString(),
+      keyValues: keyValues,
+      gridRows: gridRows,
+    );
+  }
   
   
   /// Helper to load font bytes
@@ -3114,16 +3282,14 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
             ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf),
-              onPressed: _downloadPdf,
-              tooltip: 'Download PDF',
+          TextButton.icon(
+            onPressed: _generateProfessionalReceipt,
+            icon: const Icon(Icons.receipt_long, color: Colors.white),
+            label: const Text(
+              'Generate Professional Receipt',
+              style: TextStyle(color: Colors.white),
             ),
-            IconButton(
-              icon: const Icon(Icons.print),
-              onPressed: _printDocument,
-              tooltip: 'Print',
-            ),
+          ),
           ],
         ),
         body: Container(
@@ -4293,6 +4459,7 @@ class _UsersPageState extends State<UsersPage> {
     }
 
     Future<void> _refreshUserLimit({required String companyId, required StateSetter setLocal}) async {
+      if (!mounted) return;
       if (_checkingUserLimit && _checkedCompanyId == companyId) return;
       final wasReached = _userLimitReached;
       _checkingUserLimit = true;
@@ -5487,15 +5654,47 @@ class _UsersPageState extends State<UsersPage> {
           },
           SetOptions(merge: true),
         );
-        await FirebaseFirestore.instance.collection('user_audit_logs').add(
+
+        String _pad2(int v) => v.toString().padLeft(2, '0');
+        final now = DateTime.now().toUtc();
+        final logId =
+            '${now.year}${_pad2(now.month)}${_pad2(now.day)}_${_pad2(now.hour)}${_pad2(now.minute)}${_pad2(now.second)}_${id.toString()}';
+        final actorName = (_currentUser?['name'] ?? _currentUser?['email'] ?? _currentUser?['username'])?.toString();
+
+        // Local audit log
+        try {
+          await widget.db.customStatement(
+            'CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, action TEXT, target_id TEXT, target_type TEXT, actor_id TEXT, actor_name TEXT, company_id TEXT, created_at TEXT, metadata TEXT)',
+          );
+          await widget.db.customStatement(
+            'INSERT OR REPLACE INTO audit_logs (id, action, target_id, target_type, actor_id, actor_name, company_id, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+              logId,
+              'User Deleted',
+              id,
+              'user',
+              _currentUser?['id']?.toString(),
+              actorName,
+              targetCompanyId,
+              nowIso,
+              null
+            ],
+          );
+        } catch (e) {
+          debugPrint('Local audit log insert failed: $e');
+        }
+
+        await FirebaseFirestore.instance.collection('user_audit_logs').doc(logId).set(
           {
-            'action': 'user_deleted',
+            'action': 'User Deleted',
             'target_user_id': id,
             'deleted_at': nowIso,
             'deleted_by_id': _currentUser?['id']?.toString(),
             'deleted_by_email': (_currentUser?['email'] ?? _currentUser?['username'])?.toString(),
             'company_id': targetCompanyId,
             'companyId': targetCompanyId,
+            'created_at': nowIso,
+            'id': logId,
           },
         );
       }
@@ -6683,12 +6882,44 @@ class _CompaniesPageState extends State<CompaniesPage> {
           },
           SetOptions(merge: true),
         );
-        await FirebaseFirestore.instance.collection('company_audit_logs').add({
-          'action': 'company_deleted',
+
+        String _pad2(int v) => v.toString().padLeft(2, '0');
+        final now = DateTime.now().toUtc();
+        final logId =
+            '${now.year}${_pad2(now.month)}${_pad2(now.day)}_${_pad2(now.hour)}${_pad2(now.minute)}${_pad2(now.second)}_${id.toString()}';
+        final actorName = (_currentUser?['name'] ?? _currentUser?['email'] ?? _currentUser?['username'])?.toString();
+
+        // Local audit log
+        try {
+          await widget.db.customStatement(
+            'CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, action TEXT, target_id TEXT, target_type TEXT, actor_id TEXT, actor_name TEXT, company_id TEXT, created_at TEXT, metadata TEXT)',
+          );
+          await widget.db.customStatement(
+            'INSERT OR REPLACE INTO audit_logs (id, action, target_id, target_type, actor_id, actor_name, company_id, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+              logId,
+              'Company Deleted',
+              id,
+              'company',
+              _currentUser?['id']?.toString(),
+              actorName,
+              (_currentUser?['company_id'] ?? _currentUser?['companyId'])?.toString(),
+              nowIso,
+              null
+            ],
+          );
+        } catch (e) {
+          debugPrint('Local audit log insert failed: $e');
+        }
+
+        await FirebaseFirestore.instance.collection('company_audit_logs').doc(logId).set({
+          'action': 'Company Deleted',
           'company_id': id,
           'deleted_at': nowIso,
           'deleted_by_id': _currentUser?['id']?.toString(),
           'deleted_by_email': (_currentUser?['email'] ?? _currentUser?['username'])?.toString(),
+          'created_at': nowIso,
+          'id': logId,
         });
       }
     } catch (e) {

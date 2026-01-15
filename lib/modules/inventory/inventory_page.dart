@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:drift/drift.dart' as d;
 import 'package:shared/shared.dart';
@@ -9,7 +9,9 @@ import '../../core/services/auth_service.dart';
 import '../../shimmer_widgets.dart';
 import '../../core/shared_utils.dart' show TopRightSearch, buildResponsiveInfoRow, InfoEntry;
 import '../../core/app_utils.dart' show pickAndCompressImage, showImageSourceDialog, uploadImageToFirebaseStorage, imageUrlsToJson, jsonToImageUrls, fmtTs;
+import '../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../professional_reports.dart' show buildKeyValueReportPdf, loadCurrentUserFromStorage, loadReportBranding, savePdfBytesToDisk;
+import '../../core/professional_pdf_generator.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart' show rootBundle;
 import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
@@ -72,7 +74,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
 
   Future<void> _loadSocietiesAndBlocks() async {
     if (!mounted) return;
-    final isSuper = RoleUtils.isSuperAdmin(_currentUser);
+    final isSuper = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
     // Use 'GLOBAL_ADMIN' for super admin, otherwise use the user's companyId
     final companyId = isSuper ? 'GLOBAL_ADMIN' : (RoleUtils.getUserCompanyId(_currentUser) ?? '');
     final soc = await widget.db.customSelect(
@@ -97,7 +99,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
   Future<void> _load() async {
     if (!mounted) return;
     setState(() => _loading = true);
-    final isSuper = RoleUtils.isSuperAdmin(_currentUser);
+    final isSuper = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
     final companyId = RoleUtils.getUserCompanyId(_currentUser);
     final table = _selectedType == 'Files' ? 'files_table' : 'properties';
     final clauses = <String>['is_active = 1'];
@@ -271,6 +273,41 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
     }
   }
 
+  Future<void> _generateProfessionalReceipt(BuildContext context) async {
+    if (_filteredRows.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No items to include in receipt')));
+      }
+      return;
+    }
+
+    final today = DateTime.now();
+    final keyValues = <MapEntry<String, String>>[
+      MapEntry('Type', _selectedType),
+      MapEntry('Items', _filteredRows.length.toString()),
+      MapEntry('Generated', today.toIso8601String().split('T').first),
+    ];
+
+    final gridRows = _filteredRows.take(50).map((item) {
+      return {
+        'Client': item['client_name']?.toString() ?? item['owner_name']?.toString() ?? '-',
+        'File/Property': (item['file_no'] ?? item['property_name'] ?? item['reference_no'] ?? '-').toString(),
+        'Price': (item['price'] ?? item['demand'] ?? '-').toString(),
+        'Status': item['sale_status']?.toString() ?? '-',
+      };
+    }).toList();
+
+    await ProfessionalPdfGenerator.generateReceipt(
+      context: context,
+      db: widget.db,
+      module: 'Inventory',
+      title: '$_selectedType Receipt',
+      entityId: gridRows.first['File/Property'],
+      keyValues: keyValues,
+      gridRows: gridRows,
+    );
+  }
+
   /// Helper to load font bytes
   Future<Uint8List?> _tryLoadRobotoBytes(String assetPath) async {
     try {
@@ -420,11 +457,6 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
               if (!mounted) return;
               setState(() => _q = q);
             }),
-          ),
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf),
-            tooltip: 'Export to PDF',
-            onPressed: () => _exportToPdf(context),
           ),
         ],
       ),
@@ -1326,8 +1358,14 @@ class InventoryDetailPage extends StatelessWidget {
           ),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.print), onPressed: () => _print(context)),
-          IconButton(icon: const Icon(Icons.download), onPressed: () => _downloadPdf()),
+          TextButton.icon(
+            onPressed: () => _generateProfessionalReceipt(context),
+            icon: const Icon(Icons.receipt_long, color: Colors.white),
+            label: const Text(
+              'Generate Professional Receipt',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
         ],
       ),
       body: Container(
@@ -1607,6 +1645,30 @@ class InventoryDetailPage extends StatelessWidget {
     await savePdfBytesToDisk(
       pdfBytes: bytes,
       suggestedBaseName: 'inventory_${type.toLowerCase()}_${entityId ?? 'detail'}_${fmtTs(DateTime.now())}',
+    );
+  }
+
+  Future<void> _generateProfessionalReceipt(BuildContext context) async {
+    final entityId = data['id']?.toString();
+    final title = '${type} Receipt';
+    final keyValues = _getAllFields();
+    final gridRows = <Map<String, String>>[
+      {
+        'Name': data['client_name']?.toString() ?? data['owner_name']?.toString() ?? '-',
+        'Reference': (data['file_no'] ?? data['property_name'] ?? data['reference_no'] ?? '-').toString(),
+        'Price': (data['price'] ?? data['demand'] ?? '-').toString(),
+        'Status': data['sale_status']?.toString() ?? '-',
+      },
+    ];
+
+    await ProfessionalPdfGenerator.generateReceipt(
+      context: context,
+      db: db,
+      module: 'Inventory',
+      title: title,
+      entityId: entityId,
+      keyValues: keyValues,
+      gridRows: gridRows,
     );
   }
 }

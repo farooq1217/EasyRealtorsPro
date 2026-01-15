@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:shared/shared.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
@@ -13,6 +14,7 @@ import 'package:drift/drift.dart' as d;
 import 'app_storage.dart' show AppStorage;
 
 class AuthService {
+  static Map<String, dynamic>? currentUser; // in-memory cache for immediate UI refresh
   static const String _usersFile = 'users.json';
   static const String _sessionsFile = 'sessions.json';
   static const String _resetCodesFile = 'reset_codes.json';
@@ -345,6 +347,21 @@ class AuthService {
     };
     
     await _writeUsers(users);
+
+    // Create Firebase Auth account when online
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email.toLowerCase(),
+          password: password,
+        );
+        debugPrint('FirebaseAuth: created user $email');
+      } on FirebaseAuthException catch (e) {
+        debugPrint('FirebaseAuth: createUser failed for $email: ${e.code}');
+      } catch (e) {
+        debugPrint('FirebaseAuth: createUser error for $email: $e');
+      }
+    }
     
     return {'success': true, 'message': 'Registration successful', 'userId': userId};
   }
@@ -735,6 +752,25 @@ class AuthService {
             : (user['is_first_login'] ?? user['isFirstLogin']) == true)
         ? true
         : false;
+    bool _isMissing(String? value) {
+      if (value == null) return true;
+      final v = value.trim();
+      if (v.isEmpty) return true;
+      final lower = v.toLowerCase();
+      return lower == 'n/a' || lower == 'null' || v == '0';
+    }
+
+    final resolvedName = (user['name'] ?? user['full_name'] ?? user['fullName'] ?? '').toString();
+    final resolvedPhone = (user['phone'] ?? user['mobile'] ?? user['contact_no'] ?? user['contactNo'] ?? '').toString();
+    final missingProfileFields = <String>[];
+    if (_isMissing(resolvedName)) missingProfileFields.add('Full Name');
+    if (_isMissing(resolvedPhone)) missingProfileFields.add('Phone');
+    final isAgentOrCompanyAdmin = RoleUtils.isAgent(user) || RoleUtils.isCompanyAdmin(user);
+    final hadLastLogin = user['lastLogin'] != null || user['last_login'] != null;
+    final requiresProfileCompletion = isAgentOrCompanyAdmin && missingProfileFields.isNotEmpty;
+    final profileRedirectMessage = requiresProfileCompletion
+        ? 'Please complete your profile to continue'
+        : null;
     
     // Allow null password bypass for Super Admin or explicit bypass email or first-login temp user
     if (storedPassword == null && (isSuperAdminUser || isBypassUser || isFirstLoginFlag)) {
@@ -861,6 +897,27 @@ class AuthService {
       }
     }
     
+    // Ensure Firebase Auth sign-in (or create on-demand) so Firestore writes are authenticated
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password);
+        debugPrint('FirebaseAuth: sign-in success for $emailKey');
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'user-not-found') {
+          try {
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(email: emailKey, password: password);
+            debugPrint('FirebaseAuth: created user on-demand $emailKey');
+          } catch (e2) {
+            debugPrint('FirebaseAuth: create-on-demand failed for $emailKey: $e2');
+          }
+        } else {
+          debugPrint('FirebaseAuth: sign-in failed for $emailKey: ${e.code}');
+        }
+      } catch (e) {
+        debugPrint('FirebaseAuth: sign-in error for $emailKey: $e');
+      }
+    }
+
     // Generate JWT token
     final token = _generateJWT(user['id'] as String, email, rememberMe: rememberMe);
     
@@ -899,6 +956,11 @@ class AuthService {
     settings['authToken'] = token;
     await storage.writeSettings(settings);
     
+    // One-time push of offline-created users to Firebase Auth (best-effort)
+    await _syncOfflineUsersToFirebaseAuth(users);
+    // Push local users & trading entries to Firestore now that auth is valid
+    await _pushLocalDataToFirestore(user);
+
     // Check if user needs to change password (is_first_login flag from database)
     // Note: This checks the database users table, not the JSON file
     bool requiresPasswordChange = false;
@@ -909,7 +971,7 @@ class AuthService {
       debugPrint('Error checking is_first_login: $e');
     }
     
-    return {
+    final loginResult = {
       'success': true,
       'message': 'Login successful',
       'security_updated': securityUpdated,
@@ -920,7 +982,150 @@ class AuthService {
       'email': email.toLowerCase(),
       'requires2FASetup': user['lastLogin'] == null && user['twoFactorEnabled'] == false,
       'requiresPasswordChange': requiresPasswordChange, // Will be checked in login page
+      'requiresProfileCompletion': requiresProfileCompletion,
+      'missingProfileFields': missingProfileFields,
+      'profileRedirectMessage': profileRedirectMessage,
     };
+    // Update in-memory current user for immediate UI consumers
+    AuthService.currentUser = user;
+    return loginResult;
+  }
+
+  /// Attempts to create Firebase Auth accounts for any local users missing there.
+  /// Uses stored plain password if available; otherwise assigns a temporary password and persists the hash locally.
+  Future<void> _syncOfflineUsersToFirebaseAuth(Map<String, dynamic> usersCache) async {
+    if (kIsWeb) return;
+    if (Firebase.apps.isEmpty) return;
+    try {
+      final auth = FirebaseAuth.instance;
+      final db = await AppDatabase.instance();
+      final rows = await db.customSelect(
+        'SELECT id, email, username, password_hash, is_active, status FROM users WHERE email IS NOT NULL AND email != ""',
+      ).get();
+      for (final row in rows) {
+        final data = row.data;
+        final email = (data['email'] ?? data['username'] ?? '').toString().toLowerCase();
+        if (email.isEmpty) continue;
+        try {
+          final methods = await auth.fetchSignInMethodsForEmail(email);
+          if (methods.isNotEmpty) continue; // already exists
+
+          // Try to find a usable password
+          final cacheUser = usersCache[email] as Map<String, dynamic>?;
+          final cachedPassword = cacheUser?['password']?.toString();
+          String? plainPassword;
+          if (cachedPassword != null && !cachedPassword.contains(':')) {
+            plainPassword = cachedPassword; // looks plain
+          }
+          plainPassword ??= 'Temp#${randomAlphaNumeric(10)}';
+
+          await auth.createUserWithEmailAndPassword(email: email, password: plainPassword);
+          debugPrint('FirebaseAuth: created offline user $email');
+
+          // Persist the new temp password hash locally so local login remains consistent
+          try {
+            final newHash = PasswordHasher.hash(plainPassword);
+            await db.customStatement(
+              'UPDATE users SET password_hash = ?, updated_at = ? WHERE email = ? OR username = ?',
+              [newHash, DateTime.now().toUtc().toIso8601String(), email, email],
+            );
+            if (cacheUser != null) {
+              cacheUser['password'] = newHash;
+              cacheUser['passwordHash'] = newHash;
+              usersCache[email] = cacheUser;
+              await _writeUsers(usersCache);
+            }
+          } catch (e) {
+            debugPrint('FirebaseAuth sync: failed to persist hash for $email: $e');
+          }
+        } catch (e) {
+          debugPrint('FirebaseAuth sync: skipping $email due to $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('FirebaseAuth sync: failed $e');
+    }
+  }
+
+  /// Push local users and trading data to Firestore after successful login (best-effort).
+  Future<void> _pushLocalDataToFirestore(Map<String, dynamic> user) async {
+    if (Firebase.apps.isEmpty) return;
+    try {
+      final db = await AppDatabase.instance();
+      final firestore = FirebaseFirestore.instance;
+      final email = (user['email'] ?? user['username'] ?? '').toString().toLowerCase();
+      final isSuper = email == 'mayof286@gmail.com';
+      final companyId = (user['company_id'] ?? user['companyId'])?.toString();
+      if (!isSuper && (companyId == null || companyId.isEmpty)) {
+        debugPrint('Push local data skipped: missing company_id');
+        return;
+      }
+
+      // Push users
+      final usersRows = await db.customSelect(
+        isSuper ? 'SELECT * FROM users' : 'SELECT * FROM users WHERE company_id = ?',
+        variables: isSuper ? [] : [d.Variable.withString(companyId!)],
+      ).get();
+      for (final r in usersRows) {
+        final data = r.data;
+        final cid = (data['company_id'] ?? data['companyId'])?.toString();
+        if (!isSuper && (cid == null || cid.isEmpty)) continue;
+        final docId = (data['email'] ?? data['username'] ?? data['id'] ?? '').toString().toLowerCase();
+        if (docId.isEmpty) continue;
+        await firestore.collection('users').doc(docId).set(
+          {
+            ...data,
+            'company_id': cid ?? companyId,
+            'updated_at': data['updated_at'] ?? DateTime.now().toUtc().toIso8601String(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+
+      // Push trading file entries
+      final fileRows = await db.customSelect(
+        isSuper ? 'SELECT * FROM trading_file_entries' : 'SELECT * FROM trading_file_entries WHERE company_id = ?',
+        variables: isSuper ? [] : [d.Variable.withString(companyId!)],
+      ).get();
+      for (final r in fileRows) {
+        final data = r.data;
+        final id = data['id']?.toString() ?? '';
+        final cid = (data['company_id'] ?? data['companyId'])?.toString();
+        if (id.isEmpty) continue;
+        if (!isSuper && (cid == null || cid.isEmpty)) continue;
+        await firestore.collection('trading_file_entries').doc(id).set(
+          {
+            ...data,
+            'company_id': cid ?? companyId,
+            'updated_at': data['updated_at'] ?? DateTime.now().toUtc().toIso8601String(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+
+      // Push trading form entries
+      final formRows = await db.customSelect(
+        isSuper ? 'SELECT * FROM trading_entries' : 'SELECT * FROM trading_entries WHERE company_id = ?',
+        variables: isSuper ? [] : [d.Variable.withString(companyId!)],
+      ).get();
+      for (final r in formRows) {
+        final data = r.data;
+        final id = data['id']?.toString() ?? '';
+        final cid = (data['company_id'] ?? data['companyId'])?.toString();
+        if (id.isEmpty) continue;
+        if (!isSuper && (cid == null || cid.isEmpty)) continue;
+        await firestore.collection('trading_entries').doc(id).set(
+          {
+            ...data,
+            'company_id': cid ?? companyId,
+            'updated_at': data['updated_at'] ?? DateTime.now().toUtc().toIso8601String(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+    } catch (e) {
+      debugPrint('Push local data to Firestore failed: $e');
+    }
   }
 
   String _getDeviceInfo() {
@@ -1161,6 +1366,7 @@ class AuthService {
           await _revokeSessionsByUserId(uid);
           return null;
         }
+        AuthService.currentUser = merged;
         return merged;
       }
       // Force Super Admin role and companyId for mayof286@gmail.com
@@ -1175,6 +1381,7 @@ class AuthService {
           return null;
         }
       }
+      AuthService.currentUser = cached;
       return cached;
     } catch (e) {
       debugPrint('AuthService: getCurrentUser DB fallback failed: $e');
@@ -1183,6 +1390,7 @@ class AuthService {
         cached['role'] = 'super_admin';
         cached['companyId'] = 'GLOBAL_ADMIN';
       }
+      AuthService.currentUser = cached;
       return cached;
     }
   }

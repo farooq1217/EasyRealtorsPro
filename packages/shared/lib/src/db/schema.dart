@@ -25,11 +25,13 @@ class Users extends Table {
   TextColumn get name => text().nullable()();
   TextColumn get email => text().nullable()();
   TextColumn get contactNo => text().nullable()();
+  TextColumn get role => text().nullable()();
   TextColumn get permissions => text().nullable()(); // JSON string storing permissions like {"role": "super_admin", "canView": true, "canAdd": false}
   TextColumn get companyId => text().nullable().references(Companies, #id)(); // null for Super Admin
   TextColumn get status => text().nullable()(); // 'active' or 'inactive'
   BoolColumn get isFirstLogin => boolean().withDefault(const Constant(true))(); // true for new Company Admins, forces password change
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  TextColumn get profilePicturePath => text().nullable()();
   TextColumn get createdAt => text().nullable()();
   TextColumn get updatedAt => text()();
   @override
@@ -319,7 +321,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -327,6 +329,8 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
           await _createSoftDeleteTriggers(m.database);
           await _safeAddIsActiveColumns(m.database); // ensure active flags exist even on fresh installs
+          await _safeAddUserProfileColumns(m.database); // ensure profile columns exist
+          await _ensureBusinessTables(m.database); // create trading/expenditure tables on fresh installs
           // Create Companies table if not already created
           await m.database.customStatement(
             'CREATE TABLE IF NOT EXISTS companies ('
@@ -359,7 +363,13 @@ class AppDatabase extends _$AppDatabase {
             ')'
           );
         },
+        beforeOpen: (details) async {
+          // Ensure business tables exist even when version is unchanged or DB was manually deleted
+          await _ensureBusinessTables(this);
+        },
         onUpgrade: (m, from, to) async {
+          // Always make sure core business tables exist after upgrades too
+          await _ensureBusinessTables(m.database);
           // v1 -> v2: ensure deletions exists and add transfer fields to working_progress
           if (from <= 1) {
             await m.createTable(deletions);
@@ -691,8 +701,107 @@ class AppDatabase extends _$AppDatabase {
           if (from < 22) {
             await _safeAddIsActiveColumns(m.database);
           }
+          if (from < 23) {
+            await _safeAddUserProfileColumns(m.database);
+          }
         },
       );
+}
+
+/// Ensures non-Drift business tables exist (trading & expenditure) for fresh DBs or after deletion.
+Future<void> _ensureBusinessTables(dynamic db) async {
+  // Support both GeneratedDatabase (customStatement) and raw QueryExecutor (runCustom)
+  Future<void> run(String sql) async {
+    if (db is GeneratedDatabase) {
+      await db.customStatement(sql);
+    } else if (db is QueryExecutor) {
+      await db.runCustom(sql, const []);
+    } else {
+      throw ArgumentError('Unsupported db type for _ensureBusinessTables');
+    }
+  }
+
+  // Trading file entries
+  await run('''
+    CREATE TABLE IF NOT EXISTS trading_file_entries (
+      id TEXT PRIMARY KEY,
+      company_id TEXT,
+      created_by TEXT,
+      type TEXT NOT NULL,
+      buy_option TEXT,
+      sell_option TEXT,
+      date TEXT NOT NULL,
+      mobile TEXT,
+      person_name TEXT,
+      estate TEXT,
+      quantity INTEGER,
+      payment REAL,
+      status TEXT NOT NULL DEFAULT 'Pending',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      comments TEXT,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+
+  // Trading form entries
+  await run('''
+    CREATE TABLE IF NOT EXISTS trading_entries (
+      id TEXT PRIMARY KEY,
+      company_id TEXT,
+      created_by TEXT,
+      type TEXT NOT NULL,
+      buy_option TEXT,
+      sell_option TEXT,
+      date TEXT NOT NULL,
+      mobile TEXT,
+      person_name TEXT,
+      buyer_name TEXT,
+      seller_name TEXT,
+      estate_name TEXT,
+      plot_no TEXT,
+      block TEXT,
+      commission REAL,
+      quantity INTEGER,
+      payment REAL,
+      status TEXT NOT NULL DEFAULT 'Pending',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      comments TEXT,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+
+  // Expenditures
+  await run('''
+    CREATE TABLE IF NOT EXISTS expenditures (
+      id TEXT PRIMARY KEY,
+      company_id TEXT,
+      created_by TEXT,
+      kind TEXT,
+      project_id TEXT,
+      category_id TEXT,
+      office_month TEXT,
+      category TEXT,
+      date TEXT NOT NULL,
+      description TEXT NOT NULL,
+      amount REAL NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+
+  // Expenditure projects
+  await run('''
+    CREATE TABLE IF NOT EXISTS expenditure_projects (
+      id TEXT PRIMARY KEY,
+      company_id TEXT,
+      created_by TEXT,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'project',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      closed_at TEXT
+    )
+  ''');
 }
 
 /// Adds is_active columns to critical tables and backfills active rows.
@@ -717,6 +826,10 @@ Future<void> _safeAddIsActiveColumns(GeneratedDatabase db) async {
     } catch (_) {}
   }
 
+  try {
+    print('[MIGRATION] ensured is_active columns on core and trading tables');
+  } catch (_) {}
+
   // Backfill to active so filtered queries don't hide existing rows
   for (final stmt in [
     'UPDATE companies SET is_active = 1 WHERE is_active IS NULL',
@@ -728,6 +841,37 @@ Future<void> _safeAddIsActiveColumns(GeneratedDatabase db) async {
       await db.customStatement(stmt);
     } catch (_) {}
   }
+}
+
+/// Ensures user profile-related columns exist for backward compatibility.
+Future<void> _safeAddUserProfileColumns(GeneratedDatabase db) async {
+  const statements = [
+    'ALTER TABLE users ADD COLUMN full_name TEXT',
+    'ALTER TABLE users ADD COLUMN fullName TEXT',
+    'ALTER TABLE users ADD COLUMN phone TEXT',
+    'ALTER TABLE users ADD COLUMN company_name TEXT',
+    'ALTER TABLE users ADD COLUMN profile_picture_path TEXT',
+    'ALTER TABLE users ADD COLUMN role TEXT',
+    'ALTER TABLE users ADD COLUMN company_id TEXT'
+  ];
+
+  for (final stmt in statements) {
+    try {
+      await db.customStatement(stmt);
+    } catch (_) {
+      // ignore if column already exists
+    }
+  }
+
+  try {
+    print('[MIGRATION] ensured user profile columns (full_name/fullName/phone/company_name/profile_picture_path/role/company_id)');
+  } catch (_) {}
+
+  // Backfill phone from contact_no where empty
+  try {
+    await db.customStatement(
+        'UPDATE users SET phone = contact_no WHERE (phone IS NULL OR phone = "") AND contact_no IS NOT NULL AND contact_no <> ""');
+  } catch (_) {}
 }
 
 Future<void> _createSoftDeleteTriggers(GeneratedDatabase db) async {
