@@ -8,7 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:path_provider/path_provider.dart';
-import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
+import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:random_string/random_string.dart';
 import 'package:drift/drift.dart' as d;
 import 'app_storage.dart' show AppStorage;
@@ -22,6 +22,20 @@ class AuthService {
   static const int _resetCodeExpiryMinutes = 15;
   static const String _jwtSecret = 'your-secret-key-change-in-production'; // TODO: Use environment variable
   static bool showAuthLogs = false; // Set to true to enable auth-related debug prints
+
+  /// Ensure Firebase Auth persists sessions on web/desktop so users stay signed in.
+  static Future<void> ensureFirebasePersistence() async {
+    if (Firebase.apps.isEmpty) return;
+    try {
+      if (kIsWeb) {
+        await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+      } else if (io.Platform.isWindows || io.Platform.isMacOS || io.Platform.isLinux) {
+        await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+      }
+    } catch (e) {
+      debugPrint('FirebaseAuth persistence init failed: $e');
+    }
+  }
 
   Future<void> _upgradeMissingHashes(Map<String, dynamic> users) async {
     bool mutated = false;
@@ -351,6 +365,7 @@ class AuthService {
     // Create Firebase Auth account when online
     if (Firebase.apps.isNotEmpty) {
       try {
+        await ensureFirebasePersistence();
         await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: email.toLowerCase(),
           password: password,
@@ -900,6 +915,7 @@ class AuthService {
     // Ensure Firebase Auth sign-in (or create on-demand) so Firestore writes are authenticated
     if (Firebase.apps.isNotEmpty) {
       try {
+        await ensureFirebasePersistence();
         await FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password);
         debugPrint('FirebaseAuth: sign-in success for $emailKey');
       } on FirebaseAuthException catch (e) {
@@ -1006,40 +1022,41 @@ class AuthService {
         final data = row.data;
         final email = (data['email'] ?? data['username'] ?? '').toString().toLowerCase();
         if (email.isEmpty) continue;
+        // Try creating in Firebase; if it already exists, skip.
+        final cacheUser = usersCache[email] as Map<String, dynamic>?;
+        final cachedPassword = cacheUser?['password']?.toString();
+        String? plainPassword;
+        if (cachedPassword != null && !cachedPassword.contains(':')) {
+          plainPassword = cachedPassword; // looks plain
+        }
+        plainPassword ??= 'Temp#${randomAlphaNumeric(10)}';
+
         try {
-          final methods = await auth.fetchSignInMethodsForEmail(email);
-          if (methods.isNotEmpty) continue; // already exists
-
-          // Try to find a usable password
-          final cacheUser = usersCache[email] as Map<String, dynamic>?;
-          final cachedPassword = cacheUser?['password']?.toString();
-          String? plainPassword;
-          if (cachedPassword != null && !cachedPassword.contains(':')) {
-            plainPassword = cachedPassword; // looks plain
-          }
-          plainPassword ??= 'Temp#${randomAlphaNumeric(10)}';
-
           await auth.createUserWithEmailAndPassword(email: email, password: plainPassword);
           debugPrint('FirebaseAuth: created offline user $email');
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'email-already-in-use') {
+            continue; // already present
+          }
+          debugPrint('FirebaseAuth sync: createUser failed for $email: ${e.code}');
+          continue;
+        }
 
-          // Persist the new temp password hash locally so local login remains consistent
-          try {
-            final newHash = PasswordHasher.hash(plainPassword);
-            await db.customStatement(
-              'UPDATE users SET password_hash = ?, updated_at = ? WHERE email = ? OR username = ?',
-              [newHash, DateTime.now().toUtc().toIso8601String(), email, email],
-            );
-            if (cacheUser != null) {
-              cacheUser['password'] = newHash;
-              cacheUser['passwordHash'] = newHash;
-              usersCache[email] = cacheUser;
-              await _writeUsers(usersCache);
-            }
-          } catch (e) {
-            debugPrint('FirebaseAuth sync: failed to persist hash for $email: $e');
+        // Persist the new temp password hash locally so local login remains consistent
+        try {
+          final newHash = PasswordHasher.hash(plainPassword);
+          await db.customStatement(
+            'UPDATE users SET password_hash = ?, updated_at = ? WHERE email = ? OR username = ?',
+            [newHash, DateTime.now().toUtc().toIso8601String(), email, email],
+          );
+          if (cacheUser != null) {
+            cacheUser['password'] = newHash;
+            cacheUser['passwordHash'] = newHash;
+            usersCache[email] = cacheUser;
+            await _writeUsers(usersCache);
           }
         } catch (e) {
-          debugPrint('FirebaseAuth sync: skipping $email due to $e');
+          debugPrint('FirebaseAuth sync: failed to persist hash for $email: $e');
         }
       }
     } catch (e) {

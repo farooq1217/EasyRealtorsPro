@@ -1,6 +1,34 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+Future<void> _launchUniversal(
+  BuildContext context,
+  Uri uri, {
+  LaunchMode mode = LaunchMode.platformDefault,
+  String? failureMessage,
+}) async {
+  try {
+    final effectiveMode = kIsWeb ? LaunchMode.platformDefault : mode;
+    final launched = await launchUrl(
+      uri,
+      mode: effectiveMode,
+      webOnlyWindowName: '_blank',
+    );
+    if (!launched && context.mounted && failureMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(failureMessage)),
+      );
+    }
+  } catch (e) {
+    if (context.mounted && failureMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(failureMessage)),
+      );
+    }
+  }
+}
 
 Future<void> showPhoneActionSheet(BuildContext context, String rawNumber) async {
   final number = rawNumber.trim();
@@ -27,9 +55,12 @@ Future<void> showPhoneActionSheet(BuildContext context, String rawNumber) async 
             title: const Text('Call'),
             onTap: () async {
               Navigator.pop(ctx);
-              if (await canLaunchUrl(telUri)) {
-                await launchUrl(telUri);
-              }
+              await _launchUniversal(
+                context,
+                telUri,
+                mode: LaunchMode.externalApplication,
+                failureMessage: 'Unable to start a call on this device.',
+              );
             },
           ),
           ListTile(
@@ -37,9 +68,12 @@ Future<void> showPhoneActionSheet(BuildContext context, String rawNumber) async 
             title: const Text('WhatsApp'),
             onTap: () async {
               Navigator.pop(ctx);
-              if (await canLaunchUrl(waUri)) {
-                await launchUrl(waUri, mode: LaunchMode.externalApplication);
-              }
+              await _launchUniversal(
+                context,
+                waUri,
+                mode: LaunchMode.externalApplication,
+                failureMessage: 'Unable to open WhatsApp on this device.',
+              );
             },
           ),
           ListTile(

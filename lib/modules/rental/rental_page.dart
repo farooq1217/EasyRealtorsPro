@@ -13,7 +13,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
-import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
+import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:path/path.dart' as p;
 import 'package:googleapis_auth/googleapis_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1846,6 +1846,23 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {}
   }
 
+  Future<void> _logout() async {
+    final storage = AppStorage();
+    try {
+      final settings = await storage.readSettings();
+      final sessionId = settings['currentSessionId'] as String?;
+      await AuthService().logout(sessionId);
+      FirestoreCacheService().clearCache();
+    } catch (_) {}
+    await storage.deleteCredentials();
+    await storage.deleteFolderId();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (route) => false,
+    );
+  }
+
   void _denyAndGoDashboard(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2768,6 +2785,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.logout, color: Colors.white),
+          tooltip: 'Logout',
+          onPressed: _logout,
+        ),
         // Theme Toggle Button
         Builder(
           builder: (context) {
@@ -3520,205 +3542,131 @@ class _HomeScreenState extends State<HomeScreen> {
     final showCompanies = (isBypass || isSuperAdmin) && PermissionHelper.canViewModule(_currentUser, 'companies');
     final settingsLabel = isAgentRole ? 'My Profile' : 'Settings';
 
-    // Build menu items for ResponsiveSidebar
-    final menuItems = <Widget>[
-      ListTile(
-        leading: Icon(_navIndex == 0 ? Icons.dashboard : Icons.dashboard_outlined),
-        title: const Text('Dashboard'),
-        selected: _navIndex == 0,
-        selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-        onTap: () {
-          setState(() => _navIndex = 0);
-          if (MediaQuery.of(context).size.width < 900) {
-            Navigator.pop(context); // Close drawer on mobile
-          }
-        },
+    final navItems = <_AdaptiveNavItem>[
+      const _AdaptiveNavItem(
+        index: 0,
+        label: 'Dashboard',
+        icon: Icons.dashboard_outlined,
+        selectedIcon: Icons.dashboard,
       ),
       if (canViewInventory)
-        ListTile(
-          leading: Icon(_navIndex == 1 ? Icons.insert_drive_file : Icons.insert_drive_file_outlined),
-          title: Row(
-            children: [
-              const Text('Inventory'),
-              if (_badgeFiles != null) ...[
-                const SizedBox(width: 6),
-                CircleAvatar(
-                  radius: 9,
-                  backgroundColor: const Color(0xFF4A90E2),
-                  child: Text(
-                    '$_badgeFiles',
-                    style: const TextStyle(fontSize: 11, color: Colors.white),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          selected: _navIndex == 1,
-          selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-          onTap: () {
-            if (!_canAccessNavIndex(1)) {
-              _denyAndGoDashboard('Permission Denied');
-              return;
-            }
-            setState(() => _navIndex = 1);
-            if (MediaQuery.of(context).size.width < 900) {
-              Navigator.pop(context);
-            }
-          },
+        _AdaptiveNavItem(
+          index: 1,
+          label: 'Inventory',
+          icon: Icons.insert_drive_file_outlined,
+          selectedIcon: Icons.insert_drive_file,
+          badge: _badgeFiles,
+          requiresAccess: true,
         ),
       if (canViewAgentWorking)
-        ListTile(
-          leading: Icon(_navIndex == 2 ? Icons.support_agent : Icons.support_agent_outlined),
-          title: const Text('Agent Working'),
-          selected: _navIndex == 2,
-          selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-          onTap: () {
-            setState(() => _navIndex = 2);
-            if (MediaQuery.of(context).size.width < 900) {
-              Navigator.pop(context);
-            }
-          },
+        const _AdaptiveNavItem(
+          index: 2,
+          label: 'Agent Working',
+          icon: Icons.support_agent_outlined,
+          selectedIcon: Icons.support_agent,
+          requiresAccess: true,
         ),
       if (canViewRental)
-        ListTile(
-          leading: Icon(_navIndex == 3 ? Icons.chair : Icons.chair_outlined),
-          title: Row(
-            children: [
-              const Text('Rental Items'),
-              if (_badgeRentals != null) ...[
-                const SizedBox(width: 6),
-                CircleAvatar(
-                  radius: 9,
-                  backgroundColor: const Color(0xFF4A90E2),
-                  child: Text(
-                    '$_badgeRentals',
-                    style: const TextStyle(fontSize: 11, color: Colors.white),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          selected: _navIndex == 3,
-          selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-          onTap: () {
-            setState(() => _navIndex = 3);
-            if (MediaQuery.of(context).size.width < 900) {
-              Navigator.pop(context);
-            }
-          },
+        _AdaptiveNavItem(
+          index: 3,
+          label: 'Rental Items',
+          icon: Icons.chair_outlined,
+          selectedIcon: Icons.chair,
+          badge: _badgeRentals,
+          requiresAccess: true,
         ),
       if (canViewTodo)
-        ListTile(
-          leading: Icon(_navIndex == 4 ? Icons.checklist : Icons.checklist_outlined),
-          title: const Text('To-Do'),
-          selected: _navIndex == 4,
-          selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-          onTap: () {
-            setState(() => _navIndex = 4);
-            if (MediaQuery.of(context).size.width < 900) {
-              Navigator.pop(context);
-            }
-          },
+        const _AdaptiveNavItem(
+          index: 4,
+          label: 'To-Do',
+          icon: Icons.checklist_outlined,
+          selectedIcon: Icons.checklist,
+          requiresAccess: true,
         ),
       if (canViewExpenditure)
-        ListTile(
-          leading: Icon(_navIndex == 10 ? Icons.payments : Icons.payments_outlined),
-          title: const Text('Expenditure'),
-          selected: _navIndex == 10,
-          selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-          onTap: () {
-            if (!_canAccessNavIndex(10)) {
-              _denyAndGoDashboard('Permission Denied');
-              return;
-            }
-            setState(() => _navIndex = 10);
-            if (MediaQuery.of(context).size.width < 900) {
-              Navigator.pop(context);
-            }
-          },
+        const _AdaptiveNavItem(
+          index: 10,
+          label: 'Expenditure',
+          icon: Icons.payments_outlined,
+          selectedIcon: Icons.payments,
+          requiresAccess: true,
         ),
       if (canViewTrading)
-        ListTile(
-          leading: Icon((_navIndex == 6 || _navIndex == 7) ? Icons.currency_exchange : Icons.currency_exchange_outlined),
-          title: const Text('Trading'),
-          selected: _navIndex == 6 || _navIndex == 7,
-          selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-          onTap: () {
-            if (!_canAccessNavIndex(6)) {
-              _denyAndGoDashboard('Permission Denied');
-              return;
-            }
-            setState(() => _navIndex = 6);
-            if (MediaQuery.of(context).size.width < 900) {
-              Navigator.pop(context);
-            }
-          },
+        const _AdaptiveNavItem(
+          index: 6,
+          label: 'Trading',
+          icon: Icons.currency_exchange_outlined,
+          selectedIcon: Icons.currency_exchange,
+          requiresAccess: true,
         ),
-      ListTile(
-        leading: Icon(_navIndex == 5 ? Icons.settings : Icons.settings_outlined),
-        title: Text(settingsLabel),
-        selected: _navIndex == 5,
-        selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-        onTap: () {
-          setState(() => _navIndex = 5);
-          if (MediaQuery.of(context).size.width < 900) {
-            Navigator.pop(context);
-          }
-        },
+      _AdaptiveNavItem(
+        index: 5,
+        label: settingsLabel,
+        icon: Icons.settings_outlined,
+        selectedIcon: Icons.settings,
       ),
-      const Divider(),
       if (showUsers)
-        ListTile(
-          leading: Icon(_navIndex == 8 ? Icons.people : Icons.people_outlined),
-          title: const Text('Users'),
-          selected: _navIndex == 8,
-          selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-          onTap: () {
-            if (!_canAccessNavIndex(8)) {
-              _denyAndGoDashboard('Permission Denied');
-              return;
-            }
-            setState(() => _navIndex = 8);
-            if (MediaQuery.of(context).size.width < 900) {
-              Navigator.pop(context);
-            }
-          },
+        const _AdaptiveNavItem(
+          index: 8,
+          label: 'Users',
+          icon: Icons.people_outlined,
+          selectedIcon: Icons.people,
+          requiresAccess: true,
         ),
       if (showCompanies)
-        ListTile(
-          leading: Icon(_navIndex == 9 ? Icons.business : Icons.business_outlined),
-          title: const Text('Companies'),
-          selected: _navIndex == 9,
-          selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
-          onTap: () {
-            setState(() => _navIndex = 9);
-            if (MediaQuery.of(context).size.width < 900) {
-              Navigator.pop(context);
-            }
-          },
+        const _AdaptiveNavItem(
+          index: 9,
+          label: 'Companies',
+          icon: Icons.business_outlined,
+          selectedIcon: Icons.business,
+          requiresAccess: true,
         ),
-      const Divider(),
-      ListTile(
-        leading: const Icon(Icons.logout),
-        title: const Text('Logout'),
-        onTap: () async {
-          final storage = AppStorage();
-          try {
-            final settings = await storage.readSettings();
-            final sessionId = settings['currentSessionId'] as String?;
-            await AuthService().logout(sessionId);
-            FirestoreCacheService().clearCache();
-          } catch (_) {}
-          await storage.deleteCredentials();
-          await storage.deleteFolderId();
-          if (!mounted) return;
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const LoginPage()),
-            (route) => false,
-          );
-        },
-      ),
     ];
+
+    final normalizedNavIndex = (_navIndex == 7) ? 6 : _navIndex;
+    final selectedNavPosition = navItems.indexWhere((n) => n.index == normalizedNavIndex);
+    final safeSelectedPosition = selectedNavPosition < 0 ? 0 : selectedNavPosition;
+
+    Widget _navIcon(_AdaptiveNavItem item, {required bool selected}) {
+      final iconWidget = Icon(selected ? item.selectedIcon : item.icon);
+      if (item.badge == null) return iconWidget;
+      return Badge(
+        backgroundColor: const Color(0xFF4A90E2),
+        label: Text('${item.badge}'),
+        child: iconWidget,
+      );
+    }
+
+    Future<void> handleNavSelection(_AdaptiveNavItem item) async {
+      _resetInactivityTimer();
+      if (item.requiresAccess && !_canAccessNavIndex(item.index)) {
+        _denyAndGoDashboard('Permission Denied');
+        return;
+      }
+      if (mounted) {
+        setState(() => _navIndex = item.index);
+      }
+    }
+
+    final railDestinations = navItems
+        .map(
+          (item) => NavigationRailDestination(
+            icon: _navIcon(item, selected: false),
+            selectedIcon: _navIcon(item, selected: true),
+            label: Text(item.label),
+          ),
+        )
+        .toList();
+
+    final barDestinations = navItems
+        .map(
+          (item) => NavigationDestination(
+            icon: _navIcon(item, selected: false),
+            selectedIcon: _navIcon(item, selected: true),
+            label: item.label,
+          ),
+        )
+        .toList();
 
     final contentWidget = Container(
       decoration: BoxDecoration(
@@ -3777,23 +3725,70 @@ class _HomeScreenState extends State<HomeScreen> {
           _resetInactivityTimer();
           return KeyEventResult.ignored;
         },
-        child: ResponsiveSidebar(
-          title: 'Real Estate Management',
-          isCollapsed: ((MediaQuery.of(context).size.width < 1100) && !_sidebarManuallyToggled)
-              ? true
-              : !_showSidebar,
-          onToggle: () {
-            _resetInactivityTimer();
-            final nextShow = !_showSidebar;
-            setState(() {
-              _sidebarManuallyToggled = true;
-              _showSidebar = nextShow;
-            });
-            Future.microtask(() => _persistSidebarCollapsed(!nextShow));
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isMobile = constraints.maxWidth < 900;
+            final canExtend = constraints.maxWidth >= 1100;
+            final forcedCollapsed = constraints.maxWidth < 1100 && !_sidebarManuallyToggled;
+            final railExtended = canExtend && !forcedCollapsed && _showSidebar;
+            final railSelectedIndex = railDestinations.isEmpty
+                ? 0
+                : safeSelectedPosition.clamp(0, railDestinations.length - 1).toInt();
+
+            if (isMobile) {
+              return Scaffold(
+                appBar: _gradientAppBar('Admin'),
+                body: contentWidget,
+                bottomNavigationBar: NavigationBar(
+                  height: 72,
+                  selectedIndex: safeSelectedPosition,
+                  onDestinationSelected: (i) => handleNavSelection(navItems[i]),
+                  labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                  destinations: barDestinations,
+                ),
+              );
+            }
+
+            final navToggle = canExtend
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: IconButton(
+                      tooltip: railExtended ? 'Collapse navigation' : 'Expand navigation',
+                      icon: Icon(railExtended ? Icons.chevron_left : Icons.menu_open),
+                      onPressed: () {
+                        _resetInactivityTimer();
+                        final nextShow = !_showSidebar;
+                        setState(() {
+                          _sidebarManuallyToggled = true;
+                          _showSidebar = nextShow;
+                        });
+                        Future.microtask(() => _persistSidebarCollapsed(!nextShow));
+                      },
+                    ),
+                  )
+                : null;
+
+            return Scaffold(
+              appBar: _gradientAppBar('Admin'),
+              body: Row(
+                children: [
+                  NavigationRail(
+                    selectedIndex: railSelectedIndex,
+                    onDestinationSelected: (i) => handleNavSelection(navItems[i]),
+                    extended: railExtended,
+                    minExtendedWidth: 240,
+                    labelType: railExtended
+                        ? NavigationRailLabelType.none
+                        : NavigationRailLabelType.selected,
+                    leading: navToggle,
+                    destinations: railDestinations,
+                  ),
+                  const VerticalDivider(width: 1, thickness: 1),
+                  Expanded(child: contentWidget),
+                ],
+              ),
+            );
           },
-          menuItems: menuItems,
-          appBar: _gradientAppBar('Admin'),
-          child: contentWidget,
         ),
       ),
     );
@@ -3838,6 +3833,23 @@ class _ModePreview extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AdaptiveNavItem {
+  final int index;
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
+  final int? badge;
+  final bool requiresAccess;
+  const _AdaptiveNavItem({
+    required this.index,
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+    this.badge,
+    this.requiresAccess = false,
+  });
 }
 
 class AgentWorkingPage extends StatefulWidget {

@@ -8,6 +8,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:shared/shared.dart' show AppDatabase;
 import 'core/database/db_executor.dart' show openAppExecutor;
 import 'core/services/firebase_options.dart';
+import 'core/services/auth_service.dart';
 import 'core/app.dart';
 
 void main() async {
@@ -31,6 +32,7 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    await AuthService.ensureFirebasePersistence();
     // Firestore persistence is enabled by default on desktop
   } catch (e) {
     // Firebase initialization failed (likely due to placeholder config)

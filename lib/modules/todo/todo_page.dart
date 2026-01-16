@@ -10,7 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
-import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
+import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import '../../core/services/auth_service.dart';
 import '../../shimmer_widgets.dart';
 import '../../core/app_utils.dart';

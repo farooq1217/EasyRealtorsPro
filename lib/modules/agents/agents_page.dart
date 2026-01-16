@@ -233,6 +233,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
 
   Future<void> _ensureFirebaseAuth() async {
     if (Firebase.apps.isEmpty) return;
+    await AuthService.ensureFirebasePersistence();
     final auth = FirebaseAuth.instance;
     if (auth.currentUser == null) {
       try {

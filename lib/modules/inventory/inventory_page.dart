@@ -14,7 +14,7 @@ import '../../professional_reports.dart' show buildKeyValueReportPdf, loadCurren
 import '../../core/professional_pdf_generator.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart' show rootBundle;
-import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
+import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'dart:math' show Random;

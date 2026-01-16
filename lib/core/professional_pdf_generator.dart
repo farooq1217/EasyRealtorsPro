@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
+import '../platform_stubs/html_stub.dart' if (dart.library.html) 'dart:html' as html;
 
 import 'package:flutter/foundation.dart' show compute, kIsWeb;
 import 'package:flutter/material.dart';
@@ -390,7 +391,25 @@ Future<String?> _saveToDocuments({
   final baseName = '${safeModule}_Receipt_$safeId';
 
   if (kIsWeb) {
-    await Printing.sharePdf(bytes: pdfBytes, filename: '$baseName.pdf');
+    try {
+      final blob = html.Blob([pdfBytes], 'application/pdf');
+      final url = html.Url.createObjectUrlFromBlob(blob);
+
+      // Attach an anchor to trigger an actual download while also opening a view tab
+      final anchor = html.AnchorElement(href: url)
+        ..download = '$baseName.pdf'
+        ..target = '_blank';
+      html.document.body?.append(anchor);
+      anchor.click();
+      anchor.remove();
+
+      // Ensure a tab is opened for inline viewing if the browser blocks downloads
+      html.window.open(url, '_blank');
+      html.Url.revokeObjectUrl(url);
+    } catch (_) {
+      // Fallback: printing package opens a new tab with the PDF on web
+      await Printing.sharePdf(bytes: pdfBytes, filename: '$baseName.pdf');
+    }
     return null;
   }
 
