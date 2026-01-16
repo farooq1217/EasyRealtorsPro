@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared/shared.dart';
 
 import '../professional_reports.dart' show generateReportSerial, loadCurrentUserFromStorage, loadReportBranding;
@@ -102,6 +103,15 @@ class ProfessionalPdfGenerator {
           backgroundColor: Colors.green.shade700,
         ),
       );
+
+      // Auto-open share sheet (e.g., WhatsApp)
+      if (savedPath != null && savedPath.isNotEmpty && !kIsWeb) {
+        final file = XFile(savedPath, mimeType: 'application/pdf');
+        await Share.shareXFiles(
+          [file],
+          text: 'Asalam-o-Alaikum, please find your receipt attached below. Regards.',
+        );
+      }
     } catch (e) {
       if (context.mounted) {
         Navigator.pop(context);

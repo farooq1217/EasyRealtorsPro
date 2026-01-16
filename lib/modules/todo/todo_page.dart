@@ -21,6 +21,7 @@ import '../../responsive_widgets.dart';
 import '../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../core/services/app_storage.dart' show AppStorage;
 import '../../core/shared_utils.dart' show TopRightSearch;
+import '../../core/phone_actions.dart';
 
 class ToDoPage extends StatefulWidget {
   final AppDatabase db;
@@ -165,6 +166,7 @@ class _ToDoPageState extends State<ToDoPage> {
             'source': 'Trading Form',
             'type': type,
             'title': '$type - ${data['estate_name'] ?? 'N/A'}',
+            'mobile': data['mobile']?.toString(),
             'subtitle': 'Mobile: ${data['mobile'] ?? 'N/A'} | Payment: ${data['payment'] ?? 0} | Status: $status',
             'status': status,
             'module': 'trading_form',
@@ -200,6 +202,7 @@ class _ToDoPageState extends State<ToDoPage> {
             'source': 'Trading File',
             'type': type,
             'title': '$type - ${data['estate'] ?? 'N/A'}',
+            'mobile': data['mobile']?.toString(),
             'subtitle': 'Mobile: ${data['mobile'] ?? 'N/A'} | Payment: ${data['payment'] ?? 0} | Status: $status',
             'status': status,
             'module': 'trading_file',
@@ -231,7 +234,8 @@ class _ToDoPageState extends State<ToDoPage> {
             'source': 'Agent Working',
             'type': 'Transfer',
             'title': name,
-            'subtitle': 'Status: $status | From: ${data['from_user'] ?? 'N/A'} | To: ${data['to_user'] ?? 'N/A'}',
+            'mobile': data['clientMobile']?.toString(),
+            'subtitle': 'Mobile: ${data['clientMobile'] ?? 'N/A'} | Status: $status | From: ${data['from_user'] ?? 'N/A'} | To: ${data['to_user'] ?? 'N/A'}',
             'status': status,
             'module': 'working',
             'originalId': data['id'],
@@ -508,12 +512,23 @@ class _ToDoPageState extends State<ToDoPage> {
                                       ),
                                       const SizedBox(height: 8),
                                       // Details - Smaller and lighter
-                                      Text(
-                                        task['subtitle'] as String? ?? '',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 12,
-                                          color: Colors.grey.shade600,
-                                          fontWeight: FontWeight.w400,
+                                      GestureDetector(
+                                        onTap: () {
+                                          final mobile = task['mobile']?.toString() ?? '';
+                                          if (mobile.trim().isNotEmpty) {
+                                            showPhoneActionSheet(context, mobile);
+                                          }
+                                        },
+                                        child: Text(
+                                          task['subtitle'] as String? ?? '',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade600,
+                                            fontWeight: FontWeight.w400,
+                                            decoration: (task['mobile'] ?? '').toString().trim().isNotEmpty
+                                                ? TextDecoration.underline
+                                                : TextDecoration.none,
+                                          ),
                                         ),
                                       ),
                                       const SizedBox(height: 12),

@@ -28,6 +28,7 @@ import '../../login_page.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart' show buildKeyValueReportPdf, loadCurrentUserFromStorage, loadReportBranding, savePdfBytesToDisk, generateReportSerial, logReportHistory;
 import '../../core/professional_pdf_generator.dart';
+import '../../core/phone_actions.dart';
 import '../../core/app_utils.dart';
 import '../../core/shared_utils.dart';
 import '../../core/services/firestore_cache_service.dart';
@@ -7351,7 +7352,7 @@ class RentalDetailPage extends StatelessWidget {
     }
   }
 
-  Widget _infoRow(String label, String value) {
+  Widget _infoRow(BuildContext context, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -7361,7 +7362,20 @@ class RentalDetailPage extends StatelessWidget {
             width: 150,
             child: Text(label, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
           ),
-          Expanded(child: Text(value, style: GoogleFonts.poppins())),
+          Expanded(
+            child: GestureDetector(
+              onTap: label == 'Contact' && value.trim().isNotEmpty
+                  ? () => showPhoneActionSheet(context, value)
+                  : null,
+              child: Text(
+                value,
+                style: GoogleFonts.poppins(
+                  color: label == 'Contact' ? Colors.blue.shade700 : null,
+                  decoration: label == 'Contact' ? TextDecoration.underline : TextDecoration.none,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -7425,7 +7439,7 @@ class RentalDetailPage extends StatelessWidget {
                   const SizedBox(height: 12),
                   Divider(color: Colors.grey.shade300),
                   const SizedBox(height: 12),
-                  ...kv.map((e) => _infoRow(e.key, e.value)),
+                  ...kv.map((e) => _infoRow(context, e.key, e.value)),
                 ],
               ),
             ),

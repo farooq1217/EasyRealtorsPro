@@ -21,6 +21,7 @@ import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart';
 import '../../core/professional_pdf_generator.dart';
 import '../../core/app_utils.dart' show fmtTs, buildSecureFirestoreQuery, creatorFields;
+import '../../core/phone_actions.dart';
 import '../../core/shared_utils.dart';
 import '../../core/services/firestore_cache_service.dart';
 import '../../firestore_sync_service.dart';
@@ -8171,15 +8172,15 @@ class TradingDetailPage extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildTableRow('Date', DateFormat('dd MMM yyyy').format(fileEntry.date), isMobile),
-                _buildTableRow('Payment Option', fileEntry.buyOption ?? fileEntry.sellOption ?? 'N/A', isMobile),
-                _buildTableRow('Mobile No.', fileEntry.mobile, isMobile),
-                _buildTableRow('Person Name', fileEntry.personName.isNotEmpty ? fileEntry.personName : 'N/A', isMobile),
-                _buildTableRow('Estate Name', fileEntry.estate, isMobile),
-                _buildTableRow('Quantity', fileEntry.quantity.toString(), isMobile),
-                _buildTableRow('Payment', 'Rs ${formatPayment(fileEntry.payment)}', isMobile),
-                _buildTableRow('Status', fileEntry.status, isMobile),
-                _buildTableRow('Comments', fileEntry.comments.isNotEmpty ? fileEntry.comments : 'N/A', isMobile),
+                _buildTableRow(context, 'Date', DateFormat('dd MMM yyyy').format(fileEntry.date), isMobile),
+                _buildTableRow(context, 'Payment Option', fileEntry.buyOption ?? fileEntry.sellOption ?? 'N/A', isMobile),
+                _buildTableRow(context, 'Mobile No.', fileEntry.mobile, isMobile),
+                _buildTableRow(context, 'Person Name', fileEntry.personName.isNotEmpty ? fileEntry.personName : 'N/A', isMobile),
+                _buildTableRow(context, 'Estate Name', fileEntry.estate, isMobile),
+                _buildTableRow(context, 'Quantity', fileEntry.quantity.toString(), isMobile),
+                _buildTableRow(context, 'Payment', 'Rs ${formatPayment(fileEntry.payment)}', isMobile),
+                _buildTableRow(context, 'Status', fileEntry.status, isMobile),
+                _buildTableRow(context, 'Comments', fileEntry.comments.isNotEmpty ? fileEntry.comments : 'N/A', isMobile),
               ],
             );
           }
@@ -8191,15 +8192,15 @@ class TradingDetailPage extends StatelessWidget {
               1: FlexColumnWidth(3),
             },
             children: [
-              _buildTableRow('Date', DateFormat('dd MMM yyyy').format(fileEntry.date), isMobile) as TableRow,
-              _buildTableRow('Payment Option', fileEntry.buyOption ?? fileEntry.sellOption ?? 'N/A', isMobile) as TableRow,
-              _buildTableRow('Mobile No.', fileEntry.mobile, isMobile) as TableRow,
-              _buildTableRow('Person Name', fileEntry.personName.isNotEmpty ? fileEntry.personName : 'N/A', isMobile) as TableRow,
-              _buildTableRow('Estate Name', fileEntry.estate, isMobile) as TableRow,
-              _buildTableRow('Quantity', fileEntry.quantity.toString(), isMobile) as TableRow,
-              _buildTableRow('Payment', 'Rs ${formatPayment(fileEntry.payment)}', isMobile) as TableRow,
-              _buildTableRow('Status', fileEntry.status, isMobile) as TableRow,
-              _buildTableRow('Comments', fileEntry.comments.isNotEmpty ? fileEntry.comments : 'N/A', isMobile) as TableRow,
+              _buildTableRow(context, 'Date', DateFormat('dd MMM yyyy').format(fileEntry.date), isMobile) as TableRow,
+              _buildTableRow(context, 'Payment Option', fileEntry.buyOption ?? fileEntry.sellOption ?? 'N/A', isMobile) as TableRow,
+              _buildTableRow(context, 'Mobile No.', fileEntry.mobile, isMobile) as TableRow,
+              _buildTableRow(context, 'Person Name', fileEntry.personName.isNotEmpty ? fileEntry.personName : 'N/A', isMobile) as TableRow,
+              _buildTableRow(context, 'Estate Name', fileEntry.estate, isMobile) as TableRow,
+              _buildTableRow(context, 'Quantity', fileEntry.quantity.toString(), isMobile) as TableRow,
+              _buildTableRow(context, 'Payment', 'Rs ${formatPayment(fileEntry.payment)}', isMobile) as TableRow,
+              _buildTableRow(context, 'Status', fileEntry.status, isMobile) as TableRow,
+              _buildTableRow(context, 'Comments', fileEntry.comments.isNotEmpty ? fileEntry.comments : 'N/A', isMobile) as TableRow,
             ],
           );
         } else {
@@ -8208,20 +8209,20 @@ class TradingDetailPage extends StatelessWidget {
           if (isMobile) {
             // Use vertical card layout for mobile
             final mobileRows = <Widget>[
-              _buildTableRow('Date', DateFormat('dd MMM yyyy').format(formEntry.date), isMobile),
-              _buildTableRow('Payment Option', formEntry.buyOption ?? formEntry.sellOption ?? 'N/A', isMobile),
-              _buildTableRow('Mobile No.', formEntry.mobile, isMobile),
-              _buildTableRow('Person Name', formEntry.personName.isNotEmpty ? formEntry.personName : 'N/A', isMobile),
-              _buildTableRow('Buyer Name', formEntry.buyerName.isNotEmpty ? formEntry.buyerName : 'N/A', isMobile),
-              _buildTableRow('Seller Name', formEntry.sellerName.isNotEmpty ? formEntry.sellerName : 'N/A', isMobile),
-              _buildTableRow('Estate Name', formEntry.estateName, isMobile),
-              if (formEntry.plotNo.isNotEmpty) _buildTableRow('Plot No.', formEntry.plotNo, isMobile),
-              if (formEntry.block.isNotEmpty) _buildTableRow('Block', formEntry.block, isMobile),
-              _buildTableRow('Quantity', formEntry.quantity.toString(), isMobile),
-              _buildTableRow('Payment', 'Rs ${formatPayment(formEntry.payment)}', isMobile),
-              if (formEntry.commission > 0) _buildTableRow('Commission', 'Rs ${formatPayment(formEntry.commission)}', isMobile),
-              _buildTableRow('Status', formEntry.status, isMobile),
-              _buildTableRow('Comments', formEntry.comments.isNotEmpty ? formEntry.comments : 'N/A', isMobile),
+              _buildTableRow(context, 'Date', DateFormat('dd MMM yyyy').format(formEntry.date), isMobile),
+              _buildTableRow(context, 'Payment Option', formEntry.buyOption ?? formEntry.sellOption ?? 'N/A', isMobile),
+              _buildTableRow(context, 'Mobile No.', formEntry.mobile, isMobile),
+              _buildTableRow(context, 'Person Name', formEntry.personName.isNotEmpty ? formEntry.personName : 'N/A', isMobile),
+              _buildTableRow(context, 'Buyer Name', formEntry.buyerName.isNotEmpty ? formEntry.buyerName : 'N/A', isMobile),
+              _buildTableRow(context, 'Seller Name', formEntry.sellerName.isNotEmpty ? formEntry.sellerName : 'N/A', isMobile),
+              _buildTableRow(context, 'Estate Name', formEntry.estateName, isMobile),
+              if (formEntry.plotNo.isNotEmpty) _buildTableRow(context, 'Plot No.', formEntry.plotNo, isMobile),
+              if (formEntry.block.isNotEmpty) _buildTableRow(context, 'Block', formEntry.block, isMobile),
+              _buildTableRow(context, 'Quantity', formEntry.quantity.toString(), isMobile),
+              _buildTableRow(context, 'Payment', 'Rs ${formatPayment(formEntry.payment)}', isMobile),
+              if (formEntry.commission > 0) _buildTableRow(context, 'Commission', 'Rs ${formatPayment(formEntry.commission)}', isMobile),
+              _buildTableRow(context, 'Status', formEntry.status, isMobile),
+              _buildTableRow(context, 'Comments', formEntry.comments.isNotEmpty ? formEntry.comments : 'N/A', isMobile),
             ];
             
             return Column(
@@ -8232,20 +8233,20 @@ class TradingDetailPage extends StatelessWidget {
           
           // Desktop: table layout
           final tableRows = <TableRow>[
-            _buildTableRow('Date', DateFormat('dd MMM yyyy').format(formEntry.date), isMobile) as TableRow,
-            _buildTableRow('Payment Option', formEntry.buyOption ?? formEntry.sellOption ?? 'N/A', isMobile) as TableRow,
-            _buildTableRow('Mobile No.', formEntry.mobile, isMobile) as TableRow,
-            _buildTableRow('Person Name', formEntry.personName.isNotEmpty ? formEntry.personName : 'N/A', isMobile) as TableRow,
-            _buildTableRow('Buyer Name', formEntry.buyerName.isNotEmpty ? formEntry.buyerName : 'N/A', isMobile) as TableRow,
-            _buildTableRow('Seller Name', formEntry.sellerName.isNotEmpty ? formEntry.sellerName : 'N/A', isMobile) as TableRow,
-            _buildTableRow('Estate Name', formEntry.estateName, isMobile) as TableRow,
-            if (formEntry.plotNo.isNotEmpty) _buildTableRow('Plot No.', formEntry.plotNo, isMobile) as TableRow,
-            if (formEntry.block.isNotEmpty) _buildTableRow('Block', formEntry.block, isMobile) as TableRow,
-            _buildTableRow('Quantity', formEntry.quantity.toString(), isMobile) as TableRow,
-            _buildTableRow('Payment', 'Rs ${formatPayment(formEntry.payment)}', isMobile) as TableRow,
-            if (formEntry.commission > 0) _buildTableRow('Commission', 'Rs ${formatPayment(formEntry.commission)}', isMobile) as TableRow,
-            _buildTableRow('Status', formEntry.status, isMobile) as TableRow,
-            _buildTableRow('Comments', formEntry.comments.isNotEmpty ? formEntry.comments : 'N/A', isMobile) as TableRow,
+            _buildTableRow(context, 'Date', DateFormat('dd MMM yyyy').format(formEntry.date), isMobile) as TableRow,
+            _buildTableRow(context, 'Payment Option', formEntry.buyOption ?? formEntry.sellOption ?? 'N/A', isMobile) as TableRow,
+            _buildTableRow(context, 'Mobile No.', formEntry.mobile, isMobile) as TableRow,
+            _buildTableRow(context, 'Person Name', formEntry.personName.isNotEmpty ? formEntry.personName : 'N/A', isMobile) as TableRow,
+            _buildTableRow(context, 'Buyer Name', formEntry.buyerName.isNotEmpty ? formEntry.buyerName : 'N/A', isMobile) as TableRow,
+            _buildTableRow(context, 'Seller Name', formEntry.sellerName.isNotEmpty ? formEntry.sellerName : 'N/A', isMobile) as TableRow,
+            _buildTableRow(context, 'Estate Name', formEntry.estateName, isMobile) as TableRow,
+            if (formEntry.plotNo.isNotEmpty) _buildTableRow(context, 'Plot No.', formEntry.plotNo, isMobile) as TableRow,
+            if (formEntry.block.isNotEmpty) _buildTableRow(context, 'Block', formEntry.block, isMobile) as TableRow,
+            _buildTableRow(context, 'Quantity', formEntry.quantity.toString(), isMobile) as TableRow,
+            _buildTableRow(context, 'Payment', 'Rs ${formatPayment(formEntry.payment)}', isMobile) as TableRow,
+            if (formEntry.commission > 0) _buildTableRow(context, 'Commission', 'Rs ${formatPayment(formEntry.commission)}', isMobile) as TableRow,
+            _buildTableRow(context, 'Status', formEntry.status, isMobile) as TableRow,
+            _buildTableRow(context, 'Comments', formEntry.comments.isNotEmpty ? formEntry.comments : 'N/A', isMobile) as TableRow,
           ];
           
           return Table(
@@ -8260,7 +8261,8 @@ class TradingDetailPage extends StatelessWidget {
     );
   }
   
-  dynamic _buildTableRow(String label, String value, bool isMobile) {
+  dynamic _buildTableRow(BuildContext context, String label, String value, bool isMobile) {
+    final isPhone = label.toLowerCase().contains('mobile') || label.toLowerCase().contains('contact');
     if (isMobile) {
       // Mobile: vertical card layout
       return Card(
@@ -8280,11 +8282,17 @@ class TradingDetailPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                value,
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: Colors.grey.shade900,
+              GestureDetector(
+                onTap: isPhone && value.trim().isNotEmpty
+                    ? () => showPhoneActionSheet(context, value)
+                    : null,
+                child: Text(
+                  value,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: isPhone ? Colors.blue.shade700 : Colors.grey.shade900,
+                    decoration: isPhone ? TextDecoration.underline : TextDecoration.none,
+                  ),
                 ),
               ),
             ],
@@ -8309,9 +8317,18 @@ class TradingDetailPage extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Text(
-            value,
-            style: GoogleFonts.poppins(fontSize: 14),
+          child: GestureDetector(
+            onTap: isPhone && value.trim().isNotEmpty
+                ? () => showPhoneActionSheet(context, value)
+                : null,
+            child: Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: isPhone ? Colors.blue.shade700 : null,
+                decoration: isPhone ? TextDecoration.underline : TextDecoration.none,
+              ),
+            ),
           ),
         ),
       ],

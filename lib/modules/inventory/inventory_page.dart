@@ -20,6 +20,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'dart:math' show Random;
 import '../../image_cache_service.dart' show CachedImageWidget;
 import 'package:printing/printing.dart';
+import '../../core/phone_actions.dart';
 
 class FilesPage extends StatefulWidget {
   final AppDatabase db;
@@ -1468,10 +1469,7 @@ class InventoryDetailPage extends StatelessWidget {
                                         ),
                                         Expanded(
                                           flex: 2,
-                                          child: Text(
-                                            field.value,
-                                            style: GoogleFonts.poppins(fontSize: 13),
-                                          ),
+                                          child: _linkify(context, field.key, field.value),
                                         ),
                                       ],
                                     ),
@@ -1669,6 +1667,20 @@ class InventoryDetailPage extends StatelessWidget {
       entityId: entityId,
       keyValues: keyValues,
       gridRows: gridRows,
+    );
+  }
+
+  Widget _linkify(BuildContext context, String label, String value) {
+    final isPhone = label.toLowerCase().contains('contact') || label.toLowerCase().contains('mobile');
+    return GestureDetector(
+      onTap: isPhone && value.trim().isNotEmpty ? () => showPhoneActionSheet(context, value) : null,
+      child: Text(
+        value,
+        style: GoogleFonts.poppins(
+          color: isPhone ? Colors.blue.shade700 : null,
+          decoration: isPhone ? TextDecoration.underline : TextDecoration.none,
+        ),
+      ),
     );
   }
 }

@@ -18,6 +18,7 @@ import '../../core/services/auth_service.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart' show buildKeyValueReportPdf, loadCurrentUserFromStorage, loadReportBranding, savePdfBytesToDisk, generateReportSerial, logReportHistory;
 import '../../core/professional_pdf_generator.dart';
+import '../../core/phone_actions.dart';
 import '../../core/app_utils.dart';
 import '../../core/shared_utils.dart';
 import '../../core/services/firestore_cache_service.dart';
@@ -3197,9 +3198,23 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 14),
+            child: GestureDetector(
+              onTap: (label.toLowerCase().contains('mobile') || label.toLowerCase().contains('contact'))
+                      && value.trim().isNotEmpty
+                  ? () => showPhoneActionSheet(context, value)
+                  : null,
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: (label.toLowerCase().contains('mobile') || label.toLowerCase().contains('contact'))
+                      ? Colors.blue.shade700
+                      : null,
+                  decoration: (label.toLowerCase().contains('mobile') || label.toLowerCase().contains('contact'))
+                      ? TextDecoration.underline
+                      : TextDecoration.none,
+                ),
+              ),
             ),
           ),
         ],
