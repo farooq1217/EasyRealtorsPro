@@ -1627,7 +1627,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initNotifications() async {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwin = DarwinInitializationSettings();
-    const windows = WindowsInitializationSettings(appName: 'Easy Realtors Pro');
+    const windows = WindowsInitializationSettings(
+      appName: 'Easy Realtors Pro',
+      appUserModelId: 'com.easyrealtorspro.desktop',
+      guid: '8c9f5be0-1111-4b25-9c2e-000000000001',
+    );
     const init = InitializationSettings(
       android: android,
       iOS: darwin,
@@ -3693,14 +3697,24 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     // Build menu tiles reused in sidebar
+    const sidebarTextColor = Colors.white;
+    const sidebarIconColor = Colors.white70;
     List<Widget> buildMenuTiles({required bool closeDrawer}) {
       return [
         for (final item in navItems)
           ListTile(
-            leading: Icon(normalizedNavIndex == item.index ? item.selectedIcon : item.icon),
+            leading: Icon(
+              normalizedNavIndex == item.index ? item.selectedIcon : item.icon,
+              color: sidebarIconColor,
+            ),
             title: Row(
               children: [
-                Flexible(child: Text(item.label)),
+                Flexible(
+                  child: Text(
+                    item.label,
+                    style: const TextStyle(color: sidebarTextColor, fontWeight: FontWeight.w600),
+                  ),
+                ),
                 if (item.badge != null)
                   Padding(
                     padding: const EdgeInsets.only(left: 8),
@@ -3719,6 +3733,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: () async {
               await handleNavSelection(item);
             },
+            selectedTileColor: Colors.white.withOpacity(0.06),
           ),
       ];
     }
@@ -3737,7 +3752,7 @@ class _HomeScreenState extends State<HomeScreen> {
           body: Row(
             children: [
               Container(
-                width: 260,
+                width: 276,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     begin: Alignment.topCenter,
@@ -3767,7 +3782,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Divider(color: Colors.white24, height: 1),
                       ListTile(
                         leading: const Icon(Icons.logout, color: Colors.white70),
-                        title: const Text('Logout', style: TextStyle(color: Colors.white)),
+                        title: const Text('Logout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                         onTap: () async {
                           await _logout();
                         },
@@ -3776,6 +3791,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+              const SizedBox(width: 12),
               Expanded(
                 child: contentWidget,
               ),
