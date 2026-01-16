@@ -1547,6 +1547,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  int? _hoveredMenuIndex;
+  bool _sidebarCollapsed = false;
   static _HomeScreenState? _instance;
   static void _notifyGlobalUserActivity() {
     _instance?._onGlobalUserActivity();
@@ -1616,6 +1618,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final target = now.isBefore(today7) ? today7 : today7.add(const Duration(days: 1));
     return target.difference(now);
   }
+
 
   Duration _delayUntilNext9pm() {
     final now = DateTime.now();
@@ -3063,7 +3066,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     Widget dashboard() {
       if (_db == null) return const ShimmerPageLoading(itemCount: 10);
-      
       final summarySections = <Widget>[
         // Single row with only the last tile from each module
         Container(
@@ -3562,12 +3564,11 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIcon: Icons.dashboard,
       ),
       if (canViewInventory)
-        _AdaptiveNavItem(
+        const _AdaptiveNavItem(
           index: 1,
           label: 'Inventory',
           icon: Icons.insert_drive_file_outlined,
           selectedIcon: Icons.insert_drive_file,
-          badge: _badgeFiles,
           requiresAccess: true,
         ),
       if (canViewAgentWorking)
@@ -3579,12 +3580,11 @@ class _HomeScreenState extends State<HomeScreen> {
           requiresAccess: true,
         ),
       if (canViewRental)
-        _AdaptiveNavItem(
+        const _AdaptiveNavItem(
           index: 3,
           label: 'Rental Items',
           icon: Icons.chair_outlined,
           selectedIcon: Icons.chair,
-          badge: _badgeRentals,
           requiresAccess: true,
         ),
       if (canViewTodo)
@@ -3654,42 +3654,51 @@ class _HomeScreenState extends State<HomeScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFFFF6B35).withOpacity(0.03),
-            const Color(0xFF4A90E2).withOpacity(0.03),
+            const Color(0xFFFF6B35).withOpacity(0.02),
+            const Color(0xFF4A90E2).withOpacity(0.02),
           ],
         ),
         border: Border.all(
-          color: Colors.grey.shade300.withOpacity(0.5),
+          color: Colors.grey.shade300.withOpacity(0.35),
           width: 1,
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.grey.shade300.withOpacity(0.5),
+              color: Colors.grey.shade300.withOpacity(0.35),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
                 color: (Theme.of(context).brightness == Brightness.dark)
-                    ? Colors.black.withOpacity(0.35)
-                    : Colors.black.withOpacity(0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
+                    ? Colors.black.withOpacity(0.5)
+                    : Colors.black.withOpacity(0.12),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
               ),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Column(
-              children: [
-                ConnectivityIndicator(),
-                Expanded(child: content),
-              ],
+            borderRadius: BorderRadius.circular(16),
+            child: MouseRegion(
+              onEnter: (_) {},
+              child: Column(
+                children: [
+                  ConnectivityIndicator(),
+                  Expanded(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      transform: Matrix4.translationValues(0, 0, 0),
+                      child: content,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -3699,41 +3708,70 @@ class _HomeScreenState extends State<HomeScreen> {
     // Build menu tiles reused in sidebar
     const sidebarTextColor = Colors.white;
     const sidebarIconColor = Colors.white70;
-    List<Widget> buildMenuTiles({required bool closeDrawer}) {
+    const hoverBg = Colors.white12;
+    const brandOrange = Color(0xFFFF6B35);
+    List<Widget> buildMenuTiles({required bool closeDrawer, required bool collapsed}) {
       return [
         for (final item in navItems)
-          ListTile(
-            leading: Icon(
-              normalizedNavIndex == item.index ? item.selectedIcon : item.icon,
-              color: sidebarIconColor,
-            ),
-            title: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    item.label,
-                    style: const TextStyle(color: sidebarTextColor, fontWeight: FontWeight.w600),
-                  ),
-                ),
-                if (item.badge != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: CircleAvatar(
-                      radius: 10,
-                      backgroundColor: const Color(0xFF4A90E2),
-                      child: Text(
-                        '${item.badge}',
-                        style: const TextStyle(fontSize: 11, color: Colors.white),
+          Builder(
+            builder: (context) {
+              final idx = navItems.indexOf(item);
+              final selected = normalizedNavIndex == item.index;
+              final hovered = _hoveredMenuIndex == idx;
+              final bgColor = selected
+                  ? brandOrange.withOpacity(0.12)
+                  : (hovered ? hoverBg : Colors.transparent);
+              return MouseRegion(
+                onEnter: (_) => setState(() => _hoveredMenuIndex = idx),
+                onExit: (_) => setState(() => _hoveredMenuIndex = null),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    border: Border(
+                      left: BorderSide(
+                        color: selected ? brandOrange : Colors.transparent,
+                        width: 5,
                       ),
                     ),
+                    boxShadow: hovered
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.14),
+                              blurRadius: 12,
+                              offset: const Offset(0, 6),
+                            )
+                          ]
+                        : null,
                   ),
-              ],
-            ),
-            selected: normalizedNavIndex == item.index,
-            onTap: () async {
-              await handleNavSelection(item);
+                  child: ListTile(
+                    leading: Icon(
+                      selected ? item.selectedIcon : item.icon,
+                      color: hovered || selected ? Colors.white : sidebarIconColor,
+                      size: 22,
+                    ),
+                    title: Row(
+                      children: [
+                        if (!collapsed)
+                          Flexible(
+                            child: Text(
+                              item.label,
+                              style: TextStyle(
+                                color: hovered || selected ? Colors.white : sidebarTextColor,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    selected: selected,
+                    onTap: () async {
+                      await handleNavSelection(item);
+                    },
+                  ),
+                ),
+              );
             },
-            selectedTileColor: Colors.white.withOpacity(0.06),
           ),
       ];
     }
@@ -3752,19 +3790,19 @@ class _HomeScreenState extends State<HomeScreen> {
           body: Row(
             children: [
               Container(
-                width: 276,
+                width: _sidebarCollapsed ? 82 : 280,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color(0xFF121824),
-                      Color(0xFF1B2331),
+                      Color(0xFF0B1A3A),
+                      Color(0xFF132A54),
                     ],
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.35),
+                      color: Colors.black.withOpacity(0.38),
                       blurRadius: 18,
                       offset: const Offset(4, 0),
                     ),
@@ -3773,16 +3811,36 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: SafeArea(
                   child: Column(
                     children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: IconButton(
+                            icon: Icon(
+                              _sidebarCollapsed ? Icons.menu : Icons.chevron_left,
+                              color: Colors.white,
+                            ),
+                            tooltip: _sidebarCollapsed ? 'Expand' : 'Collapse',
+                            onPressed: () {
+                              setState(() {
+                                _sidebarCollapsed = !_sidebarCollapsed;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
                       Expanded(
                         child: ListView(
                           padding: EdgeInsets.zero,
-                          children: buildMenuTiles(closeDrawer: false),
+                          children: buildMenuTiles(closeDrawer: false, collapsed: _sidebarCollapsed),
                         ),
                       ),
                       const Divider(color: Colors.white24, height: 1),
                       ListTile(
                         leading: const Icon(Icons.logout, color: Colors.white70),
-                        title: const Text('Logout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                        title: _sidebarCollapsed
+                            ? null
+                            : const Text('Logout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                         onTap: () async {
                           await _logout();
                         },
@@ -6167,6 +6225,8 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         onPressed: _showAddFormDialog,
         icon: const Icon(Icons.add),
         label: Text(_selectedType == 'Transfer' ? 'Add Transfer' : 'Add Client Requirement'),
+        hoverColor: const Color(0xFFFF7C4F),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -6234,7 +6294,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     
     return ListView.builder(
       controller: scrollController,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 116),
       itemCount: paginatedEntries.length + (_hasMoreEntriesForTab(tabType) ? 1 : 0),
       itemBuilder: (ctx, i) {
         if (i == paginatedEntries.length) {
@@ -8161,6 +8221,14 @@ class _UsersPageState extends State<UsersPage> {
     String? selectedPermission;
     String? selectedCompanyId = existing?['company_id']?.toString();
     String selectedRole = 'agent';
+    const moduleDefs = [
+      {'key': 'inventory', 'label': 'Inventory'},
+      {'key': 'agent_working', 'label': 'Agent Working'},
+      {'key': 'rental_items', 'label': 'Rental Items'},
+      {'key': 'todo', 'label': 'To-Do'},
+      {'key': 'trading', 'label': 'Trading'},
+      {'key': 'expenditure', 'label': 'Expenditure'},
+    ];
     final Map<String, String> modulePermissions = {
       'inventory': 'view_add',
       'agent_working': 'view_add',
@@ -8169,6 +8237,59 @@ class _UsersPageState extends State<UsersPage> {
       'trading': 'view_add',
       'expenditure': 'view_add',
     };
+    Map<String, String> _sanitizeModulePermissions(Map<String, String> source) {
+      const allowedValues = {'no_access', 'view_only', 'view_add', 'view_add_edit', 'full_access'};
+      final allowedKeys = moduleDefs.map((m) => m['key']!).toSet();
+      final cleaned = <String, String>{};
+      for (final key in allowedKeys) {
+        final raw = (source[key] ?? '').toString().trim();
+        cleaned[key] = allowedValues.contains(raw) ? raw : 'no_access';
+      }
+      return cleaned;
+    }
+
+    Map<String, dynamic> _buildPermissionsPayload() {
+      selectedPermission ??= 'view_add';
+
+      Map<String, String> modulePermissionsMap = <String, String>{};
+      if (selectedRole == 'agent') {
+        modulePermissionsMap = _sanitizeModulePermissions(modulePermissions);
+        final values = modulePermissionsMap.values;
+        if (values.isNotEmpty && values.every((v) => v.trim() == 'no_access')) {
+          selectedPermission = 'no_access';
+        } else if (values.any((v) => v.trim() == 'view_add' || v.trim() == 'view_add_edit')) {
+          selectedPermission = 'view_add';
+        } else {
+          selectedPermission = 'view_only';
+        }
+      }
+
+      final permissionsMap = {
+        'permission': selectedPermission,
+        'role': selectedRole,
+        'canView': selectedPermission != 'no_access',
+        'canAdd': selectedPermission == 'view_add' || selectedPermission == 'full_access',
+        'canEdit': selectedPermission == 'full_access',
+        'canDelete': selectedPermission == 'full_access',
+        'permissionsMap': modulePermissionsMap,
+      };
+
+      final encoded = jsonEncode(permissionsMap);
+      if (encoded.length > 900000) {
+        debugPrint('Permissions payload too large (${encoded.length}). Sending minimal permissions only.');
+        return {
+          'permission': selectedPermission,
+          'role': selectedRole,
+          'canView': selectedPermission != 'no_access',
+          'canAdd': selectedPermission == 'view_add' || selectedRole != 'agent',
+          'canEdit': selectedPermission == 'full_access' || selectedRole != 'agent',
+          'canDelete': selectedPermission == 'full_access',
+          'permissionsMap': <String, String>{},
+        };
+      }
+
+      return permissionsMap;
+    }
     final formKey = GlobalKey<FormState>();
 
     String? _userIdError;
@@ -8444,7 +8565,11 @@ class _UsersPageState extends State<UsersPage> {
     // Parse existing permissions if editing
     if (existing != null && existing['permissions'] != null) {
       try {
-        final perms = jsonDecode(existing['permissions'].toString());
+        final rawPerms = existing['permissions'];
+        if (rawPerms is String && rawPerms.length > 900000) {
+          debugPrint('Skipping oversized permissions payload (${rawPerms.length}) for existing user.');
+        } else {
+          final perms = rawPerms is String ? jsonDecode(rawPerms) : rawPerms;
         selectedPermission = perms['permission']?.toString();
         selectedRole = perms['role']?.toString() ?? 'agent';
         final rawMap = perms['permissionsMap'];
@@ -8462,6 +8587,7 @@ class _UsersPageState extends State<UsersPage> {
           for (final k in modulePermissions.keys) {
             modulePermissions[k] = mapped;
           }
+        }
         }
       } catch (e) {
         // Ignore parse errors
@@ -8494,15 +8620,6 @@ class _UsersPageState extends State<UsersPage> {
       {'value': 'view_only', 'label': 'View Only'},
       {'value': 'view_add', 'label': 'View & Add'},
       {'value': 'view_add_edit', 'label': 'View, Add & Edit'},
-    ];
-
-    const moduleDefs = [
-      {'key': 'inventory', 'label': 'Inventory'},
-      {'key': 'agent_working', 'label': 'Agent Working'},
-      {'key': 'rental_items', 'label': 'Rental Items'},
-      {'key': 'todo', 'label': 'To-Do'},
-      {'key': 'trading', 'label': 'Trading'},
-      {'key': 'expenditure', 'label': 'Expenditure'},
     ];
 
     final roleOptions = const [
@@ -8982,33 +9099,7 @@ class _UsersPageState extends State<UsersPage> {
                               }
 
                               // Store permissions as JSON
-                              final modulePermissionsMap = <String, String>{};
-                              if (selectedRole == 'agent') {
-                                for (final m in moduleDefs) {
-                                  final k = m['key']!;
-                                  modulePermissionsMap[k] = modulePermissions[k] ?? 'no_access';
-                                }
-                              }
-
-                              if (selectedRole == 'agent') {
-                                final values = modulePermissionsMap.values;
-                                if (values.isNotEmpty && values.every((v) => v.trim() == 'no_access')) {
-                                  selectedPermission = 'no_access';
-                                } else if (values.any((v) => v.trim() == 'view_add' || v.trim() == 'view_add_edit')) {
-                                  selectedPermission = 'view_add';
-                                } else {
-                                  selectedPermission = 'view_only';
-                                }
-                              }
-                              final permissionsMap = {
-                                'permission': selectedPermission,
-                                'role': selectedRole,
-                                'canView': selectedPermission != 'no_access',
-                                'canAdd': selectedPermission == 'view_add' || selectedPermission == 'full_access',
-                                'canEdit': selectedPermission == 'full_access',
-                                'canDelete': selectedPermission == 'full_access',
-                                'permissionsMap': modulePermissionsMap,
-                              };
+                              final permissionsMap = _buildPermissionsPayload();
                               final permissionsJson = jsonEncode(permissionsMap);
 
                               // Insert or update user using raw SQL to include all new fields

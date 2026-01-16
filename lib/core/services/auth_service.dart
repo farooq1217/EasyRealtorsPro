@@ -916,12 +916,14 @@ class AuthService {
     if (Firebase.apps.isNotEmpty) {
       try {
         await ensureFirebasePersistence();
-        await FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password);
+        final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password);
+        await cred.user?.getIdToken(true); // refresh to pull latest custom claims
         debugPrint('FirebaseAuth: sign-in success for $emailKey');
       } on FirebaseAuthException catch (e) {
         if (e.code == 'user-not-found') {
           try {
-            await FirebaseAuth.instance.createUserWithEmailAndPassword(email: emailKey, password: password);
+            final created = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: emailKey, password: password);
+            await created.user?.getIdToken(true); // refresh token to include claims
             debugPrint('FirebaseAuth: created user on-demand $emailKey');
           } catch (e2) {
             debugPrint('FirebaseAuth: create-on-demand failed for $emailKey: $e2');
@@ -1342,74 +1344,77 @@ class AuthService {
     return sessionExists;
   }
 
-  // Get Current User
+  // Get current user merged with Firestore user doc (role/company/permissions)
   Future<Map<String, dynamic>?> getCurrentUser(String? token) async {
     if (token == null || !_verifyJWT(token)) return null;
-    
+
     final payload = _decodeJWT(token);
     if (payload == null) return null;
-    
+
     final email = payload['email'] as String?;
     if (email == null) return null;
-    
-    final users = await _readUsers();
 
+    final users = await _readUsers();
     final emailKey = email.toLowerCase();
     final cached = users[emailKey] as Map<String, dynamic>?;
-    if (kIsWeb) {
-      // Force Super Admin role and companyId for mayof286@gmail.com
-      if (emailKey == 'mayof286@gmail.com' && cached != null) {
-        cached['role'] = 'super_admin';
-        cached['companyId'] = 'GLOBAL_ADMIN';
-      }
-      return cached;
-    }
+
+    Map<String, dynamic>? merged = cached != null ? {...cached} : null;
+
+    // Try local DB merge
     try {
       final dbUser = await _readUserFromDbByEmailOrUsername(emailKey);
       if (dbUser != null) {
-        final merged = {
-          ...(cached ?? <String, dynamic>{}),
-          ...dbUser,
-        };
-        // Force Super Admin role and companyId for mayof286@gmail.com
-        if (emailKey == 'mayof286@gmail.com') {
-          merged['role'] = 'super_admin';
-          merged['companyId'] = 'GLOBAL_ADMIN';
-        }
-        users[emailKey] = merged;
-        await _writeUsers(users);
-        if ((merged['status'] ?? '').toString().toLowerCase() == 'archived' || (merged['status'] ?? '').toString().toLowerCase() == 'inactive' || ((merged['is_active'] ?? merged['isActive']) is num ? (merged['is_active'] ?? merged['isActive']) == 0 : (merged['is_active'] ?? merged['isActive']) == false)) {
-          final uid = (merged['id'] ?? merged['userId'] ?? merged['user_id'])?.toString() ?? '';
-          await _revokeSessionsByUserId(uid);
-          return null;
-        }
-        AuthService.currentUser = merged;
-        return merged;
+        merged = {...(merged ?? <String, dynamic>{}), ...dbUser};
       }
-      // Force Super Admin role and companyId for mayof286@gmail.com
-      if (emailKey == 'mayof286@gmail.com' && cached != null) {
-        cached['role'] = 'super_admin';
-        cached['companyId'] = 'GLOBAL_ADMIN';
-      }
-      if (cached != null) {
-        if ((cached['status'] ?? '').toString().toLowerCase() == 'archived' || (cached['status'] ?? '').toString().toLowerCase() == 'inactive' || ((cached['is_active'] ?? cached['isActive']) is num ? (cached['is_active'] ?? cached['isActive']) == 0 : (cached['is_active'] ?? cached['isActive']) == false)) {
-          final uid = (cached['id'] ?? cached['userId'] ?? cached['user_id'])?.toString() ?? '';
-          await _revokeSessionsByUserId(uid);
-          return null;
+    } catch (_) {}
+
+    // Fetch Firestore user doc (by FirebaseAuth uid if available, otherwise by email query)
+    try {
+      if (Firebase.apps.isNotEmpty) {
+        await ensureFirebasePersistence();
+        final auth = FirebaseAuth.instance;
+        String? uid = auth.currentUser?.uid;
+        Map<String, dynamic>? fsUser;
+        if (uid != null && uid.isNotEmpty) {
+          final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+          if (doc.exists) fsUser = doc.data();
+        }
+        if (fsUser == null) {
+          final snap = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: emailKey).limit(1).get();
+          if (snap.docs.isNotEmpty) {
+            fsUser = snap.docs.first.data();
+            uid = snap.docs.first.id;
+          }
+        }
+        if (fsUser != null) {
+          merged = {...(merged ?? <String, dynamic>{}), ...fsUser};
+          if (uid != null && uid.isNotEmpty) merged['id'] = uid;
         }
       }
-      AuthService.currentUser = cached;
-      return cached;
     } catch (e) {
-      debugPrint('AuthService: getCurrentUser DB fallback failed: $e');
-      // Force Super Admin role and companyId for mayof286@gmail.com
-      if (emailKey == 'mayof286@gmail.com' && cached != null) {
-        cached['role'] = 'super_admin';
-        cached['companyId'] = 'GLOBAL_ADMIN';
-      }
-      AuthService.currentUser = cached;
-      return cached;
+      debugPrint('AuthService: Firestore fetch failed: $e');
     }
+
+    // Finalize
+    if (merged != null) {
+      // Deactivate if inactive/archived
+      final isInactive = (merged['status'] ?? '').toString().toLowerCase() == 'archived' ||
+          (merged['status'] ?? '').toString().toLowerCase() == 'inactive' ||
+          ((merged['is_active'] ?? merged['isActive']) is num
+              ? (merged['is_active'] ?? merged['isActive']) == 0
+              : (merged['is_active'] ?? merged['isActive']) == false);
+      if (isInactive) {
+        final uid = (merged['id'] ?? merged['userId'] ?? merged['user_id'])?.toString() ?? '';
+        await _revokeSessionsByUserId(uid);
+        return null;
+      }
+      users[emailKey] = merged;
+      await _writeUsers(users);
+      AuthService.currentUser = merged;
+      return merged;
+    }
+
+    return null;
   }
 
   // Logout

@@ -4859,6 +4859,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
                 entry.quantity.toString().contains(q) ||
                 entry.payment.toString().contains(q);
           }).toList();
+    final double fabSafeBottom = MediaQuery.of(context).padding.bottom + 180;
 
     return Scaffold(
       appBar: AppBar(
@@ -4923,7 +4924,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
                 onRefresh: _loadEntries,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, fabSafeBottom),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -7367,6 +7368,8 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 600;
         final summaryRowHeight = isMobile ? 70.0 : 65.0;
+        const fabPadding = 88.0;
+        final listBottomPadding = summaryRowHeight + fabPadding + MediaQuery.of(context).padding.bottom + 24;
         
         return Stack(
           children: [
@@ -7375,7 +7378,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
               padding: EdgeInsets.only(
                 left: isMobile ? 8 : 12,
                 right: isMobile ? 8 : 12,
-                bottom: summaryRowHeight + 8, // Responsive space for sticky summary row
+                bottom: listBottomPadding, // Extra space for summary + FAB row
               ),
               itemCount: searchFiltered.length + (_hasMoreEntriesForTab(tabType) ? 1 : 0),
               itemBuilder: (ctx, i) {
@@ -7818,9 +7821,12 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
               left: 0,
               right: 0,
               bottom: 0,
-                child: SafeArea(
+              child: SafeArea(
                 top: false,
-                child: _buildSummaryRow(tabType, _transactionTypeFilter),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: fabPadding),
+                  child: _buildSummaryRow(tabType, _transactionTypeFilter),
+                ),
               ),
             ),
           ],

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../shimmer_widgets.dart';
 import 'services/app_storage.dart' show AppStorage;
 import '../modules/rental/rental_page.dart' show HomeScreen;
 import 'services/auth_service.dart';
+import 'services/permission_helper.dart';
 
 /// Main application widget with MaterialApp configuration
 class AdminApp extends StatefulWidget {
@@ -114,6 +116,50 @@ class _AdminAppState extends State<AdminApp> {
       useMaterial3: true,
       visualDensity: isTouch ? VisualDensity.standard : VisualDensity.compact,
       materialTapTargetSize: isTouch ? MaterialTapTargetSize.padded : MaterialTapTargetSize.shrinkWrap,
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: MaterialStateProperty.resolveWith<Color>(
+            (states) {
+              if (states.contains(MaterialState.disabled)) return const Color(0xFFFF6B35).withOpacity(0.5);
+              if (states.contains(MaterialState.hovered) || states.contains(MaterialState.pressed)) {
+                return const Color(0xFFFF7C4F);
+              }
+              return const Color(0xFFFF6B35);
+            },
+          ),
+          foregroundColor: MaterialStateProperty.all<Color>(Colors.white),
+          overlayColor: MaterialStateProperty.all<Color>(Colors.white24),
+          elevation: MaterialStateProperty.resolveWith<double>(
+            (states) => states.contains(MaterialState.hovered) ? 6 : 4,
+          ),
+          shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          padding: MaterialStateProperty.all<EdgeInsets>(const EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
+          textStyle: MaterialStateProperty.all<TextStyle>(
+            const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.3),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: ButtonStyle(
+          side: MaterialStateProperty.all<BorderSide>(const BorderSide(color: Color(0xFFFF6B35), width: 1.4)),
+          foregroundColor: MaterialStateProperty.all<Color>(const Color(0xFFFF6B35)),
+          overlayColor: MaterialStateProperty.all<Color>(const Color(0xFFFF6B35).withOpacity(0.08)),
+          shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          textStyle: MaterialStateProperty.all<TextStyle>(
+            const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: Color(0xFFFF6B35),
+        foregroundColor: Colors.white,
+        elevation: 5,
+        hoverElevation: 8,
+      ),
     );
     final baseDark = ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: Colors.purple, brightness: Brightness.dark),
@@ -143,17 +189,155 @@ class _AdminAppState extends State<AdminApp> {
         return child ?? const SizedBox.shrink();
       },
       home: const LoginPage(),
-      routes: {
-        '/home': (_) => HomeScreen(
-              storage: AppStorage(),
-              initialCreds: null,
-              folderId: 'LOCAL',
-              bypassDrive: true,
+      onGenerateRoute: (settings) {
+        final name = settings.name ?? '';
+        // Map known routes to target nav indices and module keys for permission checks
+        final routeToNavIndex = <String, int>{
+          '/home': 0,
+          '/inventory': 1,
+          '/agent-working': 2,
+          '/rental': 3,
+          '/todo': 4,
+          '/settings': 5,
+          '/trading': 6, // unified trading (file)
+          '/trading-form': 7, // unified trading (form)
+          '/users': 9,
+          '/companies': 10,
+          '/expenditure': 10,
+        };
+        final routeToModuleKey = <String, String>{
+          '/home': 'dashboard',
+          '/inventory': 'inventory',
+          '/agent-working': 'agent_working',
+          '/rental': 'rental_items',
+          '/todo': 'todo',
+          '/settings': 'settings',
+          '/trading': 'trading',
+          '/trading-form': 'trading',
+          '/users': 'users',
+          '/companies': 'companies',
+          '/expenditure': 'expenditure',
+        };
+
+        if (name == '/' || name.isEmpty) {
+          return MaterialPageRoute(builder: (_) => const LoginPage());
+        }
+
+        if (routeToNavIndex.containsKey(name)) {
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (_) => _GuardedEntry(
+              targetNavIndex: routeToNavIndex[name],
+              moduleKey: routeToModuleKey[name],
             ),
-        '/users': (_) => const _RedirectToHome(targetNavIndex: 9),
-        '/companies': (_) => const _RedirectToHome(targetNavIndex: 10),
+          );
+        }
+
+        // Unknown route: send to login
+        return MaterialPageRoute(builder: (_) => const LoginPage());
       },
     );
+  }
+}
+
+/// Guard widget that validates session and module permissions before navigation.
+class _GuardedEntry extends StatefulWidget {
+  final int? targetNavIndex;
+  final String? moduleKey;
+  const _GuardedEntry({required this.targetNavIndex, this.moduleKey});
+
+  @override
+  State<_GuardedEntry> createState() => _GuardedEntryState();
+}
+
+class _GuardedEntryState extends State<_GuardedEntry> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _runGuard();
+    });
+  }
+
+  Future<void> _runGuard() async {
+    try {
+      final storage = AppStorage();
+      final settings = await storage.readSettings();
+      final token = settings['authToken'] as String?;
+      final sessionId = settings['currentSessionId'] as String?;
+
+      // Require valid auth token + session
+      final hasValidToken = token != null && await AuthService().verifyToken(token);
+      if (!hasValidToken) {
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+          (route) => false,
+        );
+        return;
+      }
+
+      final user = await AuthService().getCurrentUser(token);
+      if (user == null) {
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+          (route) => false,
+        );
+        return;
+      }
+
+      // Permission check for the requested module
+      if (widget.moduleKey != null) {
+        final level = PermissionHelper.getModulePermissionLevel(user, widget.moduleKey!);
+        final canView = level != null && level != 'no_access';
+        if (!canView) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Permission denied for this module'), backgroundColor: Colors.red),
+          );
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) => HomeScreen(
+                storage: AppStorage(),
+                initialCreds: null,
+                folderId: 'LOCAL',
+                bypassDrive: true,
+                initialNavIndex: 0,
+              ),
+            ),
+            (route) => false,
+          );
+          return;
+        }
+      }
+
+      // Authorized: proceed to Home with target nav
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(
+            storage: AppStorage(),
+            initialCreds: null,
+            folderId: 'LOCAL',
+            bypassDrive: true,
+            initialNavIndex: widget.targetNavIndex,
+          ),
+        ),
+        (route) => false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(body: ShimmerPageLoading(itemCount: 8));
   }
 }
 

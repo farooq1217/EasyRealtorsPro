@@ -2021,7 +2021,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             onRefresh: () => _loadOfficeCategories(reset: true),
             child: ListView.builder(
               controller: scrollController,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 116),
               itemCount: paginated.length + (_hasMoreOfficeCategories() ? 1 : 0),
               itemBuilder: (ctx, i) {
                 if (i == paginated.length) {
@@ -2127,7 +2127,13 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             ),
           ),
         ),
-        _ExpenseTotalBar(totalText: 'Total Office Expense: Rs ${currency.format(totalAmount)}'),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 72),
+            child: _ExpenseTotalBar(totalText: 'Total Office Expense: Rs ${currency.format(totalAmount)}'),
+          ),
+        ),
       ],
     );
   }
@@ -2169,7 +2175,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       onRefresh: () => _loadClosedProjects(reset: true),
       child: ListView.builder(
         controller: scrollController,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 116),
         itemCount: paginated.length + (_hasMoreClosedProjects() ? 1 : 0),
         itemBuilder: (ctx, i) {
           if (i == paginated.length) {
@@ -3176,6 +3182,7 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
                                   ],
                                 )
                               : ListView.builder(
+                                  padding: const EdgeInsets.fromLTRB(0, 0, 0, 116),
                                   itemCount: visibleRows.length + (showLoadMore ? 1 : 0),
                                   itemBuilder: (context, i) {
                                     if (showLoadMore && i >= visibleRows.length) {
@@ -3214,9 +3221,15 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
                                 ),
                     ),
                   ),
-                  _ExpenseTotalBar(
-                    totalText: 'Rs ${currency.format(visibleTotal)}',
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 72),
+                    child: _ExpenseTotalBar(
+                      totalText: 'Rs ${currency.format(visibleTotal)}',
+                    ),
                   ),
+                ),
                 ],
               ),
       ),
@@ -4139,7 +4152,13 @@ class _ProjectExpensePageState extends State<ProjectExpensePage> {
                             ),
                     ),
                   ),
-                  _ExpenseTotalBar(totalText: 'Rs ${currency.format(_totalAmount)}'),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 72),
+                  child: _ExpenseTotalBar(totalText: 'Rs ${currency.format(_totalAmount)}'),
+                ),
+              ),
                 ],
               ),
       ),
@@ -4755,7 +4774,13 @@ class _OfficeExpenseCategoryPageState extends State<OfficeExpenseCategoryPage> {
                                 ),
                     ),
                   ),
-                  _ExpenseTotalBar(totalText: 'Rs ${currency.format(_totalAmount)}'),
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 72),
+                      child: _ExpenseTotalBar(totalText: 'Rs ${currency.format(_totalAmount)}'),
+                    ),
+                  ),
                 ],
               ),
       ),

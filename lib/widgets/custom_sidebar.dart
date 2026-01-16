@@ -53,11 +53,25 @@ class ModernSidebar extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 280),
       child: Container(
         decoration: BoxDecoration(
-          color: theme.cardColor,
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFFFF6B35),
+              Color(0xFF4A90E2),
+            ],
+          ),
           borderRadius: const BorderRadius.only(
             topRight: Radius.circular(16),
             bottomRight: Radius.circular(16),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 16,
+              offset: const Offset(4, 4),
+            ),
+          ],
         ),
         child: Column(
           children: [
@@ -93,7 +107,7 @@ class ModernSidebar extends StatelessWidget {
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade800, // Dark grey for better readability
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -102,10 +116,10 @@ class ModernSidebar extends StatelessWidget {
                       isOpen ? Icons.chevron_right : Icons.chevron_left,
                       size: 20,
                     ),
-                    color: const Color(0xFFFF6B35), // Orange
+                    color: Colors.white,
                     onPressed: onToggle,
                     style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF6B35).withOpacity(0.1), // Light orange background
+                      backgroundColor: Colors.white.withOpacity(0.18),
                       minimumSize: const Size(32, 32),
                       padding: EdgeInsets.zero,
                     ),
@@ -283,7 +297,7 @@ class SidebarMenuItem extends StatelessWidget {
           children: [
             Icon(
               isSelected ? selectedIcon : icon,
-              color: isSelected ? Colors.white : Colors.grey.shade600,
+              color: isSelected ? Colors.white : Colors.white.withOpacity(0.9),
               size: 20,
             ),
             const SizedBox(width: 12),
@@ -292,7 +306,7 @@ class SidebarMenuItem extends StatelessWidget {
                 label,
                 style: GoogleFonts.poppins(
                   fontSize: 14,
-                  color: isSelected ? Colors.white : Colors.grey.shade800,
+                  color: isSelected ? Colors.white : Colors.white.withOpacity(0.95),
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 ),
               ),

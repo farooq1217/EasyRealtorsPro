@@ -1885,7 +1885,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
         ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 116),
             itemCount: filteredEntries.length,
             itemBuilder: (ctx, i) {
               final entry = filteredEntries[i];
@@ -3472,6 +3472,43 @@ class _UsersPageState extends State<UsersPage> {
   bool _backfillUserIdsDone = false;
   StreamSubscription<QuerySnapshot>? _firestoreSub;
   FirestoreSyncState _syncState = FirestoreSyncState();
+
+  Future<void> _ensureFirebaseAuth() async {
+    if (Firebase.apps.isEmpty) return;
+    await AuthService.ensureFirebasePersistence();
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      try {
+        await auth.signInAnonymously();
+      } catch (e) {
+        debugPrint('FirebaseAuth sign-in failed: $e');
+      }
+    }
+    debugPrint('FirebaseAuth UID (agents): ${auth.currentUser?.uid ?? 'none'}');
+  }
+
+  Future<bool> _setUserClaims({
+    required String uid,
+    required String role,
+    required String companyId,
+    Map<String, dynamic>? perms,
+  }) async {
+    if (Firebase.apps.isEmpty) return false;
+    try {
+      await _ensureFirebaseAuth();
+      // Cloud Functions removed for Spark plan; no-op
+      debugPrint('Skipping setUserClaims for uid=$uid (Spark plan, no functions)');
+      return true;
+    } catch (e) {
+      debugPrint('Failed to set custom claims for $uid: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update user claims: $e')),
+        );
+      }
+      return false;
+    }
+  }
   Future<void> _ensureActiveColumns() async {
     try {
       await widget.db.customStatement('ALTER TABLE companies ADD COLUMN is_active INTEGER DEFAULT 1');
@@ -3588,7 +3625,8 @@ class _UsersPageState extends State<UsersPage> {
       return;
     }
 
-    final isSuperAdmin = true;
+    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+    final isCompanyAdmin = RoleUtils.isCompanyAdmin(_currentUser);
     final companyId = RoleUtils.getUserCompanyId(_currentUser);
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
       if (mounted) {
@@ -4294,6 +4332,14 @@ class _UsersPageState extends State<UsersPage> {
     String? selectedPermission;
     String? selectedCompanyId = existing?['company_id']?.toString();
     String selectedRole = 'agent';
+    const moduleDefs = [
+      {'key': 'inventory', 'label': 'Inventory'},
+      {'key': 'agent_working', 'label': 'Agent Working'},
+      {'key': 'rental_items', 'label': 'Rental Items'},
+      {'key': 'todo', 'label': 'To-Do'},
+      {'key': 'trading', 'label': 'Trading'},
+      {'key': 'expenditure', 'label': 'Expenditure'},
+    ];
     final Map<String, String> modulePermissions = {
       'inventory': 'view_add',
       'agent_working': 'view_add',
@@ -4302,6 +4348,60 @@ class _UsersPageState extends State<UsersPage> {
       'trading': 'view_add',
       'expenditure': 'view_add',
     };
+    Map<String, String> _sanitizeModulePermissions(Map<String, String> source) {
+      const allowedValues = {'no_access', 'view_only', 'view_add', 'view_add_edit', 'full_access'};
+      final allowedKeys = moduleDefs.map((m) => m['key']!).toSet();
+      final cleaned = <String, String>{};
+      for (final key in allowedKeys) {
+        final raw = (source[key] ?? '').toString().trim();
+        cleaned[key] = allowedValues.contains(raw) ? raw : 'no_access';
+      }
+      return cleaned;
+    }
+
+    Map<String, dynamic> _buildPermissionsPayload() {
+      selectedPermission ??= 'view_add';
+
+      Map<String, String> modulePermissionsMap = <String, String>{};
+      if (selectedRole == 'agent') {
+        modulePermissionsMap = _sanitizeModulePermissions(modulePermissions);
+        final values = modulePermissionsMap.values;
+        if (values.isNotEmpty && values.every((v) => v.trim() == 'no_access')) {
+          selectedPermission = 'no_access';
+        } else if (values.any((v) => v.trim() == 'view_add' || v.trim() == 'view_add_edit')) {
+          selectedPermission = 'view_add';
+        } else {
+          selectedPermission = 'view_only';
+        }
+      }
+
+      final permissionsMap = {
+        'permission': selectedPermission,
+        'role': selectedRole,
+        'canView': selectedPermission != 'no_access',
+        'canAdd': selectedPermission == 'view_add' || selectedPermission == 'full_access',
+        'canEdit': selectedPermission == 'full_access',
+        'canDelete': selectedPermission == 'full_access',
+        'permissionsMap': modulePermissionsMap,
+      };
+
+      final encoded = jsonEncode(permissionsMap);
+      // Defensive guard against accidental oversized payloads that can exceed Firestore's 1MB field limit.
+      if (encoded.length > 900000) {
+        debugPrint('Permissions payload too large (${encoded.length}). Sending minimal permissions only.');
+        return {
+          'permission': selectedPermission,
+          'role': selectedRole,
+          'canView': selectedPermission != 'no_access',
+          'canAdd': selectedPermission == 'view_add' || selectedRole != 'agent',
+          'canEdit': selectedPermission == 'full_access' || selectedRole != 'agent',
+          'canDelete': selectedPermission == 'full_access',
+          'permissionsMap': <String, String>{},
+        };
+      }
+
+      return permissionsMap;
+    }
     final formKey = GlobalKey<FormState>();
 
     String? _userIdError;
@@ -4579,7 +4679,12 @@ class _UsersPageState extends State<UsersPage> {
     // Parse existing permissions if editing
     if (existing != null && existing['permissions'] != null) {
       try {
-        final perms = jsonDecode(existing['permissions'].toString());
+        final rawPerms = existing['permissions'];
+        // Skip decoding if the stored payload is unexpectedly large to prevent re-writing oversized data back to Firestore.
+        if (rawPerms is String && rawPerms.length > 900000) {
+          debugPrint('Skipping oversized permissions payload (${rawPerms.length}) for existing user.');
+        } else {
+          final perms = rawPerms is String ? jsonDecode(rawPerms) : rawPerms;
         selectedPermission = perms['permission']?.toString();
         selectedRole = perms['role']?.toString() ?? 'agent';
         final rawMap = perms['permissionsMap'];
@@ -4597,6 +4702,7 @@ class _UsersPageState extends State<UsersPage> {
           for (final k in modulePermissions.keys) {
             modulePermissions[k] = mapped;
           }
+        }
         }
       } catch (e) {
         // Ignore parse errors
@@ -4628,15 +4734,6 @@ class _UsersPageState extends State<UsersPage> {
       {'value': 'view_only', 'label': 'View Only'},
       {'value': 'view_add', 'label': 'View & Add'},
       {'value': 'view_add_edit', 'label': 'View, Add & Edit'},
-    ];
-
-    const moduleDefs = [
-      {'key': 'inventory', 'label': 'Inventory'},
-      {'key': 'agent_working', 'label': 'Agent Working'},
-      {'key': 'rental_items', 'label': 'Rental Items'},
-      {'key': 'todo', 'label': 'To-Do'},
-      {'key': 'trading', 'label': 'Trading'},
-      {'key': 'expenditure', 'label': 'Expenditure'},
     ];
 
     final roleOptions = const [
@@ -5139,33 +5236,7 @@ class _UsersPageState extends State<UsersPage> {
                               }
 
                               // Store permissions as JSON
-                              final modulePermissionsMap = <String, String>{};
-                              if (selectedRole == 'agent') {
-                                for (final m in moduleDefs) {
-                                  final k = m['key']!;
-                                  modulePermissionsMap[k] = modulePermissions[k] ?? 'no_access';
-                                }
-                              }
-
-                              if (selectedRole == 'agent') {
-                                final values = modulePermissionsMap.values;
-                                if (values.isNotEmpty && values.every((v) => v.trim() == 'no_access')) {
-                                  selectedPermission = 'no_access';
-                                } else if (values.any((v) => v.trim() == 'view_add' || v.trim() == 'view_add_edit')) {
-                                  selectedPermission = 'view_add';
-                                } else {
-                                  selectedPermission = 'view_only';
-                                }
-                              }
-                              final permissionsMap = {
-                                'permission': selectedPermission,
-                                'role': selectedRole,
-                                'canView': selectedPermission != 'no_access',
-                                'canAdd': selectedPermission == 'view_add' || selectedPermission == 'full_access',
-                                'canEdit': selectedPermission == 'full_access',
-                                'canDelete': selectedPermission == 'full_access',
-                                'permissionsMap': modulePermissionsMap,
-                              };
+                              final permissionsMap = _buildPermissionsPayload();
                               final permissionsJson = jsonEncode(permissionsMap);
 
                               // Firestore restore check: see if a deleted/old account exists for this email
@@ -5268,6 +5339,17 @@ class _UsersPageState extends State<UsersPage> {
                                       'created_at': restoreCreatedAt.isNotEmpty ? restoreCreatedAt : createdAtTs,
                                       'updated_at': nowIso,
                                     }, SetOptions(merge: true));
+                                    final claimsOk = await _setUserClaims(
+                                      uid: restoreUserId,
+                                      role: selectedRole ?? '',
+                                      companyId: effectiveCompanyId,
+                                      perms: permissionsMap,
+                                    );
+                                    if (claimsOk && mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('User created and claims updated'), backgroundColor: Colors.green),
+                                      );
+                                    }
                                   }
                                 } catch (e) {
                                   if (kDebugMode) {
@@ -5316,6 +5398,17 @@ class _UsersPageState extends State<UsersPage> {
                                       'created_at': createdAtTs,
                                       'updated_at': nowIso,
                                     }, SetOptions(merge: true));
+                                    final claimsOk = await _setUserClaims(
+                                      uid: id,
+                                      role: selectedRole ?? '',
+                                      companyId: effectiveCompanyId,
+                                      perms: permissionsMap,
+                                    );
+                                    if (claimsOk && mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('User updated and claims refreshed'), backgroundColor: Colors.green),
+                                      );
+                                    }
                                   }
                                 } catch (e) {
                                   if (kDebugMode) {
@@ -5903,7 +5996,8 @@ class _UsersPageState extends State<UsersPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isSuperAdmin = true;
+    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+    final isCompanyAdmin = RoleUtils.isCompanyAdmin(_currentUser);
     final rows = _q.isEmpty
         ? _rows
         : _rows.where((r) => r.values.any((v) => (v?.toString().toLowerCase() ?? '').contains(_q.toLowerCase()))).toList();
@@ -5929,40 +6023,6 @@ class _UsersPageState extends State<UsersPage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: TopRightSearch(onChanged: (q) => setState(() => _q = q)),
-          ),
-          // Test buttons - Remove in production
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.bug_report, color: Colors.white),
-            tooltip: 'Test Queries',
-            onSelected: (value) {
-              if (value == 'query') {
-                _testQueryUserByEmail('ali@gmail.com');
-              } else if (value == 'password') {
-                _checkUserPasswordInfo('ali@gmail.com');
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'query',
-                child: Row(
-                  children: [
-                    Icon(Icons.search, size: 18),
-                    SizedBox(width: 8),
-                    Text('Query User'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'password',
-                child: Row(
-                  children: [
-                    Icon(Icons.lock, size: 18),
-                    SizedBox(width: 8),
-                    Text('Check Password Info'),
-                  ],
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -6069,68 +6129,81 @@ class _UsersPageState extends State<UsersPage> {
                                 ),
                             ],
                           ),
-                          trailing: PopupMenuButton<String>(
-                            itemBuilder: (context) => [
-                              PopupMenuItem<String>(
-                                value: 'edit',
-                                child: const Row(
-                                  children: [
-                                    Icon(Icons.edit, size: 18),
-                                    SizedBox(width: 8),
-                                    Text('Edit'),
-                                  ],
-                                ),
-                              ),
-                              PopupMenuItem<String>(
-                                value: 'reset',
-                                child: const Row(
-                                  children: [
-                                    Icon(Icons.lock_reset, size: 18, color: Colors.orange),
-                                    SizedBox(width: 8),
-                                    Text('Reset Password'),
-                                  ],
-                                ),
-                              ),
-                              PopupMenuItem<String>(
-                                value: isInactive ? 'activate' : 'deactivate',
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      isInactive ? Icons.toggle_on : Icons.toggle_off,
-                                      size: 20,
-                                      color: isInactive ? Colors.green : Colors.orange,
+                          trailing: (isSuperAdmin || isCompanyAdmin)
+                              ? PopupMenuButton<String>(
+                                  itemBuilder: (context) => [
+                                    PopupMenuItem<String>(
+                                      value: 'edit',
+                                      child: const Row(
+                                        children: [
+                                          Icon(Icons.edit, size: 18),
+                                          SizedBox(width: 8),
+                                          Text('Edit'),
+                                        ],
+                                      ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    Text(isInactive ? 'Activate' : 'Deactivate'),
+                                    PopupMenuItem<String>(
+                                      value: 'reset',
+                                      child: const Row(
+                                        children: [
+                                          Icon(Icons.lock_reset, size: 18, color: Colors.orange),
+                                          SizedBox(width: 8),
+                                          Text('Reset Password'),
+                                        ],
+                                      ),
+                                    ),
+                                    PopupMenuItem<String>(
+                                      value: isInactive ? 'activate' : 'deactivate',
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            isInactive ? Icons.toggle_on : Icons.toggle_off,
+                                            size: 20,
+                                            color: isInactive ? Colors.green : Colors.orange,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(isInactive ? 'Activate' : 'Deactivate'),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuDivider(),
+                                    PopupMenuItem<String>(
+                                      value: 'delete',
+                                      child: const Row(
+                                        children: [
+                                          Icon(Icons.delete, size: 18, color: Colors.red),
+                                          SizedBox(width: 8),
+                                          Text('Delete'),
+                                        ],
+                                      ),
+                                    ),
                                   ],
-                                ),
-                              ),
-                              const PopupMenuDivider(),
-                              PopupMenuItem<String>(
-                                value: 'delete',
-                                child: const Row(
-                                  children: [
-                                    Icon(Icons.delete, size: 18, color: Colors.red),
-                                    SizedBox(width: 8),
-                                    Text('Delete'),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            onSelected: (value) async {
-                              if (value == 'edit') {
-                                _showAddFormDialog(existing: r);
-                              } else if (value == 'reset') {
-                                _resetUserPassword(userId, username, email);
-                              } else if (value == 'activate') {
-                                await _toggleUserStatus(userId, true);
-                              } else if (value == 'deactivate') {
-                                await _toggleUserStatus(userId, false);
-                              } else if (value == 'delete') {
-                                await _deleteUser(r['id'] as String);
-                              }
-                            },
-                          ),
+                                  onSelected: (value) async {
+                                    try {
+                                      if (value == 'edit') {
+                                        _showAddFormDialog(existing: r);
+                                      } else if (value == 'reset') {
+                                        await _resetUserPassword(userId, username, email);
+                                      } else if (value == 'activate') {
+                                        await _toggleUserStatus(userId, true);
+                                      } else if (value == 'deactivate') {
+                                        await _toggleUserStatus(userId, false);
+                                      } else if (value == 'delete') {
+                                        await _deleteUser(r['id'] as String);
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Action failed: $e'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                )
+                              : null,
                         ),
                       );
                     },

@@ -48,7 +48,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/app_icon.ico
+    # - assets/app_icon.ico  # Temporarily disabled: file missing
     - assets/fonts/
   fonts:
     - family: Roboto
