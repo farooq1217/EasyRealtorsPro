@@ -1016,7 +1016,7 @@ class AuthService {
       final auth = FirebaseAuth.instance;
       final db = await AppDatabase.instance();
       final rows = await db.customSelect(
-        'SELECT id, email, username, password_hash, is_active, status FROM users WHERE email IS NOT NULL AND email != ""',
+        "SELECT id, email, username, password_hash, is_active, status FROM users WHERE email IS NOT NULL AND email != ''",
       ).get();
       for (final row in rows) {
         final data = row.data;

@@ -1626,7 +1626,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _initNotifications() async {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const init = InitializationSettings(android: android);
+    const darwin = DarwinInitializationSettings();
+    const windows = WindowsInitializationSettings(appName: 'Easy Realtors Pro');
+    const init = InitializationSettings(
+      android: android,
+      iOS: darwin,
+      macOS: darwin,
+      windows: windows,
+    );
     await _notifications.initialize(init);
   }
 
@@ -3532,14 +3539,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final isBypass = PermissionHelper.isBypassUser(_currentUser);
     final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
     final isCompanyAdmin = RoleUtils.isCompanyAdmin(_currentUser);
-    final canViewInventory = PermissionHelper.canViewModule(_currentUser, 'inventory');
-    final canViewAgentWorking = !isAgentRole && PermissionHelper.canViewModule(_currentUser, 'agent_working');
-    final canViewRental = PermissionHelper.canViewModule(_currentUser, 'rental_items');
-    final canViewTodo = PermissionHelper.canViewModule(_currentUser, 'todo');
-    final canViewExpenditure = PermissionHelper.canViewModule(_currentUser, 'expenditure');
-    final canViewTrading = PermissionHelper.canViewModule(_currentUser, 'trading');
-    final showUsers = (isBypass || isSuperAdmin || isCompanyAdmin) && PermissionHelper.canViewModule(_currentUser, 'users');
-    final showCompanies = (isBypass || isSuperAdmin) && PermissionHelper.canViewModule(_currentUser, 'companies');
+    // Super Admin should see all modules regardless of stored permissions.
+    final canViewInventory = isSuperAdmin || PermissionHelper.canViewModule(_currentUser, 'inventory');
+    final canViewAgentWorking = isSuperAdmin || (!isAgentRole && PermissionHelper.canViewModule(_currentUser, 'agent_working'));
+    final canViewRental = isSuperAdmin || PermissionHelper.canViewModule(_currentUser, 'rental_items');
+    final canViewTodo = isSuperAdmin || PermissionHelper.canViewModule(_currentUser, 'todo');
+    final canViewExpenditure = isSuperAdmin || PermissionHelper.canViewModule(_currentUser, 'expenditure');
+    final canViewTrading = isSuperAdmin || PermissionHelper.canViewModule(_currentUser, 'trading');
+    final showUsers = isSuperAdmin || ((isBypass || isCompanyAdmin) && PermissionHelper.canViewModule(_currentUser, 'users'));
+    final showCompanies = isSuperAdmin || ((isBypass) && PermissionHelper.canViewModule(_currentUser, 'companies'));
     final settingsLabel = isAgentRole ? 'My Profile' : 'Settings';
 
     final navItems = <_AdaptiveNavItem>[
@@ -3624,22 +3632,10 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     final normalizedNavIndex = (_navIndex == 7) ? 6 : _navIndex;
-    final selectedNavPosition = navItems.indexWhere((n) => n.index == normalizedNavIndex);
-    final safeSelectedPosition = selectedNavPosition < 0 ? 0 : selectedNavPosition;
-
-    Widget _navIcon(_AdaptiveNavItem item, {required bool selected}) {
-      final iconWidget = Icon(selected ? item.selectedIcon : item.icon);
-      if (item.badge == null) return iconWidget;
-      return Badge(
-        backgroundColor: const Color(0xFF4A90E2),
-        label: Text('${item.badge}'),
-        child: iconWidget,
-      );
-    }
 
     Future<void> handleNavSelection(_AdaptiveNavItem item) async {
       _resetInactivityTimer();
-      if (item.requiresAccess && !_canAccessNavIndex(item.index)) {
+      if (!isSuperAdmin && item.requiresAccess && !_canAccessNavIndex(item.index)) {
         _denyAndGoDashboard('Permission Denied');
         return;
       }
@@ -3647,26 +3643,6 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _navIndex = item.index);
       }
     }
-
-    final railDestinations = navItems
-        .map(
-          (item) => NavigationRailDestination(
-            icon: _navIcon(item, selected: false),
-            selectedIcon: _navIcon(item, selected: true),
-            label: Text(item.label),
-          ),
-        )
-        .toList();
-
-    final barDestinations = navItems
-        .map(
-          (item) => NavigationDestination(
-            icon: _navIcon(item, selected: false),
-            selectedIcon: _navIcon(item, selected: true),
-            label: item.label,
-          ),
-        )
-        .toList();
 
     final contentWidget = Container(
       decoration: BoxDecoration(
@@ -3716,6 +3692,37 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
+    // Build menu tiles reused in sidebar
+    List<Widget> buildMenuTiles({required bool closeDrawer}) {
+      return [
+        for (final item in navItems)
+          ListTile(
+            leading: Icon(normalizedNavIndex == item.index ? item.selectedIcon : item.icon),
+            title: Row(
+              children: [
+                Flexible(child: Text(item.label)),
+                if (item.badge != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: CircleAvatar(
+                      radius: 10,
+                      backgroundColor: const Color(0xFF4A90E2),
+                      child: Text(
+                        '${item.badge}',
+                        style: const TextStyle(fontSize: 11, color: Colors.white),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            selected: normalizedNavIndex == item.index,
+            onTap: () async {
+              await handleNavSelection(item);
+            },
+          ),
+      ];
+    }
+
     return Listener(
       onPointerDown: (_) => _resetInactivityTimer(),
       onPointerMove: (_) => _resetInactivityTimer(),
@@ -3725,70 +3732,55 @@ class _HomeScreenState extends State<HomeScreen> {
           _resetInactivityTimer();
           return KeyEventResult.ignored;
         },
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isMobile = constraints.maxWidth < 900;
-            final canExtend = constraints.maxWidth >= 1100;
-            final forcedCollapsed = constraints.maxWidth < 1100 && !_sidebarManuallyToggled;
-            final railExtended = canExtend && !forcedCollapsed && _showSidebar;
-            final railSelectedIndex = railDestinations.isEmpty
-                ? 0
-                : safeSelectedPosition.clamp(0, railDestinations.length - 1).toInt();
-
-            if (isMobile) {
-              return Scaffold(
-                appBar: _gradientAppBar('Admin'),
-                body: contentWidget,
-                bottomNavigationBar: NavigationBar(
-                  height: 72,
-                  selectedIndex: safeSelectedPosition,
-                  onDestinationSelected: (i) => handleNavSelection(navItems[i]),
-                  labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-                  destinations: barDestinations,
-                ),
-              );
-            }
-
-            final navToggle = canExtend
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: IconButton(
-                      tooltip: railExtended ? 'Collapse navigation' : 'Expand navigation',
-                      icon: Icon(railExtended ? Icons.chevron_left : Icons.menu_open),
-                      onPressed: () {
-                        _resetInactivityTimer();
-                        final nextShow = !_showSidebar;
-                        setState(() {
-                          _sidebarManuallyToggled = true;
-                          _showSidebar = nextShow;
-                        });
-                        Future.microtask(() => _persistSidebarCollapsed(!nextShow));
-                      },
-                    ),
-                  )
-                : null;
-
-            return Scaffold(
-              appBar: _gradientAppBar('Admin'),
-              body: Row(
-                children: [
-                  NavigationRail(
-                    selectedIndex: railSelectedIndex,
-                    onDestinationSelected: (i) => handleNavSelection(navItems[i]),
-                    extended: railExtended,
-                    minExtendedWidth: 240,
-                    labelType: railExtended
-                        ? NavigationRailLabelType.none
-                        : NavigationRailLabelType.selected,
-                    leading: navToggle,
-                    destinations: railDestinations,
+        child: Scaffold(
+          appBar: _gradientAppBar('Admin'),
+          body: Row(
+            children: [
+              Container(
+                width: 260,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF121824),
+                      Color(0xFF1B2331),
+                    ],
                   ),
-                  const VerticalDivider(width: 1, thickness: 1),
-                  Expanded(child: contentWidget),
-                ],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.35),
+                      blurRadius: 18,
+                      offset: const Offset(4, 0),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          children: buildMenuTiles(closeDrawer: false),
+                        ),
+                      ),
+                      const Divider(color: Colors.white24, height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.logout, color: Colors.white70),
+                        title: const Text('Logout', style: TextStyle(color: Colors.white)),
+                        onTap: () async {
+                          await _logout();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            );
-          },
+              Expanded(
+                child: contentWidget,
+              ),
+            ],
+          ),
         ),
       ),
     );
