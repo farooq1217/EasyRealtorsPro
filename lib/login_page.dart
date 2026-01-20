@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import 'core/services/auth_service.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'firestore_sync_service.dart';
 import 'force_password_change_page.dart';
 
 String? _requiredValidator(String? value) {
@@ -61,6 +66,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _login() async {
     if (_formKey.currentState?.validate() ?? false) {
+      final isWindows = !kIsWeb && io.Platform.isWindows;
       setState(() {
         _isLoading = true;
       });
@@ -90,6 +96,36 @@ class _LoginPageState extends State<LoginPage> {
             return;
           }
 
+          // Kick off background sync after login (delay to let UI settle)
+          Future.delayed(const Duration(seconds: 2), () async {
+            if (isWindows) return;
+            if (Firebase.apps.isEmpty) return;
+            if (FirebaseAuth.instance.currentUser == null) return;
+            try {
+              await FirebaseAuth.instance.currentUser?.getIdToken(true);
+            } catch (e) {
+              debugPrint('Token refresh skipped: $e');
+            }
+            try {
+              debugPrint('Background sync started after login...');
+              await AuthService().syncUsersFromFirestore();
+            } catch (e) {
+              debugPrint('Background sync (users) skipped: $e');
+            }
+            try {
+              await FirestoreSyncService().batchSync(collection: 'companies', documents: const []);
+            } catch (_) {}
+            try {
+              await FirestoreSyncService().batchSync(collection: 'inventory', documents: const []);
+            } catch (_) {}
+            try {
+              await FirestoreSyncService().batchSync(collection: 'trading_entries', documents: const []);
+            } catch (_) {}
+            try {
+              await FirestoreSyncService().batchSync(collection: 'expenditures', documents: const []);
+            } catch (_) {}
+          });
+
           // Check if user needs to change password (is_first_login flag from database)
           final email = _emailController.text.trim().toLowerCase();
           final userId = result['userId'] as String?;
@@ -112,17 +148,22 @@ class _LoginPageState extends State<LoginPage> {
                 if (isFirstLogin == 1) {
                   // User must change password - redirect to password change page
                   if (mounted) {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                        builder: (_) => ForcePasswordChangePage(
-                          db: db,
-                          userId: userId,
-                          email: email,
-                          isForced: true,
-                          closeDbOnFinish: false,
+                    await Future.delayed(const Duration(seconds: 3));
+                    if (!mounted) return;
+                    SchedulerBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                          builder: (_) => ForcePasswordChangePage(
+                            db: db,
+                            userId: userId,
+                            email: email,
+                            isForced: true,
+                            closeDbOnFinish: false,
+                          ),
                         ),
-                      ),
-                    );
+                      );
+                    });
                     return;
                   }
                 }
@@ -137,7 +178,7 @@ class _LoginPageState extends State<LoginPage> {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Login successful'), backgroundColor: Colors.green, duration: Duration(seconds: 2)),
             );
-            await Future.delayed(const Duration(milliseconds: 300));
+            await Future.delayed(const Duration(seconds: 3));
             if (mounted) {
               final navArgs = result['requiresProfileCompletion'] == true
                   ? {
@@ -146,7 +187,10 @@ class _LoginPageState extends State<LoginPage> {
                           'Please complete your profile to continue',
                     }
                   : null;
-              Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
+              SchedulerBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
+              });
             }
           }
         } else if (result['requires2FA'] == true) {

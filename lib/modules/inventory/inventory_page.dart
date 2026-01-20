@@ -577,7 +577,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
                           ),
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 116),
                           itemCount: _filteredRows.length,
                           itemBuilder: (ctx, i) {
                             final r = _filteredRows[i];

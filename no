@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Har logged-in user ko read/write ki ijazat
+    match /{document=**} {
+      allow read: if true;
+      allow write, create, update, delete: if request.auth != null;
+    }
+  }
+}

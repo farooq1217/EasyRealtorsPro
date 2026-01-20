@@ -48,7 +48,8 @@ import '../../modules/inventory/inventory_page.dart' show FilesPage;
 import '../../modules/todo/todo_page.dart' show ToDoPage;
 import '../../modules/trading/trading_page.dart' show TradingPage;
 import '../../modules/expenditure/expenditure_page.dart' show ExpenditurePage;
-import '../../modules/agents/agents_page.dart' as agents show CompaniesPage, UsersPage;
+import '../../modules/users/users_page.dart' as users show UsersPage;
+import '../../modules/companies/companies_page.dart' as companies show CompaniesPage;
 import '../../modules/settings/settings_page.dart' show SettingsPage;
 
 class RentalItemsPage extends StatefulWidget {
@@ -3515,7 +3516,7 @@ class _HomeScreenState extends State<HomeScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) => _denyAndGoDashboard('Permission Denied'));
           content = const SizedBox.shrink();
         } else {
-          content = _db == null ? const SizedBox.shrink() : agents.UsersPage(db: _db!);
+          content = _db == null ? const SizedBox.shrink() : users.UsersPage(db: _db!);
         }
         break;
       case 9:
@@ -3523,7 +3524,7 @@ class _HomeScreenState extends State<HomeScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) => _denyAndGoDashboard('Permission Denied'));
           content = const SizedBox.shrink();
         } else {
-          content = _db == null ? const SizedBox.shrink() : agents.CompaniesPage(db: _db!);
+          content = _db == null ? const SizedBox.shrink() : companies.CompaniesPage(db: _db!);
         }
         break;
       case 10:

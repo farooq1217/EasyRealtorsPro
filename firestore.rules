@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --------------------------------------------------------------------
+    // Helper functions
+    // --------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userExists() {
+      return isSignedIn() && userDoc().exists;
+    }
+
+    function getRole() {
+      return userExists() ? (userDoc().data.role ?? '') : '';
+    }
+
+    function getCompanyId() {
+      return userExists() ? (userDoc().data.companyId ?? userDoc().data.company_id) : null;
+    }
+
+    function sameCompany(data) {
+      return data != null && getCompanyId() != null && (
+        data.companyId == getCompanyId() || data.company_id == getCompanyId()
+      );
+    }
+
+    // --------------------------------------------------------------------
+    // Users collection
+    // --------------------------------------------------------------------
+    match /users/{userId} {
+      // Allow user to create/read/update their own data
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow read, update: if isSignedIn() && request.auth.uid == userId;
+
+      // Super Admin: full access
+      allow read, write: if isSignedIn() && getRole() == 'super_admin';
+
+      // Admin: manage users within their company
+      allow create, read, update, delete: if isSignedIn()
+        && getRole() == 'admin'
+        && (
+          // Use request.resource when creating/updating; fallback to existing doc
+          sameCompany(request.resource.data) || sameCompany(resource.data)
+        );
+    }
+
+    // --------------------------------------------------------------------
+    // Inventory (example of similar logic)
+    // --------------------------------------------------------------------
+    match /inventory/{itemId} {
+      allow read, write: if isSignedIn() && (
+        getRole() == 'super_admin'
+        || sameCompany(resource.data)
+        || sameCompany(request.resource.data)
+      );
+    }
+
+    // --------------------------------------------------------------------
+    // Default deny for all other collections unless explicitly allowed.
+    // Add matches below following the same pattern as needed.
+    // --------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

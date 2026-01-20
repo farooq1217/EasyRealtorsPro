@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, kIsWeb;
+import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -279,6 +280,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   }
 
   Future<void> _startFirestoreListenersIfNeeded() async {
+    final isWindows = !kIsWeb && io.Platform.isWindows;
+    if (isWindows) return;
     if (_currentUser == null) return;
     if (Firebase.apps.isEmpty) return;
 
@@ -1645,7 +1648,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) return;
     final finalCompanyId = isSuperAdmin ? 'GLOBAL_ADMIN' : companyId!;
 
-    final createdBy = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? _currentUser?['id']?.toString();
+    final createdBy = (_currentUser?['email'] ?? _currentUser?['username'])?.toString().trim().toLowerCase() ??
+        creatorFields(_currentUser)['creator_user_id_alias']?.toString();
 
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     final nowIso = DateTime.now().toUtc().toIso8601String();
@@ -1882,7 +1886,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     final finalCompanyId = isSuperAdmin ? null : companyId;
     if (!isSuperAdmin && (finalCompanyId == null || finalCompanyId.isEmpty)) return;
 
-    final createdBy = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? _currentUser?['id']?.toString();
+    final createdBy = (_currentUser?['email'] ?? _currentUser?['username'])?.toString().trim().toLowerCase() ??
+        creatorFields(_currentUser)['creator_user_id_alias']?.toString();
 
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     final nowIso = DateTime.now().toUtc().toIso8601String();
@@ -2957,7 +2962,8 @@ class _OfficeExpenseMonthPageState extends State<OfficeExpenseMonthPage> {
     final finalCompanyId = isSuperAdmin ? null : companyId;
     if (!isSuperAdmin && (finalCompanyId == null || finalCompanyId.isEmpty)) return;
 
-    final createdBy = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? _currentUser?['id']?.toString();
+    final createdBy = (_currentUser?['email'] ?? _currentUser?['username'])?.toString().trim().toLowerCase() ??
+        creatorFields(_currentUser)['creator_user_id_alias']?.toString();
 
     // Enforce monthly ledger: the expense date must belong to the opened month
     try {

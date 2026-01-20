@@ -153,6 +153,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
 
   Future<void> _ensureFirebaseAuth() async {
     if (Firebase.apps.isEmpty) return;
+    if (!kIsWeb && io.Platform.isWindows) return;
     await AuthService.ensureFirebasePersistence();
     final auth = FirebaseAuth.instance;
     if (auth.currentUser == null) {
@@ -332,7 +333,8 @@ class _TradingFilePageState extends State<TradingFilePage> {
       );
 
       _firestoreSub = query.snapshots().listen((snapshot) async {
-        try {
+        Future.microtask(() async {
+          try {
           final changes = List<DocumentChange>.from(snapshot.docChanges);
           
           if (changes.isNotEmpty) {
@@ -401,18 +403,19 @@ class _TradingFilePageState extends State<TradingFilePage> {
               setState(() => _firestoreReady = true);
             });
           }
-        } catch (e) {
-          if (e is FirebaseException && e.code == 'permission-denied') {
-            debugPrint('Firestore permission denied for trading_file_entries sync (ignored)');
-          } else {
-            debugPrint('Firestore snapshot handling error (trading_file_entries): $e');
+          } catch (e) {
+            if (e is FirebaseException && e.code == 'permission-denied') {
+              debugPrint('Firestore permission denied for trading_file_entries sync (ignored)');
+            } else {
+              debugPrint('Firestore snapshot handling error (trading_file_entries): $e');
+            }
+            Future.microtask(() {
+              if (!mounted) return;
+              _syncState.finishLoading(synced: false, errorMessage: null);
+              setState(() => _firestoreReady = true);
+            });
           }
-          Future.microtask(() {
-            if (!mounted) return;
-            _syncState.finishLoading(synced: false, errorMessage: null);
-            setState(() => _firestoreReady = true);
-          });
-        }
+        });
       }, onError: (error) {
         final isPerm = error is FirebaseException && error.code == 'permission-denied';
         if (isPerm) {
@@ -665,16 +668,21 @@ class _TradingFilePageState extends State<TradingFilePage> {
         return;
       }
 
-      final myUserId = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? _currentUser?['id']?.toString();
-      String? createdBy;
+      final myUserId = creatorFields(_currentUser)['creator_user_id_alias']?.toString();
+      final creatorEmail = (_currentUser?['email'] ?? _currentUser?['username'])?.toString().trim().toLowerCase();
+      String? createdBy = creatorEmail?.isNotEmpty == true ? creatorEmail : myUserId;
       try {
         final res = await widget.db.customSelect(
           'SELECT created_by FROM trading_file_entries WHERE id = ? LIMIT 1',
           variables: [d.Variable.withString(entry.id)],
         ).get();
-        if (res.isNotEmpty) createdBy = res.first.data['created_by']?.toString();
+        if (res.isNotEmpty) {
+          final existingCreator = res.first.data['created_by']?.toString();
+          if (existingCreator != null && existingCreator.isNotEmpty) {
+            createdBy = existingCreator.trim().toLowerCase();
+          }
+        }
       } catch (_) {}
-      createdBy ??= myUserId;
 
       await widget.db.customStatement('''
         INSERT OR REPLACE INTO trading_file_entries (
@@ -3135,16 +3143,21 @@ class _TradingFormPageState extends State<TradingFormPage> {
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
 
-      final myUserId = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? _currentUser?['id']?.toString();
-      String? createdBy;
+      final creatorEmail = (_currentUser?['email'] ?? _currentUser?['username'])?.toString().trim().toLowerCase();
+      final myUserId = creatorFields(_currentUser)['creator_user_id_alias']?.toString();
+      String? createdBy = creatorEmail?.isNotEmpty == true ? creatorEmail : myUserId;
       try {
         final res = await widget.db.customSelect(
           'SELECT created_by FROM trading_entries WHERE id = ? LIMIT 1',
           variables: [d.Variable.withString(entry.id)],
         ).get();
-        if (res.isNotEmpty) createdBy = res.first.data['created_by']?.toString();
+        if (res.isNotEmpty) {
+          final existingCreator = res.first.data['created_by']?.toString();
+          if (existingCreator != null && existingCreator.isNotEmpty) {
+            createdBy = existingCreator.trim().toLowerCase();
+          }
+        }
       } catch (_) {}
-      createdBy ??= myUserId;
 
       await widget.db.customStatement('''
         INSERT OR REPLACE INTO trading_entries (
@@ -6169,16 +6182,21 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     try {
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-      final myUserId = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? _currentUser?['id']?.toString();
-      String? createdBy;
+      final creatorEmail = (_currentUser?['email'] ?? _currentUser?['username'])?.toString().trim().toLowerCase();
+      final myUserId = creatorFields(_currentUser)['creator_user_id_alias']?.toString();
+      String? createdBy = creatorEmail?.isNotEmpty == true ? creatorEmail : myUserId;
       try {
         final res = await widget.db.customSelect(
           'SELECT created_by FROM trading_file_entries WHERE id = ? LIMIT 1',
           variables: [d.Variable.withString(entry.id)],
         ).get();
-        if (res.isNotEmpty) createdBy = res.first.data['created_by']?.toString();
+        if (res.isNotEmpty) {
+          final existingCreator = res.first.data['created_by']?.toString();
+          if (existingCreator != null && existingCreator.isNotEmpty) {
+            createdBy = existingCreator.trim().toLowerCase();
+          }
+        }
       } catch (_) {}
-      createdBy ??= myUserId;
       await widget.db.customStatement('''
         INSERT OR REPLACE INTO trading_file_entries (
           id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, estate,
@@ -6618,16 +6636,21 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
         }
         return;
       }
-      final myUserId = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? _currentUser?['id']?.toString();
-      String? createdBy;
+      final creatorEmail = (_currentUser?['email'] ?? _currentUser?['username'])?.toString().trim().toLowerCase();
+      final myUserId = creatorFields(_currentUser)['creator_user_id_alias']?.toString();
+      String? createdBy = creatorEmail?.isNotEmpty == true ? creatorEmail : myUserId;
       try {
         final res = await widget.db.customSelect(
           'SELECT created_by FROM trading_entries WHERE id = ? LIMIT 1',
           variables: [d.Variable.withString(entry.id)],
         ).get();
-        if (res.isNotEmpty) createdBy = res.first.data['created_by']?.toString();
+        if (res.isNotEmpty) {
+          final existingCreator = res.first.data['created_by']?.toString();
+          if (existingCreator != null && existingCreator.isNotEmpty) {
+            createdBy = existingCreator.trim().toLowerCase();
+          }
+        }
       } catch (_) {}
-      createdBy ??= myUserId;
       await widget.db.customStatement('''
         INSERT OR REPLACE INTO trading_entries (
           id, company_id, created_by, type, buy_option, sell_option, date, mobile, person_name, buyer_name, seller_name, estate_name, plot_no, block, commission,
@@ -6660,6 +6683,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     required String docId,
     required Map<String, dynamic> data,
   }) {
+    if (!kIsWeb && io.Platform.isWindows) return;
     Future.microtask(() async {
       try {
         if (Firebase.apps.isNotEmpty) {
@@ -6681,6 +6705,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
 
   Future<void> _ensureFirebaseAuthForm() async {
     if (Firebase.apps.isEmpty) return;
+    if (!kIsWeb && io.Platform.isWindows) return;
     await AuthService.ensureFirebasePersistence();
     final auth = FirebaseAuth.instance;
     if (auth.currentUser == null) {

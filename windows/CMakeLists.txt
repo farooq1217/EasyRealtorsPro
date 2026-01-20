@@ -108,7 +108,21 @@ install(CODE "
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
-# Install the AOT library on non-Debug builds only.
+# Install sqlite3.dll from sqlite3_flutter_libs plugin (handle both Debug and Release)
+if(EXISTS "${PROJECT_BUILD_DIR}plugins/sqlite3_flutter_libs/Debug/sqlite3.dll")
+  install(FILES "${PROJECT_BUILD_DIR}plugins/sqlite3_flutter_libs/Debug/sqlite3.dll"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    CONFIGURATIONS Debug
+    COMPONENT Runtime)
+endif()
+if(EXISTS "${PROJECT_BUILD_DIR}plugins/sqlite3_flutter_libs/Release/sqlite3.dll")
+  install(FILES "${PROJECT_BUILD_DIR}plugins/sqlite3_flutter_libs/Release/sqlite3.dll"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    CONFIGURATIONS Release;Profile
+    COMPONENT Runtime)
+endif()
+
+# Install AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)

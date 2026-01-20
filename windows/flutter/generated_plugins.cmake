@@ -11,7 +11,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
   printing
   screen_retriever_windows
   share_plus
-  sqlite3_flutter_libs
   system_tray
   url_launcher_windows
   window_manager

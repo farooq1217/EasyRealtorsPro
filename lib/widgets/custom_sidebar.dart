@@ -43,8 +43,10 @@ class ModernSidebar extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final isDarkMode = isDark || themeMode == ThemeMode.dark;
     final isBypass = PermissionHelper.isBypassUser(currentUser);
+    final role = (currentUser?['role'] ?? '').toString().toLowerCase();
+    final isAdminRole = role == 'admin' || role == 'super_admin';
     bool _canSee(String moduleKey) {
-      if (isBypass) return true;
+      if (isBypass || isAdminRole) return true;
       final level = PermissionHelper.getModulePermissionLevel(currentUser, moduleKey);
       return level != 'no_access';
     }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -189,6 +190,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// Initialize real-time Firestore listeners for societies and blocks
   Future<void> _initFirestoreListeners() async {
+    if (!kIsWeb && Platform.isWindows) {
+      setState(() => _loading = false);
+      return;
+    }
     if (Firebase.apps.isEmpty) {
       setState(() => _loading = false);
       return;

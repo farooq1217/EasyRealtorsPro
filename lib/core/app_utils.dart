@@ -334,19 +334,22 @@ Future<Uint8List> _svgStringToPdfInIsolate(String svg) async {
 /// Extracts creator fields from user object for Firestore sync
 Map<String, dynamic> creatorFields(Map<String, dynamic>? user) {
   final internalId = user?['id']?.toString().trim();
+  final emailKey = (user?['email'] ?? user?['username'])?.toString().trim().toLowerCase();
   final displayNameRaw = (user?['name'] ?? user?['fullName'] ?? user?['displayName'] ?? user?['email'])?.toString().trim();
   final aliasRaw = (user?['user_id'] ?? user?['userId'] ?? user?['user_id_alias'] ?? user?['userIdAlias'])?.toString().trim();
-  final resolvedAlias = (aliasRaw != null && aliasRaw.isNotEmpty)
-      ? aliasRaw
-      : ((internalId != null && internalId.isNotEmpty) ? internalId : null);
+  final resolvedAlias = (emailKey != null && emailKey.isNotEmpty)
+      ? emailKey
+      : ((aliasRaw != null && aliasRaw.isNotEmpty)
+          ? aliasRaw
+          : ((internalId != null && internalId.isNotEmpty) ? internalId : null));
   final resolvedDisplayName = (displayNameRaw != null && displayNameRaw.isNotEmpty)
       ? displayNameRaw
       : ((internalId != null && internalId.isNotEmpty) ? internalId : null);
   return {
-    'creator_user_id': (internalId != null && internalId.isNotEmpty) ? internalId : null,
+    'creator_user_id': resolvedAlias,
     'creator_display_name': resolvedDisplayName,
     'creator_user_id_alias': resolvedAlias,
-    'creatorUserId': (internalId != null && internalId.isNotEmpty) ? internalId : null,
+    'creatorUserId': resolvedAlias,
     'creatorDisplayName': resolvedDisplayName,
     'creatorUserIdAlias': resolvedAlias,
   };

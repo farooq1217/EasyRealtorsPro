@@ -13,7 +13,6 @@ dependencies:
   path_provider: ^2.1.4
   http: ^1.2.1
   shimmer: ^3.0.0
-  sqlite3_flutter_libs: ^0.5.24
   drive_client:
     path: packages/drive_client
   shared:
