@@ -10,7 +10,7 @@ import 'core/services/auth_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firestore_sync_service.dart';
-import 'force_password_change_page.dart';
+// import 'force_password_change_page.dart'; // REMOVED - Force password change logic disabled
 
 String? _requiredValidator(String? value) {
   if (value == null || value.trim().isEmpty) return 'This field is required';
@@ -126,7 +126,10 @@ class _LoginPageState extends State<LoginPage> {
             } catch (_) {}
           });
 
-          // Check if user needs to change password (is_first_login flag from database)
+          // FORCE PASSWORD CHANGE LOGIC REMOVED
+          // Previously checked is_first_login flag and redirected to ForcePasswordChangePage
+          // Now allowing direct access to dashboard regardless of password change status
+          /*
           final email = _emailController.text.trim().toLowerCase();
           final userId = result['userId'] as String?;
           
@@ -173,6 +176,7 @@ class _LoginPageState extends State<LoginPage> {
               // Continue to home if check fails
             }
           }
+          */
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(

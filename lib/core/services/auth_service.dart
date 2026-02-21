@@ -13,6 +13,7 @@ import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as i
 import 'package:random_string/random_string.dart';
 import 'package:drift/drift.dart' as d;
 import 'app_storage.dart' show AppStorage;
+import '../../firestore_sync_service.dart';
 
 class AuthService {
   static Map<String, dynamic>? currentUser; // in-memory cache for immediate UI refresh
@@ -187,14 +188,17 @@ class AuthService {
   }
 
   /// Fetch all users from Firestore and sync to SQLite + users.json
+  /// Updated: Now works on fresh installations without requiring prior FirebaseAuth login
   Future<int> syncUsersFromFirestore() async {
     if (kIsWeb) return 0;
-    if (_isWindows) return 0;
     if (!_firebaseReady) return 0;
-    if (fb.FirebaseAuth.instance.currentUser == null) {
-      debugPrint('syncUsersFromFirestore: skipped because FirebaseAuth currentUser is null');
-      return 0;
-    }
+    
+    // REMOVED: FirebaseAuth currentUser requirement - now works for fresh installations
+    // if (fb.FirebaseAuth.instance.currentUser == null) {
+    //   debugPrint('syncUsersFromFirestore: skipped because FirebaseAuth currentUser is null');
+    //   return 0;
+    // }
+    
     int synced = 0;
     try {
       final db = await AppDatabase.instance();
@@ -525,16 +529,25 @@ class AuthService {
     const forcedEmail = 'mayof286@gmail.com';
     const forcedCompanyId = '1768415476147';
     const bypassEmail = 'mayof286@gmail.com';
+    
+    // FIRESTORE-FIRST AUTHENTICATION: Try to sync from Firestore immediately on fresh installations
     var users = await _readUsers();
-    if (users.isEmpty && Firebase.apps.isNotEmpty) {
+    if (Firebase.apps.isNotEmpty) {
       try {
+        debugPrint('AuthService: Attempting Firestore-first sync for fresh installation...');
         await syncUsersFromFirestore();
         users = await _readUsers();
-      } catch (_) {}
+        debugPrint('AuthService: Firestore sync completed, users found: ${users.length}');
+      } catch (e) {
+        debugPrint('AuthService: Firestore-first sync failed: $e');
+        // Continue with local authentication if Firestore fails
+      }
     }
-    // If no local users are present, try to pull from Firestore and reload.
+    
+    // Fallback: If still no users, try one more time
     if (users.isEmpty && Firebase.apps.isNotEmpty) {
       try {
+        debugPrint('AuthService: Second attempt Firestore sync...');
         await syncUsersFromFirestore();
         final reloaded = await _readUsers();
         users
@@ -542,7 +555,7 @@ class AuthService {
           ..addAll(reloaded);
         debugPrint('Users Synced: ${users.length}');
       } catch (e) {
-        debugPrint('AuthService: initial Firestore sync failed: $e');
+        debugPrint('AuthService: fallback Firestore sync failed: $e');
       }
     }
     await _upgradeMissingHashes(users);
@@ -1166,8 +1179,8 @@ class AuthService {
         if (storedPassword != null) {
           passwordValid = PasswordHasher.verify(password.trim(), storedPassword!);
         }
-      } else if (isSuperAdminUser || isBypassUser || isFirstLoginFlag) {
-        debugPrint('Super Admin/bypass/first-login login with null password - allowing bypass');
+      } else if (isFirstLoginFlag) {
+        debugPrint('First-time login with null password - allowing bypass for setup');
         passwordValid = true;
       } else {
         debugPrint('No password field found in user data - regenerating hash locally');
@@ -1189,62 +1202,17 @@ class AuthService {
       }
     }
 
-    if (!passwordValid && emailKey == forcedEmail) {
-      // Temporary bypass: accept password, repair hash, sync local + SQLite + Firestore
-      adminBypass = true;
-      passwordValid = true;
-      try {
-        final newHash = PasswordHasher.hash(password.trim());
-        final nowIso = DateTime.now().toUtc().toIso8601String();
-        baseUser['password'] = newHash;
-        baseUser['passwordHash'] = newHash;
-        baseUser['role'] = 'super_admin';
-        baseUser['permissions'] = {'role': 'super_admin'};
-        baseUser['companyId'] = forcedCompanyId;
-        baseUser['company_id'] = forcedCompanyId;
-        baseUser['is_active'] = 1;
-        baseUser['isActive'] = 1;
-        users[emailKey] = baseUser;
-        await _writeUsers(users);
-        try {
-          final db = await AppDatabase.instance();
-          await db.customStatement(
-            'UPDATE users SET password_hash = ?, salt = NULL, iterations = NULL, company_id = ?, role = ?, is_active = 1, status = ?, updated_at = ? WHERE email = ? OR username = ?',
-            [newHash, forcedCompanyId, 'super_admin', 'active', nowIso, emailKey, emailKey],
-          );
-        } catch (_) {}
-        if (Firebase.apps.isNotEmpty && !_isWindows) {
-          final docId = baseUser['id']?.toString() ?? emailKey;
-          await FirebaseFirestore.instance.collection('users').doc(docId).set(
-            {
-              'id': docId,
-              'email': forcedEmail,
-              'username': forcedEmail,
-              'password_hash': newHash,
-              'salt': null,
-              'iterations': null,
-              'role': 'super_admin',
-              'permissions': {'role': 'super_admin'},
-              'company_id': forcedCompanyId,
-              'companyId': forcedCompanyId,
-              'status': 'active',
-              'isDeleted': false,
-              'is_deleted': false,
-              'is_active': 1,
-              'isActive': 1,
-              'updated_at': nowIso,
-              'updatedAt': nowIso,
-            },
-            SetOptions(merge: true),
-          );
-          debugPrint('ADMIN ACCOUNT RE-SYNCED');
-        }
-      } catch (e) {
-        debugPrint('Admin password repair failed: $e');
-      }
-    } else if (!passwordValid && storedPassword != null) {
-      final parts = storedPassword.split(':');
-      if (parts.length == 3) {
+    // REMOVED: SuperAdmin bypass logic - now any valid user can authenticate
+    // if (!passwordValid && emailKey == forcedEmail) {
+    //   // Temporary bypass: accept password, repair hash, sync local + SQLite + Firestore
+    //   adminBypass = true;
+    //   passwordValid = true;
+    //   ... (rest of bypass logic removed)
+    // }
+
+    if (storedPassword != null) {
+      if (storedPassword.contains(':')) {
+        // Hashed password
         debugPrint('Password hash format: ${storedPassword.split(':').length} parts');
         debugPrint('Password hash preview: ${storedPassword.substring(0, storedPassword.length > 50 ? 50 : storedPassword.length)}...');
         passwordValid = PasswordHasher.verify(password, storedPassword);
@@ -1450,13 +1418,13 @@ class AuthService {
     };
     await _writeSessions(sessions);
     
-    // Force Super Admin role and companyId for mayof286@gmail.com
-    if (email.toLowerCase() == forcedEmail) {
-      u['role'] = 'super_admin';
-      u['companyId'] = forcedCompanyId;
-      u['company_id'] = forcedCompanyId;
-      u['permissions'] = {'role': 'super_admin'};
-    }
+    // REMOVED: Hardcoded SuperAdmin role assignment - now users keep their actual roles from Firestore
+    // if (email.toLowerCase() == forcedEmail) {
+    //   u['role'] = 'super_admin';
+    //   u['companyId'] = forcedCompanyId;
+    //   u['company_id'] = forcedCompanyId;
+    //   u['permissions'] = {'role': 'super_admin'};
+    // }
     
     // Update user last login
     u['lastLogin'] = DateTime.now().toIso8601String();
@@ -1473,13 +1441,13 @@ class AuthService {
             final nowIso = DateTime.now().toUtc().toIso8601String();
             final payload = {
               'id': u['id']?.toString() ?? emailKey,
-              'email': forcedEmail,
-              'username': forcedEmail,
-              'role': 'super_admin',
-              'permissions': {'role': 'super_admin'},
-              'company_id': forcedCompanyId,
-              'companyId': forcedCompanyId,
-              'status': 'active',
+              'email': email.toLowerCase(),
+              'username': u['username'] ?? email.toLowerCase(),
+              'role': u['role'] ?? 'user',
+              'permissions': u['permissions'] ?? {},
+              'company_id': u['company_id'] ?? u['companyId'],
+              'companyId': u['company_id'] ?? u['companyId'],
+              'status': u['status'] ?? 'active',
               'isDeleted': false,
               'is_deleted': false,
               'created_at': nowIso,
@@ -1487,47 +1455,44 @@ class AuthService {
               'updatedAt': nowIso,
             };
             await docRef.set(payload, SetOptions(merge: true));
-            debugPrint('Created missing Firestore user doc for $forcedEmail');
+            debugPrint('Created missing Firestore user doc for ${email.toLowerCase()}');
           }
         });
       }
     } catch (e) {
       debugPrint('Failed to ensure Firestore user doc: $e');
     }
-    // Explicitly ensure admin doc exists by email for security rules
-    try {
-      if (Firebase.apps.isNotEmpty && !_isWindows) {
-        await Future.microtask(() async {
-          final adminSnap = await FirebaseFirestore.instance
-              .collection('users')
-              .where('email', isEqualTo: forcedEmail)
-              .limit(1)
-              .get();
-          if (adminSnap.docs.isEmpty) {
-            final nowIso = DateTime.now().toUtc().toIso8601String();
-            final adminDocId = u['id']?.toString() ?? emailKey;
-            await FirebaseFirestore.instance.collection('users').doc(adminDocId).set({
-              'id': adminDocId,
-              'email': forcedEmail,
-              'username': forcedEmail,
-              'role': 'super_admin',
-              'permissions': {'role': 'super_admin'},
-              'company_id': forcedCompanyId,
-              'companyId': forcedCompanyId,
-              'status': 'active',
-              'isDeleted': false,
-              'is_deleted': false,
-              'created_at': nowIso,
-              'updated_at': nowIso,
-              'updatedAt': nowIso,
-            }, SetOptions(merge: true));
-            debugPrint('Force-created admin Firestore doc for $forcedEmail');
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to force-create admin Firestore doc: $e');
-    }
+    // REMOVED: Explicit SuperAdmin doc creation - now any user can create their own doc
+    // try {
+    //   if (Firebase.apps.isNotEmpty && !_isWindows) {
+    //     await Future.microtask(() async {
+    //       final adminSnap = await FirebaseFirestore.instance
+    //           .collection('users')
+    //           .where('email', isEqualTo: forcedEmail)
+    //           .limit(1)
+    //           .get();
+    //       if (adminSnap.docs.isEmpty) {
+    //         final nowIso = DateTime.now().toUtc().toIso8601String();
+    //         final adminDocId = u['id']?.toString() ?? emailKey;
+    //         await FirebaseFirestore.instance.collection('users').doc(adminDocId).set({
+    //           'id': adminDocId,
+    //           'email': forcedEmail,
+    //           'username': forcedEmail,
+    //           'role': 'super_admin',
+    //           'permissions': {'role': 'super_admin'},
+    //           'company_id': forcedCompanyId,
+    //           'companyId': forcedCompanyId,
+    //           'status': 'active',
+    //           'isDeleted': false,
+    //           'is_deleted': false,
+    //           'created_at': nowIso,
+    //           'updated_at': nowIso,
+    //         });
+    //       }
+    //     } catch (e) {
+    //       debugPrint('Failed to force-create admin Firestore doc: $e');
+    //     }
+    // }
     
     // Store current session
     final storage = AppStorage();
@@ -1536,6 +1501,43 @@ class AuthService {
     settings['authToken'] = token;
     await storage.writeSettings(settings);
     
+    // IMMEDIATE COMPREHENSIVE DATA PULL FROM FIRESTORE AFTER AUTHENTICATION
+    // This ensures all relevant module records are available immediately after login
+    try {
+      if (Firebase.apps.isNotEmpty && !_isWindows) {
+        debugPrint('AuthService: Starting comprehensive data sync after authentication...');
+        
+        // Sync users first (already done above, but ensure completion)
+        await syncUsersFromFirestore();
+        
+        // Create FirestoreSyncService instance
+        final syncService = FirestoreSyncService();
+        
+        // Sync all module data in parallel for efficiency
+        final syncTasks = [
+          // Companies and related data
+          syncService.batchSync(collection: 'companies', documents: const []),
+          
+          // Core module data
+          syncService.batchSync(collection: 'inventory', documents: const []),
+          syncService.batchSync(collection: 'trading_entries', documents: const []),
+          syncService.batchSync(collection: 'expenditures', documents: const []),
+          
+          // Additional modules
+          syncService.batchSync(collection: 'rental_items', documents: const []),
+          syncService.batchSync(collection: 'manual_tasks', documents: const []),
+          syncService.batchSync(collection: 'working_progress', documents: const []),
+        ];
+        
+        await Future.wait(syncTasks);
+        
+        debugPrint('AuthService: Comprehensive data sync completed successfully');
+      }
+    } catch (e) {
+      debugPrint('AuthService: Comprehensive data sync failed (non-fatal): $e');
+      // Continue with login even if sync fails
+    }
+
     // One-time push of offline-created users to Firebase Auth (best-effort)
     if (!_isWindows) {
       await _syncOfflineUsersToFirebaseAuth(users);

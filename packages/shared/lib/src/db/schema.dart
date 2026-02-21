@@ -11,6 +11,7 @@ class Companies extends Table {
   TextColumn get subscriptionTier => text().withDefault(const Constant('Starter'))();
   TextColumn get createdAt => text()();
   TextColumn get updatedAt => text()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -34,6 +35,7 @@ class Users extends Table {
   TextColumn get profilePicturePath => text().nullable()();
   TextColumn get createdAt => text().nullable()();
   TextColumn get updatedAt => text()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -45,6 +47,7 @@ class Societies extends Table {
   TextColumn get metadata => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -57,6 +60,7 @@ class Blocks extends Table {
   TextColumn get metadata => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -80,6 +84,7 @@ class Properties extends Table {
   TextColumn get blockId => text().nullable().references(Blocks, #id)();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -114,6 +119,7 @@ class FilesTable extends Table {
   TextColumn get remarks => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -143,6 +149,7 @@ class RentalItems extends Table {
   TextColumn get saleStatus => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -170,6 +177,7 @@ class WorkingProgress extends Table {
   TextColumn get category => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -195,9 +203,10 @@ class Reminders extends Table {
   TextColumn get reminderDate => text()();
   TextColumn get reminderTime => text()();
   TextColumn get notificationStatus => text()();
-  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  BoolColumn get is_active => boolean().withDefault(const Constant(true))();
   TextColumn get createdAt => text()();
   TextColumn get updatedAt => text()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
 }
 
 class Reports extends Table {
@@ -252,7 +261,30 @@ class Clients extends Table {
   TextColumn get remarks => text().nullable()();
   TextColumn get date => text().nullable()();
   TextColumn get source => text().nullable()(); // 'Agent' or 'Direct'
+  BoolColumn get is_active => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class Expenditures extends Table {
+  TextColumn get id => text()();
+  TextColumn get date => text()();
+  TextColumn get description => text()();
+  RealColumn get amount => real()();
+  TextColumn get category => text().nullable()();
+  TextColumn get companyId => text().nullable()();
+  TextColumn get createdBy => text().nullable()();
+  TextColumn get kind => text().nullable()(); // 'office' | 'project'
+  TextColumn get projectId => text().nullable()();
+  TextColumn get categoryId => text().nullable()();
+  TextColumn get officeMonth => text().nullable()(); // yyyy-MM
+  TextColumn get categoryType => text().nullable()(); // 'office' | 'project'
+  TextColumn get createdAt => text().nullable()();
+  TextColumn get updatedAt => text()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -275,6 +307,7 @@ class Clients extends Table {
   Deletions,
   SyncLogs,
   Clients,
+  Expenditures,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(QueryExecutor e) : super(e);
@@ -321,7 +354,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 23;
+  int get schemaVersion => 25;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -704,6 +737,12 @@ class AppDatabase extends _$AppDatabase {
           if (from < 23) {
             await _safeAddUserProfileColumns(m.database);
           }
+          if (from < 24) {
+            await _safeAddIsSyncedColumns(m.database);
+          }
+          if (from < 25) {
+            await _safeAddIsActiveColumnsToBusinessTables(m.database);
+          }
         },
       );
 }
@@ -738,6 +777,7 @@ Future<void> _ensureBusinessTables(dynamic db) async {
       payment REAL,
       status TEXT NOT NULL DEFAULT 'Pending',
       is_active INTEGER NOT NULL DEFAULT 1,
+      is_synced INTEGER NOT NULL DEFAULT 1,
       comments TEXT,
       updated_at TEXT NOT NULL
     )
@@ -765,6 +805,7 @@ Future<void> _ensureBusinessTables(dynamic db) async {
       payment REAL,
       status TEXT NOT NULL DEFAULT 'Pending',
       is_active INTEGER NOT NULL DEFAULT 1,
+      is_synced INTEGER NOT NULL DEFAULT 1,
       comments TEXT,
       updated_at TEXT NOT NULL
     )
@@ -784,6 +825,8 @@ Future<void> _ensureBusinessTables(dynamic db) async {
       date TEXT NOT NULL,
       description TEXT NOT NULL,
       amount REAL NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      is_synced INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT NOT NULL
     )
   ''');
@@ -804,12 +847,108 @@ Future<void> _ensureBusinessTables(dynamic db) async {
   ''');
 }
 
+/// Ensures is_active columns exist for business tables.
+Future<void> _safeAddIsActiveColumnsToBusinessTables(GeneratedDatabase db) async {
+  // Business tables live outside Drift schema; add is_active columns if missing
+  for (final stmt in [
+    'ALTER TABLE trading_entries ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE trading_file_entries ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE expenditures ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE expenditure_projects ADD COLUMN is_active INTEGER DEFAULT 1',
+  ]) {
+    try {
+      await db.customStatement(stmt);
+    } catch (_) {}
+  }
+
+  try {
+    print('[MIGRATION] ensured is_active columns on business tables');
+  } catch (_) {}
+
+  // Backfill to active so existing records are considered active
+  for (final stmt in [
+    'UPDATE trading_entries SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE trading_file_entries SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE expenditures SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE expenditure_projects SET is_active = 1 WHERE is_active IS NULL',
+  ]) {
+    try {
+      await db.customStatement(stmt);
+    } catch (_) {}
+  }
+}
+
+/// Ensures is_synced columns exist for incremental sync functionality.
+Future<void> _safeAddIsSyncedColumns(GeneratedDatabase db) async {
+  // Core Drift tables
+  for (final stmt in [
+    'ALTER TABLE companies ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE users ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE societies ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE blocks ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE properties ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE files_table ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE rental_items ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE working_progress ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE reminders ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE clients ADD COLUMN is_synced INTEGER DEFAULT 1',
+  ]) {
+    try {
+      await db.customStatement(stmt);
+    } catch (_) {}
+  }
+
+  // Business tables live outside Drift schema; keep them in sync
+  for (final stmt in [
+    'ALTER TABLE trading_entries ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE trading_file_entries ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE expenditures ADD COLUMN is_synced INTEGER DEFAULT 1',
+  ]) {
+    try {
+      await db.customStatement(stmt);
+    } catch (_) {}
+  }
+
+  try {
+    print('[MIGRATION] ensured is_synced columns on all tables for incremental sync');
+  } catch (_) {}
+
+  // Backfill to synced so existing records are considered synced
+  for (final stmt in [
+    'UPDATE companies SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE users SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE societies SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE blocks SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE properties SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE files_table SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE rental_items SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE working_progress SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE reminders SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE clients SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE trading_entries SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE trading_file_entries SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE expenditures SET is_synced = 1 WHERE is_synced IS NULL',
+  ]) {
+    try {
+      await db.customStatement(stmt);
+    } catch (_) {}
+  }
+}
+
 /// Adds is_active columns to critical tables and backfills active rows.
 Future<void> _safeAddIsActiveColumns(GeneratedDatabase db) async {
   // Core tables
   for (final stmt in [
     'ALTER TABLE companies ADD COLUMN is_active INTEGER DEFAULT 1',
     'ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE societies ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE blocks ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE properties ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE files_table ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE rental_items ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE working_progress ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE reminders ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE clients ADD COLUMN is_active INTEGER DEFAULT 1',
   ]) {
     try {
       await db.customStatement(stmt);
@@ -834,6 +973,14 @@ Future<void> _safeAddIsActiveColumns(GeneratedDatabase db) async {
   for (final stmt in [
     'UPDATE companies SET is_active = 1 WHERE is_active IS NULL',
     'UPDATE users SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE societies SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE blocks SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE properties SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE files_table SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE rental_items SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE working_progress SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE reminders SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE clients SET is_active = 1 WHERE is_active IS NULL',
     'UPDATE trading_entries SET is_active = 1 WHERE is_active IS NULL',
     'UPDATE trading_file_entries SET is_active = 1 WHERE is_active IS NULL',
   ]) {

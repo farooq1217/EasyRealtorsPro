@@ -22,6 +22,20 @@ import '../../image_cache_service.dart' show CachedImageWidget;
 import 'package:printing/printing.dart';
 import '../../core/phone_actions.dart';
 
+/// Get the first available company ID for super admin operations
+Future<String> _getFirstCompanyId(AppDatabase db) async {
+  try {
+    final result = await db.customSelect('SELECT id FROM companies WHERE is_active = 1 LIMIT 1').get();
+    if (result.isNotEmpty) {
+      return result.first.data['id'] as String;
+    }
+  } catch (e) {
+    debugPrint('Error getting first company ID: $e');
+  }
+  // Fallback to a timestamp-based ID if no companies exist
+  return DateTime.now().millisecondsSinceEpoch.toString();
+}
+
 class FilesPage extends StatefulWidget {
   final AppDatabase db;
   const FilesPage({super.key, required this.db});
@@ -76,8 +90,8 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
   Future<void> _loadSocietiesAndBlocks() async {
     if (!mounted) return;
     final isSuper = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
-    // Use 'GLOBAL_ADMIN' for super admin, otherwise use the user's companyId
-    final companyId = isSuper ? 'GLOBAL_ADMIN' : (RoleUtils.getUserCompanyId(_currentUser) ?? '');
+    // Use first available company for super admin, otherwise use the user's companyId
+    final companyId = isSuper ? await _getFirstCompanyId(widget.db) : (RoleUtils.getUserCompanyId(_currentUser) ?? '');
     final soc = await widget.db.customSelect(
       isSuper
           ? 'SELECT id, name FROM societies WHERE is_active = 1'

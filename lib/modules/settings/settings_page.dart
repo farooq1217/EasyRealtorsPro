@@ -3,16 +3,17 @@ import 'dart:convert';
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared/shared.dart';
-import 'package:drift/drift.dart' as d;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import '../../firestore_sync_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:csv/csv.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/app_storage.dart' show AppStorage;
-import '../../firestore_sync_service.dart';
+import 'package:shared/shared.dart' show AppDatabase, RoleUtils, SocietiesCompanion, BlocksCompanion;
+import 'package:drift/drift.dart' as d;
 import '../../core/services/permission_helper.dart' show PermissionHelper;
 
 class SettingsPage extends StatefulWidget {
@@ -41,12 +42,36 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _savingProfile = false;
   bool _loading = true;
 
+  // SQLite-only flag - disables all Firestore operations
+  static const bool _sqliteOnlyMode = true;
+
+  // Helper method to disable Firestore operations in SQLite-only mode
+  bool _isFirestoreOperationAllowed() {
+    return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
+  }
+
+  // Helper method to execute Firestore operations only if allowed
+  Future<void> _executeFirestoreOperation(Future<void> Function() operation) async {
+    if (_isFirestoreOperationAllowed()) {
+      try {
+        await operation();
+      } catch (e) {
+        debugPrint('Firestore operation failed (non-critical in SQLite-only mode): $e');
+      }
+    } else {
+      debugPrint('Firestore operation skipped in SQLite-only mode');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     Future.microtask(() async {
       await _loadCurrentUser();
-      await _initFirestoreListeners();
+      // REMOVED: Firestore listeners for SQLite-only operation
+      // await _initFirestoreListeners();
+      await _loadSocieties();
+      await _loadBlocks();
     });
   }
 
@@ -92,8 +117,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    _societiesSub?.cancel();
-    _blocksSub?.cancel();
     _societyNameController.dispose();
     _blockNameController.dispose();
     _fullNameController.dispose();
@@ -101,6 +124,66 @@ class _SettingsPageState extends State<SettingsPage> {
     _companyController.dispose();
     _emailController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSocieties() async {
+    if (!mounted) return;
+    try {
+      if (!mounted) return;
+      setState(() => _loading = true);
+      
+      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final res = await widget.db.customSelect(
+        isSuperAdmin
+            ? 'SELECT id, name FROM societies WHERE (is_active = 1 OR is_active IS NULL) ORDER BY name'
+            : 'SELECT id, name FROM societies WHERE company_id = ? AND (is_active = 1 OR is_active IS NULL) ORDER BY name',
+        variables: isSuperAdmin
+            ? []
+            : [d.Variable.withString(companyId!)],
+        readsFrom: {widget.db.societies},
+      ).get();
+      
+      if (!mounted) return;
+      setState(() {
+        _societies = res.map((r) => {'id': r.data['id'] as String, 'name': r.data['name'] as String}).toList();
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading societies: $e');
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadBlocks() async {
+    if (!mounted) return;
+    try {
+      if (!mounted) return;
+      setState(() => _loading = true);
+      
+      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final res = await widget.db.customSelect(
+        isSuperAdmin
+            ? 'SELECT id, name, society_id FROM blocks WHERE (is_active = 1 OR is_active IS NULL) ORDER BY name'
+            : 'SELECT id, name, society_id FROM blocks WHERE company_id = ? AND (is_active = 1 OR is_active IS NULL) ORDER BY name',
+        variables: isSuperAdmin
+            ? []
+            : [d.Variable.withString(companyId!)],
+        readsFrom: {widget.db.blocks},
+      ).get();
+      
+      if (!mounted) return;
+      setState(() {
+        _blocks = res.map((r) => {'id': r.data['id'] as String, 'name': r.data['name'] as String, 'society_id': r.data['society_id'] as String}).toList();
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading blocks: $e');
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _loadCurrentUser() async {
@@ -718,11 +801,12 @@ class _SettingsPageState extends State<SettingsPage> {
       );
 
       // Sync to Firestore
-      if (Firebase.apps.isNotEmpty) {
-        await FirestoreSyncService().syncDocument(
-          collection: 'societies',
-          documentId: id,
-          data: {
+      await _executeFirestoreOperation(() async {
+        if (Firebase.apps.isNotEmpty) {
+          await FirestoreSyncService().syncDocument(
+            collection: 'societies',
+            documentId: id,
+            data: {
             'id': id,
             'name': name,
             'companyId': isSuperAdmin ? null : companyId,
@@ -732,6 +816,7 @@ class _SettingsPageState extends State<SettingsPage> {
           merge: true,
         );
       }
+      });
 
       _societyNameController.clear();
       if (mounted) {
@@ -786,8 +871,9 @@ class _SettingsPageState extends State<SettingsPage> {
       );
 
       // Sync to Firestore
-      if (Firebase.apps.isNotEmpty) {
-        await FirestoreSyncService().syncDocument(
+      await _executeFirestoreOperation(() async {
+        if (Firebase.apps.isNotEmpty) {
+          await FirestoreSyncService().syncDocument(
           collection: 'blocks',
           documentId: id,
           data: {
@@ -801,6 +887,7 @@ class _SettingsPageState extends State<SettingsPage> {
           merge: true,
         );
       }
+      });
 
       _blockNameController.clear();
       if (mounted) {

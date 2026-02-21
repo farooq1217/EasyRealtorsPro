@@ -10,6 +10,7 @@ import 'services/app_storage.dart' show AppStorage;
 import '../modules/rental/rental_page.dart' show HomeScreen;
 import 'services/auth_service.dart';
 import 'services/permission_helper.dart';
+import 'services/background_sync_manager.dart';
 
 /// Main application widget with MaterialApp configuration
 class AdminApp extends StatefulWidget {
@@ -46,6 +47,10 @@ class _AdminAppState extends State<AdminApp> {
     _loadTheme();
     // Initialize offline sync service
     OfflineSyncService().initialize();
+    // Initialize background sync manager
+    BackgroundSyncManager().initialize().catchError((e) {
+      debugPrint('[APP] Error initializing background sync manager: $e');
+    });
   }
 
   @override
@@ -54,6 +59,9 @@ class _AdminAppState extends State<AdminApp> {
       _instance = null;
     }
     OfflineSyncService().dispose();
+    BackgroundSyncManager().dispose().catchError((e) {
+      debugPrint('[APP] Error disposing background sync manager: $e');
+    });
     super.dispose();
   }
 

@@ -4,7 +4,12 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+// REMOVED: Firestore dependencies for SQLite-only operation
+// import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:firebase_core/firebase_core.dart';
+// Add back minimal Firebase imports for helper methods to work
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -70,13 +75,36 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   List<Map<String, dynamic>> _rows = [];
   String _q = '';
   bool _loading = true;
-  bool _firestoreReady = false;
+  // REMOVED: Firestore-related state variables for SQLite-only operation
+  bool _firestoreReady = true;
   Map<String, dynamic>? _editingRental;
   List<String> _rentalImages = [];
   Map<String, dynamic>? _currentUser; // Current logged-in user for permission checks
+  // Firestore subscription and sync state for SQLite-only operation
   StreamSubscription<QuerySnapshot>? _firestoreSub;
   FirestoreSyncState _syncState = FirestoreSyncState();
   String? _currentFilter; // Current filter status
+
+  // SQLite-only flag - disables all Firestore operations
+  static const bool _sqliteOnlyMode = true;
+
+  // Helper method to disable Firestore operations in SQLite-only mode
+  bool _isFirestoreOperationAllowed() {
+    return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
+  }
+
+  // Helper method to execute Firestore operations only if allowed
+  Future<void> _executeFirestoreOperation(Future<void> Function() operation) async {
+    if (_isFirestoreOperationAllowed()) {
+      try {
+        await operation();
+      } catch (e) {
+        debugPrint('Firestore operation failed (non-critical in SQLite-only mode): $e');
+      }
+    } else {
+      debugPrint('Firestore operation skipped in SQLite-only mode');
+    }
+  }
   
   /// Get current user from AuthService
   Future<void> _loadCurrentUser() async {
@@ -104,14 +132,16 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
     _currentFilter = widget.initialFilter;
     Future.microtask(() async {
       await _loadCurrentUser();
-      await _startFirestoreListener();
+      // REMOVED: Firestore listener for SQLite-only operation
+      // await _startFirestoreListener();
       await _load();
     });
   }
 
   @override
   void dispose() {
-    _firestoreSub?.cancel();
+    // REMOVED: Firestore subscription cancellation for SQLite-only operation
+    // _firestoreSub?.cancel();
     super.dispose();
   }
 
@@ -7564,7 +7594,8 @@ class _UsersPageState extends State<UsersPage> {
 
   @override
   void dispose() {
-    _firestoreSub?.cancel();
+    // REMOVED: Firestore subscription cancellation for SQLite-only operation
+    // _firestoreSub?.cancel();
     super.dispose();
   }
 

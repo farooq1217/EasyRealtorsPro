@@ -5,6 +5,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+// REMOVED: Firestore dependencies for SQLite-only operation
+// import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:firebase_auth/firebase_auth.dart';
+// import 'package:firebase_core/firebase_core.dart';
+// Add back minimal Firebase imports for helper methods to work
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -17,14 +22,17 @@ import 'package:syncfusion_flutter_pdf/pdf.dart' as sfpdf;
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import '../../core/services/auth_service.dart';
+import '../../firestore_sync_service.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart';
 import '../../core/professional_pdf_generator.dart';
-import '../../core/app_utils.dart' show fmtTs, buildSecureFirestoreQuery, creatorFields;
+// REMOVED: Firestore-related utilities for SQLite-only operation
+// import '../../core/app_utils.dart' show fmtTs, buildSecureFirestoreQuery, creatorFields;
+import '../../core/app_utils.dart' show fmtTs, creatorFields, buildSecureFirestoreQuery;
 import '../../core/phone_actions.dart';
 import '../../core/shared_utils.dart';
+// REMOVED: Firestore services for SQLite-only operation
 import '../../core/services/firestore_cache_service.dart';
-import '../../firestore_sync_service.dart';
 import '../../image_cache_service.dart';
 import '../../responsive_widgets.dart';
 import '../../core/services/permission_helper.dart' show PermissionHelper;
@@ -54,6 +62,7 @@ class _TradingFileEntry {
   final double payment;
   final String status; // 'Pending', 'Close', or 'Done'
   final String comments;
+  final bool isActive;
   const _TradingFileEntry({
     required this.id,
     required this.type,
@@ -67,6 +76,7 @@ class _TradingFileEntry {
     required this.payment,
     required this.status,
     required this.comments,
+    required this.isActive,
   });
   
   bool get isDone => status == 'Done';
@@ -106,6 +116,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
   bool _buyDateLocked = false; // Tracks if date is auto-filled and locked
   bool _sellDateLocked = false; // Tracks if date is auto-filled and locked
   bool _loading = false;
+  // Firestore-related state variables for SQLite-only operation
   bool _firestoreReady = false;
   _TradingFileFormType? _selectedFormType;
   List<String> _buyImages = [];
@@ -113,8 +124,30 @@ class _TradingFilePageState extends State<TradingFilePage> {
   String _dateRangeFilter = 'Today'; // Default filter
   String _transactionTypeFilter = 'All'; // Default: All, Buy, Sell
   Map<String, dynamic>? _currentUser; // Current logged-in user for permission checks
+  // Firestore subscription and sync state for SQLite-only operation
   StreamSubscription<QuerySnapshot>? _firestoreSub;
   FirestoreSyncState _syncState = FirestoreSyncState();
+
+  // SQLite-only flag - disables all Firestore operations
+  static const bool _sqliteOnlyMode = true;
+
+  // Helper method to disable Firestore operations in SQLite-only mode
+  bool _isFirestoreOperationAllowed() {
+    return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
+  }
+
+  // Helper method to execute Firestore operations only if allowed
+  Future<void> _executeFirestoreOperation(Future<void> Function() operation) async {
+    if (_isFirestoreOperationAllowed()) {
+      try {
+        await operation();
+      } catch (e) {
+        debugPrint('Firestore operation failed (non-critical in SQLite-only mode): $e');
+      }
+    } else {
+      debugPrint('Firestore operation skipped in SQLite-only mode');
+    }
+  }
   
   /// Get current user from AuthService
   Future<void> _loadCurrentUser() async {
@@ -142,11 +175,13 @@ class _TradingFilePageState extends State<TradingFilePage> {
     super.initState();
     Future.microtask(() async {
       await _loadCurrentUser();
-      await _ensureFirebaseAuth();
+      // REMOVED: Firebase Auth for SQLite-only operation
+      // await _ensureFirebaseAuth();
       await _initializeTable();
       await _backfillTradingCompanyIds();
-      await _maybeForceSyncLocalTrading();
-      await _startFirestoreListener();
+      // REMOVED: Firestore sync for SQLite-only operation
+      // await _maybeForceSyncLocalTrading();
+      // await _startFirestoreListener();
       await _loadEntries();
     });
   }
@@ -154,6 +189,17 @@ class _TradingFilePageState extends State<TradingFilePage> {
   Future<void> _ensureFirebaseAuth() async {
     if (Firebase.apps.isEmpty) return;
     if (!kIsWeb && io.Platform.isWindows) return;
+    // REMOVED: Firebase Auth for SQLite-only operation
+    // await AuthService.ensureFirebasePersistence();
+    // final auth = FirebaseAuth.instance;
+    // if (auth.currentUser == null) {
+    //   try {
+    //     await auth.signInAnonymously();
+    //   } catch (e) {
+    //     debugPrint('FirebaseAuth sign-in failed: $e');
+    //   }
+    // }
+    // debugPrint('FirebaseAuth UID: ${auth.currentUser?.uid ?? 'none'}');
     await AuthService.ensureFirebasePersistence();
     final auth = FirebaseAuth.instance;
     if (auth.currentUser == null) {
@@ -259,7 +305,8 @@ class _TradingFilePageState extends State<TradingFilePage> {
 
   @override
   void dispose() {
-    _firestoreSub?.cancel();
+    // REMOVED: Firestore subscription cancellation for SQLite-only operation
+    // _firestoreSub?.cancel();
     _buyDateCtl.dispose();
     _buyMobileCtl.dispose();
     _buyPersonNameCtl.dispose();
@@ -609,6 +656,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
           payment: (data['payment'] as num?)?.toDouble() ?? 0.0,
           status: status,
           comments: data['comments'] as String? ?? '',
+          isActive: (data['is_active'] as int? ?? 1) == 1,
         );
       }).toList();
       
@@ -640,6 +688,7 @@ class _TradingFilePageState extends State<TradingFilePage> {
             payment: (data['payment'] as num?)?.toDouble() ?? 0.0,
             status: data['status']?.toString() ?? 'Pending',
             comments: data['comments'] as String? ?? '',
+            isActive: (data['is_active'] as int? ?? 1) == 1,
           );
         }).toList();
         setState(() {
@@ -732,59 +781,61 @@ class _TradingFilePageState extends State<TradingFilePage> {
       // RootIsolateToken check removed - not available in this Flutter version
       Future.microtask(() async {
         try {
-          if (Firebase.apps.isNotEmpty) {
-            String? localCreatedBy;
-            String? localCompanyId;
-            try {
-              final row = await widget.db.customSelect(
-                'SELECT created_by, company_id FROM trading_file_entries WHERE id = ? LIMIT 1',
-                variables: [d.Variable.withString(entryId)],
-              ).get();
-              if (row.isNotEmpty) {
-                localCreatedBy = row.first.data['created_by']?.toString();
-                localCompanyId = row.first.data['company_id']?.toString();
-              }
-            } catch (_) {}
-
-            Map<String, dynamic>? creatorUser;
-            if (localCreatedBy != null && localCreatedBy!.isNotEmpty) {
+          await _executeFirestoreOperation(() async {
+            if (Firebase.apps.isNotEmpty) {
+              String? localCreatedBy;
+              String? localCompanyId;
               try {
-                final u = await widget.db.customSelect(
-                  'SELECT * FROM users WHERE user_id = ? OR id = ? LIMIT 1',
-                  variables: [
-                    d.Variable.withString(localCreatedBy!),
-                    d.Variable.withString(localCreatedBy!),
-                  ],
+                final row = await widget.db.customSelect(
+                  'SELECT created_by, company_id FROM trading_file_entries WHERE id = ? LIMIT 1',
+                  variables: [d.Variable.withString(entryId)],
                 ).get();
-                if (u.isNotEmpty) creatorUser = Map<String, dynamic>.from(u.first.data);
+                if (row.isNotEmpty) {
+                  localCreatedBy = row.first.data['created_by']?.toString();
+                  localCompanyId = row.first.data['company_id']?.toString();
+                }
               } catch (_) {}
+
+              Map<String, dynamic>? creatorUser;
+              if (localCreatedBy != null && localCreatedBy!.isNotEmpty) {
+                try {
+                  final u = await widget.db.customSelect(
+                    'SELECT * FROM users WHERE user_id = ? OR id = ? LIMIT 1',
+                    variables: [
+                      d.Variable.withString(localCreatedBy!),
+                      d.Variable.withString(localCreatedBy!),
+                    ],
+                  ).get();
+                  if (u.isNotEmpty) creatorUser = Map<String, dynamic>.from(u.first.data);
+                } catch (_) {}
+              }
+
+              final creator = creatorFields(
+                creatorUser ??
+                    {
+                      'id': localCreatedBy,
+                      'user_id': localCreatedBy,
+                      'name': localCreatedBy,
+                    },
+              );
+              final creatorAlias = creator['creator_user_id_alias']?.toString() ?? localCreatedBy;
+
+              await FirebaseFirestore.instance.collection('trading_file_entries').doc(entryId).set(
+                {
+                  'id': entryId,
+                  'companyId': localCompanyId ?? companyId,
+                  'createdBy': creatorAlias,
+                  'created_by': creatorAlias,
+                  ...creator,
+                  'status': newStatus,
+                  'updatedAt': nowIso,
+                  'updated_at': nowIso,
+                },
+                SetOptions(merge: true),
+              );
+              FirestoreCacheService().invalidateCache('trading_file_entries', entryId);
             }
-
-            final creator = creatorFields(
-              creatorUser ??
-                  {
-                    'id': localCreatedBy,
-                    'user_id': localCreatedBy,
-                    'name': localCreatedBy,
-                  },
-            );
-            final creatorAlias = creator['creator_user_id_alias']?.toString() ?? localCreatedBy;
-
-            await FirebaseFirestore.instance.collection('trading_file_entries').doc(entryId).set(
-              {
-                'id': entryId,
-                'companyId': localCompanyId ?? companyId,
-                'createdBy': creatorAlias,
-                'created_by': creatorAlias,
-                ...creator,
-                'status': newStatus,
-                'updatedAt': nowIso,
-                'updated_at': nowIso,
-              },
-              SetOptions(merge: true),
-            );
-            FirestoreCacheService().invalidateCache('trading_file_entries', entryId);
-          }
+          });
         } catch (_) {}
       });
       await _loadEntries();
@@ -816,19 +867,21 @@ class _TradingFilePageState extends State<TradingFilePage> {
 
       Future.microtask(() async {
         try {
-          if (Firebase.apps.isNotEmpty) {
-            await FirebaseFirestore.instance.collection('trading_file_entries').doc(entryId).set(
-              {
-                'status': 'archived',
-                'is_active': 0,
-                'isActive': 0,
-                'updated_at': nowIso,
-                'deleted_at': nowIso,
-              },
-              SetOptions(merge: true),
-            );
-            FirestoreCacheService().invalidateCache('trading_file_entries', entryId);
-          }
+          await _executeFirestoreOperation(() async {
+            if (Firebase.apps.isNotEmpty) {
+              await FirebaseFirestore.instance.collection('trading_file_entries').doc(entryId).set(
+                {
+                  'status': 'archived',
+                  'is_active': 0,
+                  'isActive': 0,
+                  'updated_at': nowIso,
+                  'deleted_at': nowIso,
+                },
+                SetOptions(merge: true),
+              );
+              FirestoreCacheService().invalidateCache('trading_file_entries', entryId);
+            }
+          });
         } catch (_) {}
       });
       await _loadEntries();
@@ -1262,12 +1315,14 @@ class _TradingFilePageState extends State<TradingFilePage> {
     // Run in background without blocking
     Future.microtask(() async {
       try {
-        if (Firebase.apps.isNotEmpty) {
-          final firestore = FirebaseFirestore.instance;
-          await firestore.collection(collection).doc(docId).set(data, SetOptions(merge: true));
-          // Invalidate cache after successful sync
-          FirestoreCacheService().invalidateCache(collection, docId);
-        }
+        await _executeFirestoreOperation(() async {
+          if (Firebase.apps.isNotEmpty) {
+            final firestore = FirebaseFirestore.instance;
+            await firestore.collection(collection).doc(docId).set(data, SetOptions(merge: true));
+            // Invalidate cache after successful sync
+            FirestoreCacheService().invalidateCache(collection, docId);
+          }
+        });
       } catch (e) {
         debugPrint('Background Firestore sync failed for $collection/$docId: $e');
         // Sync will retry automatically when connectivity is restored
@@ -1275,30 +1330,13 @@ class _TradingFilePageState extends State<TradingFilePage> {
     });
   }
 
-  Future<void> _addEntryForType(_TradingFileFormType type, {BuildContext? dialogContext}) async {
+ Future<void> _addEntryForType(_TradingFileFormType type, {BuildContext? dialogContext}) async {
     final formKey = type == _TradingFileFormType.buy ? _buyFormKey : _sellFormKey;
-    if (!formKey.currentState!.validate()) {
-      setState(() {});
-      return;
-    }
+    if (!formKey.currentState!.validate()) return;
+
     final option = type == _TradingFileFormType.buy ? _buySelection : _sellSelection;
     final selectedDate = type == _TradingFileFormType.buy ? _buySelectedDate : _sellSelectedDate;
-    if (option == null || selectedDate == null) {
-      setState(() {});
-      return;
-    }
-    final quantityCtl = type == _TradingFileFormType.buy ? _buyQuantityCtl : _sellQuantityCtl;
-    final paymentCtl = type == _TradingFileFormType.buy ? _buyPaymentCtl : _sellPaymentCtl;
-    final mobileCtl = type == _TradingFileFormType.buy ? _buyMobileCtl : _sellMobileCtl;
-    final personNameCtl = type == _TradingFileFormType.buy ? _buyPersonNameCtl : _sellPersonNameCtl;
-    final estateCtl = type == _TradingFileFormType.buy ? _buyEstateCtl : _sellEstateCtl;
-    final commentsCtl = type == _TradingFileFormType.buy ? _buyCommentsCtl : _sellCommentsCtl;
-
-    // Capture images BEFORE saving
-    final imagePaths = List<String>.from(type == _TradingFileFormType.buy ? _buyImages : _sellImages);
-
-    final quantity = int.tryParse(quantityCtl.text.trim()) ?? 0;
-    final payment = double.tryParse(paymentCtl.text.trim()) ?? 0.0;
+    if (option == null || selectedDate == null) return;
 
     final entryId = DateTime.now().millisecondsSinceEpoch.toString();
     final entry = _TradingFileEntry(
@@ -1307,64 +1345,22 @@ class _TradingFilePageState extends State<TradingFilePage> {
       buyOption: type == _TradingFileFormType.buy ? option : null,
       sellOption: type == _TradingFileFormType.sell ? option : null,
       date: selectedDate,
-      mobile: mobileCtl.text.trim(),
-      personName: personNameCtl.text.trim(),
-      estate: estateCtl.text.trim(),
-      quantity: quantity,
-      payment: payment,
-      status: 'Pending', // Default status
-      comments: commentsCtl.text.trim(),
+      mobile: (type == _TradingFileFormType.buy ? _buyMobileCtl : _sellMobileCtl).text.trim(),
+      personName: (type == _TradingFileFormType.buy ? _buyPersonNameCtl : _sellPersonNameCtl).text.trim(),
+      estate: (type == _TradingFileFormType.buy ? _buyEstateCtl : _sellEstateCtl).text.trim(),
+      quantity: int.tryParse((type == _TradingFileFormType.buy ? _buyQuantityCtl : _sellQuantityCtl).text) ?? 0,
+      payment: double.tryParse((type == _TradingFileFormType.buy ? _buyPaymentCtl : _sellPaymentCtl).text) ?? 0.0,
+      status: 'Pending',
+      comments: (type == _TradingFileFormType.buy ? _buyCommentsCtl : _sellCommentsCtl).text.trim(),
+      isActive: true, // FIXED: Added isActive
     );
     
-    // OFFLINE-FIRST: Save to local database FIRST
     await _saveEntry(entry);
-
-    final creator = creatorFields(_currentUser);
-    final creatorAlias = creator['creator_user_id_alias']?.toString();
-
-    // Background sync to Firestore with images (non-blocking)
-    _syncToFirestore(
-      collection: 'trading_file_entries',
-      docId: entryId,
-      data: {
-        'id': entryId,
-        'companyId': RoleUtils.getUserCompanyId(_currentUser),
-        'createdBy': creatorAlias,
-        'created_by': creatorAlias,
-        ...creator,
-        'type': type == _TradingFileFormType.buy ? 'buy' : 'sell',
-        'buyOption': entry.buyOption,
-        'sellOption': entry.sellOption,
-        'date': selectedDate.toIso8601String(),
-        'mobile': mobileCtl.text.trim(),
-        'personName': personNameCtl.text.trim(),
-        'estate': estateCtl.text.trim(),
-        'quantity': quantity,
-        'payment': payment,
-        'status': 'Pending',
-        'comments': commentsCtl.text.trim(),
-        'updatedAt': DateTime.now().toUtc().toIso8601String(),
-        'imagePaths': imagePaths.isNotEmpty ? imagePaths : null, // Save image paths
-      },
-    );
-    
-    // Reload entries in background (non-blocking)
     _loadEntries();
-    
-    // Reset form and close modal
     _resetForm(type);
-    setState(() {
-      _selectedFormType = null;
-    });
     
-    // Use dialog context if provided, otherwise use widget context
     final ctx = dialogContext ?? context;
-    if (mounted && ctx.mounted) {
-      Navigator.of(ctx).pop(); // Close the modal
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${type == _TradingFileFormType.buy ? 'Buy' : 'Sell'} entry saved')),
-      );
-    }
+    if (mounted && Navigator.canPop(ctx)) Navigator.pop(ctx);
   }
 
   List<DropdownMenuItem<String>> get _tradeDropdownItems => _tradeOptions
@@ -2609,6 +2605,7 @@ class _TradingClientEntry {
   final double payment;
   final String status; // 'Pending', 'Close', or 'Done'
   final String comments;
+  final bool isActive;
   const _TradingClientEntry({
     required this.id,
     required this.type,
@@ -2627,6 +2624,7 @@ class _TradingClientEntry {
     required this.payment,
     required this.status,
     required this.comments,
+    required this.isActive,
   });
 
   bool get isDone => status == 'Done';
@@ -2747,7 +2745,28 @@ class _TradingFormPageState extends State<TradingFormPage> {
   Map<String, dynamic>? _currentUser; // Current logged-in user for permission checks
   StreamSubscription<QuerySnapshot>? _firestoreSub;
   FirestoreSyncState _syncState = FirestoreSyncState();
-  
+
+  // SQLite-only flag - disables all Firestore operations
+  static const bool _sqliteOnlyMode = true;
+
+  // Helper method to disable Firestore operations in SQLite-only mode
+  bool _isFirestoreOperationAllowed() {
+    return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
+  }
+
+  // Helper method to execute Firestore operations only if allowed
+  Future<void> _executeFirestoreOperation(Future<void> Function() operation) async {
+    if (_isFirestoreOperationAllowed()) {
+      try {
+        await operation();
+      } catch (e) {
+        debugPrint('Firestore operation failed (non-critical in SQLite-only mode): $e');
+      }
+    } else {
+      debugPrint('Firestore operation skipped in SQLite-only mode');
+    }
+  }
+
   /// Get current user from AuthService
   Future<void> _loadCurrentUser() async {
     try {
@@ -3075,36 +3094,24 @@ class _TradingFormPageState extends State<TradingFormPage> {
     }
   }
 
-  Future<void> _loadEntries() async {
+ Future<void> _loadEntries() async {
     setState(() => _loading = true);
     try {
-        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
-        final isAgent = RoleUtils.isAgent(_currentUser);
-        final companyId = RoleUtils.getUserCompanyId(_currentUser);
-      final myUserId = _currentUser?['id']?.toString();
-
-      if (isAgent && (myUserId == null || myUserId.trim().isEmpty)) {
-        setState(() {
-          _entries.clear();
-          _loading = false;
-        });
-        return;
-      }
-      final activeFilter = " (status IS NULL OR status != 'archived') AND (is_active IS NULL OR is_active = 1) ";
+      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final companyId = RoleUtils.getUserCompanyId(_currentUser);
       final results = await widget.db.customSelect(
         isSuperAdmin
-            ? 'SELECT * FROM trading_entries WHERE $activeFilter ORDER BY updated_at DESC'
-            : 'SELECT * FROM trading_entries WHERE company_id = ? AND $activeFilter ORDER BY updated_at DESC',
+            ? "SELECT * FROM trading_entries WHERE (status IS NULL OR status != 'archived') AND (is_active IS NULL OR is_active = 1) ORDER BY updated_at DESC"
+            : "SELECT * FROM trading_entries WHERE company_id = ? AND (status IS NULL OR status != 'archived') AND (is_active IS NULL OR is_active = 1) ORDER BY updated_at DESC",
         variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
       ).get();
       
       final loadedEntries = results.map((row) {
         final data = row.data;
-        // Handle migration from is_close to status
         String status = data['status'] as String? ?? 'Pending';
         if (status.isEmpty) {
           final isClose = (data['is_close'] as int? ?? 0) == 1;
-          status = isClose ? 'Close' : 'Pending';
+          status = isClose ? 'Done' : 'Pending';
         }
         return _TradingClientEntry(
           id: data['id'] as String,
@@ -3124,10 +3131,10 @@ class _TradingFormPageState extends State<TradingFormPage> {
           payment: (data['payment'] as num?)?.toDouble() ?? 0.0,
           status: status,
           comments: data['comments'] as String? ?? '',
+          isActive: (data['is_active'] as int? ?? 1) == 1, // FIXED: Added isActive
         );
       }).toList();
       
-      debugPrint('LOCAL DB: Found ${loadedEntries.length} trading form entries total');
       setState(() {
         _entries.clear();
         _entries.addAll(loadedEntries);
@@ -3212,59 +3219,61 @@ class _TradingFormPageState extends State<TradingFormPage> {
       // RootIsolateToken check removed - not available in this Flutter version
       Future.microtask(() async {
         try {
-          if (Firebase.apps.isNotEmpty) {
-            String? localCreatedBy;
-            String? localCompanyId;
-            try {
-              final row = await widget.db.customSelect(
-                'SELECT created_by, company_id FROM trading_entries WHERE id = ? LIMIT 1',
-                variables: [d.Variable.withString(entryId)],
-              ).get();
-              if (row.isNotEmpty) {
-                localCreatedBy = row.first.data['created_by']?.toString();
-                localCompanyId = row.first.data['company_id']?.toString();
-              }
-            } catch (_) {}
-
-            Map<String, dynamic>? creatorUser;
-            if (localCreatedBy != null && localCreatedBy!.isNotEmpty) {
+          await _executeFirestoreOperation(() async {
+            if (Firebase.apps.isNotEmpty) {
+              String? localCreatedBy;
+              String? localCompanyId;
               try {
-                final u = await widget.db.customSelect(
-                  'SELECT * FROM users WHERE user_id = ? OR id = ? LIMIT 1',
-                  variables: [
-                    d.Variable.withString(localCreatedBy!),
-                    d.Variable.withString(localCreatedBy!),
-                  ],
+                final row = await widget.db.customSelect(
+                  'SELECT created_by, company_id FROM trading_entries WHERE id = ? LIMIT 1',
+                  variables: [d.Variable.withString(entryId)],
                 ).get();
-                if (u.isNotEmpty) creatorUser = Map<String, dynamic>.from(u.first.data);
+                if (row.isNotEmpty) {
+                  localCreatedBy = row.first.data['created_by']?.toString();
+                  localCompanyId = row.first.data['company_id']?.toString();
+                }
               } catch (_) {}
+
+              Map<String, dynamic>? creatorUser;
+              if (localCreatedBy != null && localCreatedBy!.isNotEmpty) {
+                try {
+                  final u = await widget.db.customSelect(
+                    'SELECT * FROM users WHERE user_id = ? OR id = ? LIMIT 1',
+                    variables: [
+                      d.Variable.withString(localCreatedBy!),
+                      d.Variable.withString(localCreatedBy!),
+                    ],
+                  ).get();
+                  if (u.isNotEmpty) creatorUser = Map<String, dynamic>.from(u.first.data);
+                } catch (_) {}
+              }
+
+              final creator = creatorFields(
+                creatorUser ??
+                    {
+                      'id': localCreatedBy,
+                      'user_id': localCreatedBy,
+                      'name': localCreatedBy,
+                    },
+              );
+              final creatorAlias = creator['creator_user_id_alias']?.toString() ?? localCreatedBy;
+
+              await FirebaseFirestore.instance.collection('trading_entries').doc(entryId).set(
+                {
+                  'id': entryId,
+                  'companyId': localCompanyId ?? companyId,
+                  'createdBy': creatorAlias,
+                  'created_by': creatorAlias,
+                  ...creator,
+                  'status': newStatus,
+                  'updatedAt': nowIso,
+                  'updated_at': nowIso,
+                },
+                SetOptions(merge: true),
+              );
+              FirestoreCacheService().invalidateCache('trading_entries', entryId);
             }
-
-            final creator = creatorFields(
-              creatorUser ??
-                  {
-                    'id': localCreatedBy,
-                    'user_id': localCreatedBy,
-                    'name': localCreatedBy,
-                  },
-            );
-            final creatorAlias = creator['creator_user_id_alias']?.toString() ?? localCreatedBy;
-
-            await FirebaseFirestore.instance.collection('trading_entries').doc(entryId).set(
-              {
-                'id': entryId,
-                'companyId': localCompanyId ?? companyId,
-                'createdBy': creatorAlias,
-                'created_by': creatorAlias,
-                ...creator,
-                'status': newStatus,
-                'updatedAt': nowIso,
-                'updated_at': nowIso,
-              },
-              SetOptions(merge: true),
-            );
-            FirestoreCacheService().invalidateCache('trading_entries', entryId);
-          }
+          });
         } catch (_) {}
       });
       await _loadEntries();
@@ -3296,19 +3305,21 @@ class _TradingFormPageState extends State<TradingFormPage> {
 
       Future.microtask(() async {
         try {
-          if (Firebase.apps.isNotEmpty) {
-            await FirebaseFirestore.instance.collection('trading_entries').doc(entryId).set(
-              {
-                'status': 'archived',
-                'is_active': 0,
-                'isActive': 0,
-                'updated_at': nowIso,
-                'deleted_at': nowIso,
-              },
-              SetOptions(merge: true),
-            );
-            FirestoreCacheService().invalidateCache('trading_entries', entryId);
-          }
+          await _executeFirestoreOperation(() async {
+            if (Firebase.apps.isNotEmpty) {
+              await FirebaseFirestore.instance.collection('trading_entries').doc(entryId).set(
+                {
+                  'status': 'archived',
+                  'is_active': 0,
+                  'isActive': 0,
+                  'updated_at': nowIso,
+                  'deleted_at': nowIso,
+                },
+                SetOptions(merge: true),
+              );
+              FirestoreCacheService().invalidateCache('trading_entries', entryId);
+            }
+          });
         } catch (_) {}
       });
       await _loadEntries();
@@ -3772,12 +3783,14 @@ class _TradingFormPageState extends State<TradingFormPage> {
     // Run in background without blocking
     Future.microtask(() async {
       try {
-        if (Firebase.apps.isNotEmpty) {
-          final firestore = FirebaseFirestore.instance;
-          await firestore.collection(collection).doc(docId).set(data, SetOptions(merge: true));
-          // Invalidate cache after successful sync
-          FirestoreCacheService().invalidateCache(collection, docId);
-        }
+        await _executeFirestoreOperation(() async {
+          if (Firebase.apps.isNotEmpty) {
+            final firestore = FirebaseFirestore.instance;
+            await firestore.collection(collection).doc(docId).set(data, SetOptions(merge: true));
+            // Invalidate cache after successful sync
+            FirestoreCacheService().invalidateCache(collection, docId);
+          }
+        });
       } catch (e) {
         debugPrint('Background Firestore sync failed for $collection/$docId: $e');
         // Sync will retry automatically when connectivity is restored
@@ -3835,6 +3848,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
       payment: payment,
       status: 'Pending', // Default status
       comments: commentsCtl.text.trim(),
+      isActive: true,
     );
     
     // OFFLINE-FIRST: Save to local database FIRST
@@ -5115,9 +5129,33 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
   String _transactionTypeFilter = 'All';
   Map<String, dynamic>? _currentUser;
   
-  // Separate pagination state for each tab
+  // Firestore subscription and sync state
+  StreamSubscription<QuerySnapshot>? _firestoreSub;
+  FirestoreSyncState _syncState = FirestoreSyncState();
+  bool _firestoreReady = false;
   final Map<String, int> _tabPages = {'File': 0, 'Form': 0};
   final Map<String, ScrollController> _tabScrollControllers = {};
+
+  // SQLite-only flag - disables all Firestore operations
+  static const bool _sqliteOnlyMode = true;
+
+  // Helper method to disable Firestore operations in SQLite-only mode
+  bool _isFirestoreOperationAllowed() {
+    return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
+  }
+
+  // Helper method to execute Firestore operations only if allowed
+  Future<void> _executeFirestoreOperation(Future<void> Function() operation) async {
+    if (_isFirestoreOperationAllowed()) {
+      try {
+        await operation();
+      } catch (e) {
+        debugPrint('Firestore operation failed (non-critical in SQLite-only mode): $e');
+      }
+    } else {
+      debugPrint('Firestore operation skipped in SQLite-only mode');
+    }
+  }
   static const int _itemsPerPage = 100; // Items per page (50-200 range)
   final Set<int> _loadedTabs = {0}; // Start with first tab loaded
   
@@ -5524,6 +5562,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
           payment: (data['payment'] as num?)?.toDouble() ?? 0.0,
           status: status,
           comments: data['comments'] as String? ?? '',
+          isActive: (data['is_active'] as int? ?? 1) == 1,
         );
       }).toList();
       
@@ -5553,6 +5592,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
             payment: (data['payment'] as num?)?.toDouble() ?? 0.0,
             status: data['status']?.toString() ?? 'Pending',
             comments: data['comments'] as String? ?? '',
+            isActive: (data['is_active'] as int? ?? 1) == 1,
           );
         }).toList();
         setState(() {
@@ -5807,6 +5847,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
           payment: (data['payment'] as num?)?.toDouble() ?? 0.0,
           status: status,
           comments: data['comments'] as String? ?? '',
+          isActive: data['is_active'] ?? data['isActive'] ?? true,
         );
       }).toList();
       
@@ -5841,6 +5882,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
             payment: (data['payment'] as num?)?.toDouble() ?? 0.0,
             status: data['status']?.toString() ?? 'Pending',
             comments: data['comments'] as String? ?? '',
+            isActive: (data['is_active'] as int? ?? 1) == 1,
           );
         }).toList();
         setState(() {
@@ -6221,17 +6263,20 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
   }) {
     Future.microtask(() async {
       try {
-        if (Firebase.apps.isNotEmpty) {
-          await FirebaseFirestore.instance.collection(collection).doc(docId).set(data, SetOptions(merge: true));
-          FirestoreCacheService().invalidateCache(collection, docId);
-        }
+        await _executeFirestoreOperation(() async {
+          if (Firebase.apps.isNotEmpty) {
+            await FirebaseFirestore.instance.collection(collection).doc(docId).set(data, SetOptions(merge: true));
+            FirestoreCacheService().invalidateCache(collection, docId);
+          }
+        });
       } catch (e) {
         debugPrint('Background Firestore sync failed for $collection/$docId: $e');
+        // Sync will retry automatically when connectivity is restored
       }
     });
   }
-  
-  Future<void> _fileAddEntryForType(_TradingFileFormType type, {BuildContext? dialogContext}) async {
+
+  Future<void> _addFileEntryForType(_TradingFileFormType type, {BuildContext? dialogContext}) async {
     final formKey = type == _TradingFileFormType.buy ? _fileBuyFormKey : _fileSellFormKey;
     if (!formKey.currentState!.validate()) {
       setState(() {});
@@ -6253,18 +6298,26 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     final quantity = int.tryParse(quantityCtl.text.trim()) ?? 0;
     final payment = double.tryParse(paymentCtl.text.trim()) ?? 0.0;
     final entryId = DateTime.now().millisecondsSinceEpoch.toString();
-    final entry = _TradingFileEntry(
-      id: entryId, type: type,
-      buyOption: type == _TradingFileFormType.buy ? option : null,
-      sellOption: type == _TradingFileFormType.sell ? option : null,
-      date: selectedDate, mobile: mobileCtl.text.trim(),
-      personName: personNameCtl.text.trim(), estate: estateCtl.text.trim(),
-      quantity: quantity, payment: payment, status: 'Pending',
-      comments: commentsCtl.text.trim(),
-    );
-    await _fileSaveEntry(entry);
+    
+    // Define creator fields for Firestore sync
     final creator = creatorFields(_currentUser);
     final creatorAlias = creator['creator_user_id_alias']?.toString();
+    
+    final entry = _TradingFileEntry(
+      id: entryId,
+      type: type,
+      buyOption: type == _TradingFileFormType.buy ? option : null,
+      sellOption: type == _TradingFileFormType.sell ? option : null,
+      date: selectedDate,
+      mobile: mobileCtl.text.trim(),
+      personName: personNameCtl.text.trim(),
+      estate: estateCtl.text.trim(),
+      quantity: quantity,
+      payment: payment,
+      status: 'Pending',
+      comments: commentsCtl.text.trim(),
+      isActive: true,
+    );
     _fileSyncToFirestore(
       collection: 'trading_file_entries',
       docId: entryId,
@@ -6460,6 +6513,17 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
         },
       ),
     );
+  }
+  
+  // Placeholder method for file entry addition
+  void _fileAddEntryForType(_TradingFileFormType type, {BuildContext? dialogContext}) {
+    // This method should delegate to the appropriate file page method
+    // For now, show a placeholder implementation
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('File entry addition not implemented in unified view')),
+      );
+    }
   }
   
   void _fileShowAddFormDialog(_TradingFileFormType type) {
@@ -6686,12 +6750,14 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     if (!kIsWeb && io.Platform.isWindows) return;
     Future.microtask(() async {
       try {
-        if (Firebase.apps.isNotEmpty) {
-          await _ensureFirebaseAuthForm();
-          debugPrint('Attempting write to: $collection/$docId');
-          await FirebaseFirestore.instance.collection(collection).doc(docId).set(data, SetOptions(merge: true));
-          FirestoreCacheService().invalidateCache(collection, docId);
-        }
+        await _executeFirestoreOperation(() async {
+          if (Firebase.apps.isNotEmpty) {
+            await _ensureFirebaseAuthForm();
+            debugPrint('Attempting write to: $collection/$docId');
+            await FirebaseFirestore.instance.collection(collection).doc(docId).set(data, SetOptions(merge: true));
+            FirestoreCacheService().invalidateCache(collection, docId);
+          }
+        });
       } catch (e) {
         debugPrint('Firestore sync failed for $collection/$docId: $e');
         if (mounted) {
@@ -6799,6 +6865,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       plotNo: plotNoCtl.text.trim(), block: blockCtl.text.trim(),
       commission: commission, quantity: quantity, payment: payment,
       status: 'Pending', comments: commentsCtl.text.trim(),
+      isActive: true,
     );
     await _formSaveEntry(entry);
     final creator = creatorFields(_currentUser);
@@ -7989,7 +8056,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Rs ${formatPayment(summary['totalPayment'] as double)}',
+                              'Rs ${formatPayment((summary['totalPayment'] ?? 0).toDouble())}',
                               style: GoogleFonts.poppins(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -8045,7 +8112,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Rs ${formatPayment(summary['totalPayment'] as double)}',
+                            'Rs ${formatPayment((summary['totalPayment'] ?? 0).toDouble())}',
                             style: GoogleFonts.poppins(
                               fontSize: isTablet ? 16 : 18,
                               fontWeight: FontWeight.bold,
@@ -8532,3 +8599,6 @@ class TradingDetailPage extends StatelessWidget {
     }
   }
 }
+
+
+
