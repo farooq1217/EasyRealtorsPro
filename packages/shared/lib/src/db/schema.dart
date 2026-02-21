@@ -354,7 +354,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 25;
+  int get schemaVersion => 26;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -742,6 +742,10 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 25) {
             await _safeAddIsActiveColumnsToBusinessTables(m.database);
+          }
+          if (from < 26) {
+            // Ensure is_active columns exist in reminders and clients tables
+            await _safeAddIsActiveColumns(m.database);
           }
         },
       );

@@ -8,6 +8,7 @@ import 'package:shared/shared.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:random_string/random_string.dart';
@@ -81,7 +82,7 @@ class AuthService {
         } catch (_) {}
         if (!_isWindows) {
           try {
-            if (Firebase.apps.isNotEmpty) {
+            if (Firebase.apps.isNotEmpty && await _ensureFirebaseAuthReady()) {
               await FirebaseFirestore.instance.collection('users').doc(u['id']?.toString() ?? emailKey).set(
                 {
                   'password_hash': newHash,
@@ -187,17 +188,32 @@ class AuthService {
     }
   }
 
+  /// Helper method to ensure Firebase Auth is ready before Firestore operations
+  Future<bool> _ensureFirebaseAuthReady() async {
+    if (!_firebaseReady) return false;
+    if (FirebaseAuth.instance.currentUser == null) {
+      debugPrint('AuthService: Firebase Auth user is null, skipping Firestore operation');
+      return false;
+    }
+    try {
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      return true;
+    } catch (e) {
+      debugPrint('AuthService: Failed to refresh ID token: $e');
+      return false;
+    }
+  }
+
   /// Fetch all users from Firestore and sync to SQLite + users.json
   /// Updated: Now works on fresh installations without requiring prior FirebaseAuth login
   Future<int> syncUsersFromFirestore() async {
     if (kIsWeb) return 0;
     if (!_firebaseReady) return 0;
     
-    // REMOVED: FirebaseAuth currentUser requirement - now works for fresh installations
-    // if (fb.FirebaseAuth.instance.currentUser == null) {
-    //   debugPrint('syncUsersFromFirestore: skipped because FirebaseAuth currentUser is null');
-    //   return 0;
-    // }
+    // CRITICAL: Ensure Firebase Auth is ready before Firestore operations
+    if (!await _ensureFirebaseAuthReady()) {
+      return 0;
+    }
     
     int synced = 0;
     try {

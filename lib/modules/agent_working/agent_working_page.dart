@@ -656,7 +656,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
       _officeNotesSub = _officeNotesRef!
           .orderBy('createdAt', descending: true)
           .snapshots()
-          .listen((snapshot) => _handleNotesEvent(snapshot, isOffice: true), onError: (error) {
+          .listen((snapshot) => Future.microtask(() => _handleNotesEvent(snapshot, isOffice: true)), onError: (error) {
         setState(() {
           _officeNotesError = error.toString();
           _officeNotesLoading = false;
@@ -665,7 +665,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
       _otherNotesSub = _otherNotesRef!
           .orderBy('createdAt', descending: true)
           .snapshots()
-          .listen((snapshot) => _handleNotesEvent(snapshot, isOffice: false), onError: (error) {
+          .listen((snapshot) => Future.microtask(() => _handleNotesEvent(snapshot, isOffice: false)), onError: (error) {
         setState(() {
           _otherNotesError = error.toString();
           _otherNotesLoading = false;

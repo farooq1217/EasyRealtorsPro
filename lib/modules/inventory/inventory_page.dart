@@ -55,6 +55,12 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
   String? _selectedStatusFilter; // null = All, 'Sold' = Sold, 'Not Sold' = Available
   String? _selectedSocietyId; // Selected society for filtering
   String? _selectedBlockId; // Selected block for filtering
+  
+  // Pagination variables
+  int _currentPage = 1;
+  int _pageSize = 20;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
 
   @override
   void initState() {
@@ -177,6 +183,13 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
     }
     
     return filtered;
+  }
+
+  // Reset pagination when filters change
+  void _resetPagination() {
+    _currentPage = 1;
+    _hasMore = true;
+    _isLoadingMore = false;
   }
 
   /// Exports inventory to PDF - All processing in isolate to prevent UI blocking
@@ -506,17 +519,31 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
                       bottom: BorderSide(color: Colors.grey.shade300.withOpacity(0.7)),
                     ),
                   ),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildFilterChip('All', null),
-                        const SizedBox(width: 8),
-                        _buildFilterChip('Available', 'Not Sold'),
-                        const SizedBox(width: 8),
-                        _buildFilterChip('Sold', 'Sold'),
-                      ],
-                    ),
+                  child: Row(
+                    children: [
+                      _buildFilterChip('All', null),
+                      const SizedBox(width: 8),
+                      _buildFilterChip('Available', 'Not Sold'),
+                      const SizedBox(width: 8),
+                      _buildFilterChip('Sold', 'Sold'),
+                      // Clear Filters button - only show when any filter is active
+                      if (_selectedSocietyId != null || _selectedBlockId != null || _selectedStatusFilter != null)
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _selectedSocietyId = null;
+                              _selectedBlockId = null;
+                              _selectedStatusFilter = null;
+                            });
+                            _resetPagination();
+                          },
+                          style: TextButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          child: const Text('Clear Filters'),
+                        ),
+                    ],
                   ),
                 ),
                 // Society and Block Dropdowns

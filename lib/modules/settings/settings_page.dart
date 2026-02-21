@@ -303,7 +303,18 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       societiesQuery = societiesQuery.orderBy('name');
 
-      _societiesSub = societiesQuery.snapshots().listen((snapshot) async {
+      _societiesSub = societiesQuery.snapshots().handleError((error) {
+        debugPrint('Error in societies listener: $error');
+        // Handle missing index errors gracefully
+        final errorStr = error.toString().toLowerCase();
+        if (errorStr.contains('index') || errorStr.contains('missing')) {
+          debugPrint('Firestore index may be missing. This is non-fatal - continuing with limited functionality.');
+        }
+        Future.microtask(() {
+          if (!mounted) return;
+          setState(() => _loading = false);
+        });
+      }).listen((snapshot) async {
         try {
           for (final change in snapshot.docChanges) {
             final doc = change.doc;
@@ -367,17 +378,6 @@ class _SettingsPageState extends State<SettingsPage> {
             setState(() => _loading = false);
           });
         }
-      }, onError: (error) {
-        debugPrint('Error in societies listener: $error');
-        // Handle missing index errors gracefully
-        final errorStr = error.toString().toLowerCase();
-        if (errorStr.contains('index') || errorStr.contains('missing')) {
-          debugPrint('Firestore index may be missing. This is non-fatal - continuing with limited functionality.');
-        }
-        Future.microtask(() {
-          if (!mounted) return;
-          setState(() => _loading = false);
-        });
       });
 
       // Listen to blocks collection
@@ -387,7 +387,14 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       blocksQuery = blocksQuery.orderBy('name');
 
-      _blocksSub = blocksQuery.snapshots().listen((snapshot) async {
+      _blocksSub = blocksQuery.snapshots().handleError((error) {
+        debugPrint('Error in blocks listener: $error');
+        // Handle missing index errors gracefully
+        final errorStr = error.toString().toLowerCase();
+        if (errorStr.contains('index') || errorStr.contains('missing')) {
+          debugPrint('Firestore index may be missing. This is non-fatal - continuing with limited functionality.');
+        }
+      }).listen((snapshot) async {
         try {
           for (final change in snapshot.docChanges) {
             final doc = change.doc;
@@ -428,13 +435,6 @@ class _SettingsPageState extends State<SettingsPage> {
           });
         } catch (e) {
           debugPrint('Error processing blocks changes: $e');
-        }
-      }, onError: (error) {
-        debugPrint('Error in blocks listener: $error');
-        // Handle missing index errors gracefully
-        final errorStr = error.toString().toLowerCase();
-        if (errorStr.contains('index') || errorStr.contains('missing')) {
-          debugPrint('Firestore index may be missing. This is non-fatal - continuing with limited functionality.');
         }
       });
 

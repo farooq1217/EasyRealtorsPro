@@ -169,23 +169,24 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
       );
 
       _firestoreSub = query.snapshots().listen((snapshot) async {
-        final changes = List<DocumentChange>.from(snapshot.docChanges);
-        
-        if (changes.isNotEmpty) {
-          try {
-            await widget.db.batch((batch) {
-              for (final change in changes) {
-                final doc = change.doc;
-                final data = doc.data() as Map<String, dynamic>;
-                final id = (data['id'] ?? doc.id).toString();
-                
-                if (change.type == DocumentChangeType.removed) {
-                  batch.customStatement(
-                    'UPDATE rental_items SET is_active = 0, updated_at = ? WHERE id = ?',
-                    [DateTime.now().toUtc().toIso8601String(), id],
-                  );
-                  continue;
-                }
+        Future.microtask(() async {
+          final changes = List<DocumentChange>.from(snapshot.docChanges);
+          
+          if (changes.isNotEmpty) {
+            try {
+              await widget.db.batch((batch) {
+                for (final change in changes) {
+                  final doc = change.doc;
+                  final data = doc.data() as Map<String, dynamic>;
+                  final id = (data['id'] ?? doc.id).toString();
+                  
+                  if (change.type == DocumentChangeType.removed) {
+                    batch.customStatement(
+                      'UPDATE rental_items SET is_active = 0, updated_at = ? WHERE id = ?',
+                      [DateTime.now().toUtc().toIso8601String(), id],
+                    );
+                    continue;
+                  }
 
                 // Sync rental item data to SQLite
                 final name = (data['name'] ?? '').toString();
@@ -232,6 +233,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
             setState(() => _firestoreReady = true);
           });
         }
+        });
       }, onError: (error) {
         debugPrint('Firestore listener error (rental_items): $error');
         // Handle missing index errors gracefully
@@ -7630,20 +7632,21 @@ class _UsersPageState extends State<UsersPage> {
       );
 
       _firestoreSub = query.snapshots().listen((snapshot) async {
-        final changes = List<DocumentChange>.from(snapshot.docChanges);
-        
-        if (changes.isNotEmpty) {
-          try {
-            await widget.db.batch((batch) {
-              for (final change in changes) {
-                final doc = change.doc;
-                final data = doc.data() as Map<String, dynamic>;
-                final id = (data['id'] ?? doc.id).toString();
-                
-                if (change.type == DocumentChangeType.removed) {
-                  batch.customStatement('DELETE FROM users WHERE id = ?', [id]);
-                  continue;
-                }
+        Future.microtask(() async {
+          final changes = List<DocumentChange>.from(snapshot.docChanges);
+          
+          if (changes.isNotEmpty) {
+            try {
+              await widget.db.batch((batch) {
+                for (final change in changes) {
+                  final doc = change.doc;
+                  final data = doc.data() as Map<String, dynamic>;
+                  final id = (data['id'] ?? doc.id).toString();
+                  
+                  if (change.type == DocumentChangeType.removed) {
+                    batch.customStatement('DELETE FROM users WHERE id = ?', [id]);
+                    continue;
+                  }
 
                 // Sync user data to SQLite (exclude sensitive password fields)
                 final username = (data['username'] ?? '').toString();
@@ -7688,6 +7691,7 @@ class _UsersPageState extends State<UsersPage> {
             setState(() => _firestoreReady = true);
           });
         }
+        });
       }, onError: (error) {
         debugPrint('Firestore listener error (users): $error');
         // Handle missing index errors gracefully

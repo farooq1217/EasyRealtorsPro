@@ -2863,25 +2863,26 @@ class _TradingFormPageState extends State<TradingFormPage> {
       );
 
       _firestoreSub = query.snapshots().listen((snapshot) async {
-        final changes = List<DocumentChange>.from(snapshot.docChanges);
-        
-        if (changes.isNotEmpty) {
-          try {
-            await widget.db.batch((batch) {
-              for (final change in changes) {
-                final doc = change.doc;
-                final data = doc.data() as Map<String, dynamic>;
-                final id = (data['id'] ?? doc.id).toString();
-                
-                if (change.type == DocumentChangeType.removed) {
-                  batch.customStatement(
-                    "UPDATE trading_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
-                    [DateTime.now().toUtc().toIso8601String(), id],
-                  );
-                  continue;
-                }
+        Future.microtask(() async {
+          final changes = List<DocumentChange>.from(snapshot.docChanges);
+          
+          if (changes.isNotEmpty) {
+            try {
+              await widget.db.batch((batch) {
+                for (final change in changes) {
+                  final doc = change.doc;
+                  final data = doc.data() as Map<String, dynamic>;
+                  final id = (data['id'] ?? doc.id).toString();
+                  
+                  if (change.type == DocumentChangeType.removed) {
+                    batch.customStatement(
+                      "UPDATE trading_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
+                      [DateTime.now().toUtc().toIso8601String(), id],
+                    );
+                    continue;
+                  }
 
-                // Sync trading entry data to SQLite
+                  // Sync trading entry data to SQLite
                 final type = (data['type'] ?? '').toString();
                 final buyOption = (data['buy_option'] ?? data['buyOption'] ?? '').toString();
                 final sellOption = (data['sell_option'] ?? data['sellOption'] ?? '').toString();
@@ -2932,6 +2933,7 @@ class _TradingFormPageState extends State<TradingFormPage> {
             setState(() => _firestoreReady = true);
           });
         }
+        });
       }, onError: (error) {
         debugPrint('Firestore listener error (trading_entries): $error');
         // Handle missing index errors gracefully
@@ -5428,23 +5430,24 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       );
       
       _fileFirestoreSub = query.snapshots().listen((snapshot) async {
-        final changes = List<DocumentChange>.from(snapshot.docChanges);
-        
-        if (changes.isNotEmpty) {
-          try {
-            await widget.db.batch((batch) {
-              for (final change in changes) {
-                final doc = change.doc;
-                final data = doc.data() as Map<String, dynamic>;
-                final id = (data['id'] ?? doc.id).toString();
-                
-                if (change.type == DocumentChangeType.removed) {
-                  batch.customStatement(
-                    "UPDATE trading_file_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
-                    [DateTime.now().toUtc().toIso8601String(), id],
-                  );
-                  continue;
-                }
+        Future.microtask(() async {
+          final changes = List<DocumentChange>.from(snapshot.docChanges);
+          
+          if (changes.isNotEmpty) {
+            try {
+              await widget.db.batch((batch) {
+                for (final change in changes) {
+                  final doc = change.doc;
+                  final data = doc.data() as Map<String, dynamic>;
+                  final id = (data['id'] ?? doc.id).toString();
+                  
+                  if (change.type == DocumentChangeType.removed) {
+                    batch.customStatement(
+                      "UPDATE trading_file_entries SET status = 'archived', is_active = 0, updated_at = ? WHERE id = ?",
+                      [DateTime.now().toUtc().toIso8601String(), id],
+                    );
+                    continue;
+                  }
                 
                 final type = (data['type'] ?? '').toString();
                 final buyOption = (data['buy_option'] ?? data['buyOption'] ?? '').toString();
@@ -5488,6 +5491,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
             setState(() => _fileFirestoreReady = true);
           });
         }
+        });
       }, onError: (error) {
         debugPrint('Firestore listener error (trading_file_entries): $error');
         Future.microtask(() {
@@ -5681,17 +5685,18 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
       );
       
       _formFirestoreSub = query.snapshots().listen((snapshot) async {
-        try {
-          final changes = List<DocumentChange>.from(snapshot.docChanges);
-          
-          if (changes.isNotEmpty) {
-            try {
-              await widget.db.batch((batch) {
-                for (final change in changes) {
-                  try {
-                    final doc = change.doc;
-                    final data = doc.data() as Map<String, dynamic>;
-                    final id = (data['id'] ?? doc.id).toString();
+        Future.microtask(() async {
+          try {
+            final changes = List<DocumentChange>.from(snapshot.docChanges);
+            
+            if (changes.isNotEmpty) {
+              try {
+                await widget.db.batch((batch) {
+                  for (final change in changes) {
+                    try {
+                      final doc = change.doc;
+                      final data = doc.data() as Map<String, dynamic>;
+                      final id = (data['id'] ?? doc.id).toString();
                     
                     if (change.type == DocumentChangeType.removed) {
                       batch.customStatement(
@@ -5758,6 +5763,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
             setState(() => _formFirestoreReady = true);
           });
         }
+        });
       }, onError: (error) {
         debugPrint('Firestore listener error (trading_entries form): $error');
         // Handle missing index errors gracefully
