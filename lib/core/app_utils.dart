@@ -810,3 +810,17 @@ Future<void> exportProtectedPdf(BuildContext context) async {
   }
 }
 
+/// Get the first available company ID for super admin operations
+Future<String> _getFirstCompanyId(dynamic db) async {
+  try {
+    final result = await db.customSelect('SELECT id FROM companies WHERE is_active = 1 LIMIT 1').get();
+    if (result.isNotEmpty) {
+      return result.first.data['id'] as String;
+    }
+  } catch (e) {
+    debugPrint('Error getting first company ID: $e');
+  }
+  // Fallback to a timestamp-based ID if no companies exist
+  return DateTime.now().millisecondsSinceEpoch.toString();
+}
+

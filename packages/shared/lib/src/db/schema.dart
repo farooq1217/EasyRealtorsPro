@@ -354,7 +354,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 26;
+  int get schemaVersion => 27;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -390,6 +390,7 @@ class AppDatabase extends _$AppDatabase {
             'reminder_date TEXT NOT NULL,'
             'reminder_time TEXT NOT NULL,'
             'notification_status TEXT NOT NULL,'
+            'is_synced INTEGER NOT NULL DEFAULT 1,'
             'created_at TEXT NOT NULL,'
             'updated_at TEXT NOT NULL,'
             'FOREIGN KEY(agent_id) REFERENCES users(id)'
@@ -441,6 +442,7 @@ class AppDatabase extends _$AppDatabase {
               'reminder_date TEXT NOT NULL,'
               'reminder_time TEXT NOT NULL,'
               'notification_status TEXT NOT NULL,'
+              'is_synced INTEGER NOT NULL DEFAULT 1,'
               'created_at TEXT NOT NULL,'
               'updated_at TEXT NOT NULL,'
               'FOREIGN KEY(agent_id) REFERENCES users(id)'
@@ -747,6 +749,14 @@ class AppDatabase extends _$AppDatabase {
             // Ensure is_active columns exist in reminders and clients tables
             await _safeAddIsActiveColumns(m.database);
           }
+          if (from < 27) {
+            // Schema version 27: Add is_synced column to reminders table
+            try {
+              await m.database.customStatement('ALTER TABLE reminders ADD COLUMN is_synced INTEGER NOT NULL DEFAULT 1');
+            } catch (e) {
+              // Column might already exist, ignore error
+            }
+          }
         },
       );
 }
@@ -764,49 +774,25 @@ Future<void> _ensureBusinessTables(dynamic db) async {
     }
   }
 
-  // Trading file entries
-  await run('''
-    CREATE TABLE IF NOT EXISTS trading_file_entries (
-      id TEXT PRIMARY KEY,
-      company_id TEXT,
-      created_by TEXT,
-      type TEXT NOT NULL,
-      buy_option TEXT,
-      sell_option TEXT,
-      date TEXT NOT NULL,
-      mobile TEXT,
-      person_name TEXT,
-      estate TEXT,
-      quantity INTEGER,
-      payment REAL,
-      status TEXT NOT NULL DEFAULT 'Pending',
-      is_active INTEGER NOT NULL DEFAULT 1,
-      is_synced INTEGER NOT NULL DEFAULT 1,
-      comments TEXT,
-      updated_at TEXT NOT NULL
-    )
-  ''');
-
-  // Trading form entries
+  // Trading entries - UNIFIED TABLE WITH TYPE DISCRIMINATION
   await run('''
     CREATE TABLE IF NOT EXISTS trading_entries (
       id TEXT PRIMARY KEY,
       company_id TEXT,
       created_by TEXT,
-      type TEXT NOT NULL,
-      buy_option TEXT,
-      sell_option TEXT,
+      entry_type TEXT NOT NULL, -- 'file' or 'form' - NEW FIELD
+      type TEXT NOT NULL, -- 'buy' or 'sell'
       date TEXT NOT NULL,
       mobile TEXT,
       person_name TEXT,
-      buyer_name TEXT,
-      seller_name TEXT,
       estate_name TEXT,
-      plot_no TEXT,
-      block TEXT,
-      commission REAL,
+      plot_no TEXT, -- Only for form entries, nullable for file entries
+      block TEXT, -- Only for form entries, nullable for file entries
+      commission REAL, -- Only for form entries, nullable for file entries
+      tax REAL, -- Only for form entries, nullable for file entries
       quantity INTEGER,
-      payment REAL,
+      rate REAL, -- Only for form entries, nullable for file entries
+      total_amount REAL, -- For file entries, use as payment
       status TEXT NOT NULL DEFAULT 'Pending',
       is_active INTEGER NOT NULL DEFAULT 1,
       is_synced INTEGER NOT NULL DEFAULT 1,
@@ -853,12 +839,17 @@ Future<void> _ensureBusinessTables(dynamic db) async {
 
 /// Ensures is_active columns exist for business tables.
 Future<void> _safeAddIsActiveColumnsToBusinessTables(GeneratedDatabase db) async {
-  // Business tables live outside Drift schema; add is_active columns if missing
+  // Business tables live outside Drift schema; keep them in sync
   for (final stmt in [
     'ALTER TABLE trading_entries ADD COLUMN is_active INTEGER DEFAULT 1',
-    'ALTER TABLE trading_file_entries ADD COLUMN is_active INTEGER DEFAULT 1',
-    'ALTER TABLE expenditures ADD COLUMN is_active INTEGER DEFAULT 1',
-    'ALTER TABLE expenditure_projects ADD COLUMN is_active INTEGER DEFAULT 1',
+    'ALTER TABLE trading_entries ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE trading_entries ADD COLUMN entry_type TEXT', 
+    'ALTER TABLE trading_entries ADD COLUMN plot_no TEXT', 
+    'ALTER TABLE trading_entries ADD COLUMN block TEXT',  
+    'ALTER TABLE trading_entries ADD COLUMN commission REAL', 
+    'ALTER TABLE trading_entries ADD COLUMN tax REAL', 
+    'ALTER TABLE trading_entries ADD COLUMN rate REAL', 
+    'DROP TABLE IF EXISTS trading_file_entries',
   ]) {
     try {
       await db.customStatement(stmt);

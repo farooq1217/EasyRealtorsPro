@@ -112,7 +112,6 @@ class BackgroundSyncManager {
       
       // Sync business tables
       await _syncBusinessTable(db, 'trading_entries', 'trading_entries');
-      await _syncBusinessTable(db, 'trading_file_entries', 'trading_file_entries');
       await _syncBusinessTable(db, 'expenditures', 'expenditures');
       
       debugPrint('[SYNC] Background sync completed successfully');
@@ -265,7 +264,7 @@ class BackgroundSyncManager {
       final tables = [
         'companies', 'users', 'societies', 'blocks', 'properties',
         'files_table', 'rental_items', 'working_progress', 'reminders', 'clients',
-        'trading_entries', 'trading_file_entries', 'expenditures'
+        'trading_entries', 'expenditures'
       ];
       
       for (final table in tables) {
