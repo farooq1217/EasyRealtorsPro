@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/font_utils.dart';
 import 'package:shared/shared.dart';
 import '../core/services/app_storage.dart' show AppStorage;
 import '../core/services/permission_helper.dart';
@@ -106,7 +106,7 @@ class ModernSidebar extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Real Estate',
-                      style: GoogleFonts.poppins(
+                      style: AppFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
@@ -228,7 +228,7 @@ class ModernSidebar extends StatelessWidget {
                   Expanded(
                     child: Text(
                       isDarkMode ? 'Light Mode' : 'Dark Mode',
-                      style: GoogleFonts.poppins(
+                      style: AppFonts.poppins(
                         fontSize: 14,
                         color: Colors.grey.shade800,
                       ),
@@ -306,7 +306,7 @@ class SidebarMenuItem extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontSize: 14,
                   color: isSelected ? Colors.white : Colors.white.withOpacity(0.95),
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,

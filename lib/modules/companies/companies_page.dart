@@ -1,13 +1,13 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey, FilteringTextInputFormatter;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -353,7 +353,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
             children: [
               Text(
                 existing == null ? 'Add New Company' : 'Edit Company',
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
                   color: Colors.grey.shade900,
@@ -486,7 +486,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                     icon: const Icon(Icons.close, size: 18),
                     label: Text(
                       'Cancel',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                      style: AppFonts.poppins(fontWeight: FontWeight.w600),
                     ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -626,11 +626,11 @@ class _CompaniesPageState extends State<CompaniesPage> {
       labelWidget = RichText(
         text: TextSpan(
           text: label,
-          style: GoogleFonts.poppins(color: Colors.grey.shade700),
+          style: AppFonts.poppins(color: Colors.grey.shade700),
           children: [
             TextSpan(
               text: ' *',
-              style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.bold),
+              style: AppFonts.poppins(color: Colors.red, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -644,7 +644,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
         padding: const EdgeInsets.only(left: 16, right: 8),
         child: Text(
           'Rs',
-          style: GoogleFonts.poppins(
+          style: AppFonts.poppins(
             color: Colors.grey.shade700,
             fontWeight: FontWeight.w600,
             fontSize: 16,
@@ -676,7 +676,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
           ? const Color(0xFF23272E)
           : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      labelStyle: GoogleFonts.poppins(color: Colors.grey.shade700),
+      labelStyle: AppFonts.poppins(color: Colors.grey.shade700),
     );
   }
 
@@ -809,7 +809,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
         : _rows.where((r) => r.values.any((v) => (v?.toString().toLowerCase() ?? '').contains(_q.toLowerCase()))).toList();
     return Scaffold(
       appBar: AppBar(
-        title: Text('Companies', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text('Companies', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -859,7 +859,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                         const SizedBox(height: 16),
                         Text(
                           'No companies found',
-                          style: GoogleFonts.poppins(
+                          style: AppFonts.poppins(
                             fontSize: 18,
                             color: Colors.grey.shade600,
                           ),
@@ -867,7 +867,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                         const SizedBox(height: 8),
                         Text(
                           'Click the + button to add a new company',
-                          style: GoogleFonts.poppins(
+                          style: AppFonts.poppins(
                             fontSize: 14,
                             color: Colors.grey.shade500),
                         ),
@@ -897,7 +897,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                           ),
                           title: Text(
                             r['name']?.toString() ?? 'N/A',
-                            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                            style: AppFonts.poppins(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -914,7 +914,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                                     ),
                                     child: Text(
                                       isActive ? 'Active' : 'Inactive',
-                                      style: GoogleFonts.poppins(
+                                      style: AppFonts.poppins(
                                         fontSize: 11,
                                         color: isActive ? Colors.green : Colors.grey,
                                         fontWeight: FontWeight.w600,
@@ -925,7 +925,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                                     const SizedBox(width: 8),
                                     Text(
                                       'Metadata available',
-                                      style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade600),
+                                      style: AppFonts.poppins(fontSize: 11, color: Colors.grey.shade600),
                                     ),
                                   ],
                                 ],
@@ -933,7 +933,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                               if (r['created_at'] != null)
                                 Text(
                                   'Created: ${DateFormat('dd MMM yyyy').format(DateTime.parse(r['created_at']))}',
-                                  style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade500),
+                                  style: AppFonts.poppins(fontSize: 11, color: Colors.grey.shade500),
                                 ),
                             ],
                           ),

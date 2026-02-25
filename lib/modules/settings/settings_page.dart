@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../../core/font_utils.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -1117,7 +1117,7 @@ class _SettingsPageState extends State<SettingsPage> {
           width: 120,
           child: Text(
             '$label:',
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontWeight: FontWeight.w600,
               color: Colors.grey.shade700,
             ),
@@ -1126,7 +1126,7 @@ class _SettingsPageState extends State<SettingsPage> {
         Expanded(
           child: Text(
             value,
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 14,
               color: Colors.grey.shade900,
             ),
@@ -1234,7 +1234,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         children: [
                           Text(
                             'User Profile',
-                            style: GoogleFonts.poppins(
+                            style: AppFonts.poppins(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
                             ),
@@ -1242,7 +1242,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 12),
                           Text(
                             'Update your profile details. Email stays read-only.',
-                            style: GoogleFonts.poppins(
+                            style: AppFonts.poppins(
                               fontSize: 13,
                               color: Colors.grey.shade700,
                             ),
@@ -1368,7 +1368,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 padding: const EdgeInsets.all(24),
                 child: Text(
                   'System settings are restricted for your role. Update your name and phone here to keep your profile complete.',
-                  style: GoogleFonts.poppins(color: Colors.grey.shade700, fontSize: 14),
+                  style: AppFonts.poppins(color: Colors.grey.shade700, fontSize: 14),
                 ),
               ),
             ],

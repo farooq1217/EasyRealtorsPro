@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../core/font_utils.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import 'core/services/auth_service.dart';
@@ -191,7 +191,7 @@ class _ForcePasswordChangePageState extends State<ForcePasswordChangePage> {
                                   Expanded(
                                     child: Text(
                                       'You must change your password before continuing.',
-                                      style: GoogleFonts.poppins(
+                                      style: AppFonts.poppins(
                                         fontSize: 13,
                                         color: Colors.orange.shade900,
                                         fontWeight: FontWeight.w500,
@@ -205,7 +205,7 @@ class _ForcePasswordChangePageState extends State<ForcePasswordChangePage> {
                           ],
                           Text(
                             widget.isForced ? 'Change Your Password' : 'Change Password',
-                            style: GoogleFonts.poppins(
+                            style: AppFonts.poppins(
                               fontSize: 28,
                               fontWeight: FontWeight.bold,
                               color: const Color(0xFFFF6B35),
@@ -217,7 +217,7 @@ class _ForcePasswordChangePageState extends State<ForcePasswordChangePage> {
                             widget.isForced
                                 ? 'Please set a new password for your account'
                                 : 'Enter your new password below',
-                            style: GoogleFonts.poppins(
+                            style: AppFonts.poppins(
                               fontSize: 14,
                               color: Colors.grey.shade600,
                             ),
@@ -306,7 +306,7 @@ class _ForcePasswordChangePageState extends State<ForcePasswordChangePage> {
                                         const SizedBox(width: 12),
                                         Text(
                                           'Updating...',
-                                          style: GoogleFonts.poppins(
+                                          style: AppFonts.poppins(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w600,
                                             color: Colors.white,
@@ -316,7 +316,7 @@ class _ForcePasswordChangePageState extends State<ForcePasswordChangePage> {
                                     )
                                   : Text(
                                       'CHANGE PASSWORD',
-                                      style: GoogleFonts.poppins(
+                                      style: AppFonts.poppins(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w600,
                                         letterSpacing: 1,
@@ -330,7 +330,7 @@ class _ForcePasswordChangePageState extends State<ForcePasswordChangePage> {
                               onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
                               child: Text(
                                 'Cancel',
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   fontSize: 14,
                                   color: const Color(0xFFFF6B35),
                                   fontWeight: FontWeight.w500,

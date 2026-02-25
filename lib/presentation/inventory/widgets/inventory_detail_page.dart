@@ -1,6 +1,7 @@
 // presentation/inventory/widgets/inventory_detail_page.dart
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/font_utils.dart';
+
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -60,7 +61,7 @@ class InventoryDetailPage extends StatelessWidget {
     
     return Scaffold(
       appBar: AppBar(
-        title: Text('${_capitalize(item.type.name)} Details', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text('${_capitalize(item.type.name)} Details', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -103,7 +104,7 @@ class InventoryDetailPage extends StatelessWidget {
                     children: [
                       Text(
                         '${_capitalize(item.type.name)} Details',
-                        style: GoogleFonts.poppins(
+                        style: AppFonts.poppins(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                           color: const Color(0xFFFF6B35),
@@ -130,7 +131,7 @@ class InventoryDetailPage extends StatelessWidget {
                                         flex: 1,
                                         child: Text(
                                           'Field',
-                                          style: GoogleFonts.poppins(
+                                          style: AppFonts.poppins(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 14,
                                           ),
@@ -140,7 +141,7 @@ class InventoryDetailPage extends StatelessWidget {
                                         flex: 2,
                                         child: Text(
                                           'Value',
-                                          style: GoogleFonts.poppins(
+                                          style: AppFonts.poppins(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 14,
                                           ),
@@ -208,7 +209,7 @@ class InventoryDetailPage extends StatelessWidget {
                                           flex: 1,
                                           child: Text(
                                             field.key,
-                                            style: GoogleFonts.poppins(
+                                            style: AppFonts.poppins(
                                               fontWeight: FontWeight.w600,
                                               fontSize: 13,
                                               color: Colors.grey.shade700,
@@ -245,7 +246,7 @@ class InventoryDetailPage extends StatelessWidget {
                       children: [
                         Text(
                           'Images',
-                          style: GoogleFonts.poppins(
+                          style: AppFonts.poppins(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                             color: const Color(0xFFFF6B35),
@@ -426,7 +427,7 @@ class InventoryDetailPage extends StatelessWidget {
       onTap: isPhone && value.trim().isNotEmpty ? () => showPhoneActionSheet(context, value) : null,
       child: Text(
         value,
-        style: GoogleFonts.poppins(
+        style: AppFonts.poppins(
           color: isPhone ? Colors.blue.shade700 : null,
           decoration: isPhone ? TextDecoration.underline : TextDecoration.none,
         ),

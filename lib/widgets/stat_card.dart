@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/font_utils.dart';
+
 
 class StatCard extends StatelessWidget {
   final String label;
@@ -52,7 +53,7 @@ class StatCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: GoogleFonts.poppins(
+                  style: AppFonts.poppins(
                     fontSize: 13,
                     color: Colors.grey.shade700,
                     fontWeight: FontWeight.w500,
@@ -64,7 +65,7 @@ class StatCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             value,
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 26,
               fontWeight: FontWeight.bold,
               color: Colors.grey.shade900,
@@ -74,7 +75,7 @@ class StatCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               trendText!,
-              style: GoogleFonts.poppins(
+              style: AppFonts.poppins(
                 fontSize: 11,
                 color: Colors.grey.shade600,
                 fontWeight: FontWeight.w500,

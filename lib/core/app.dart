@@ -124,6 +124,24 @@ class _AdminAppState extends State<AdminApp> {
       useMaterial3: true,
       visualDensity: isTouch ? VisualDensity.standard : VisualDensity.compact,
       materialTapTargetSize: isTouch ? MaterialTapTargetSize.padded : MaterialTapTargetSize.shrinkWrap,
+      fontFamily: 'Poppins',
+      textTheme: const TextTheme(
+        displayLarge: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700),
+        displayMedium: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600),
+        displaySmall: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w500),
+        headlineLarge: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700),
+        headlineMedium: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600),
+        headlineSmall: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w500),
+        titleLarge: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600),
+        titleMedium: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w500),
+        titleSmall: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+        bodyLarge: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+        bodyMedium: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+        bodySmall: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+        labelLarge: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w500),
+        labelMedium: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+        labelSmall: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+      ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ButtonStyle(
           backgroundColor: MaterialStateProperty.resolveWith<Color>(
@@ -145,7 +163,7 @@ class _AdminAppState extends State<AdminApp> {
           ),
           padding: MaterialStateProperty.all<EdgeInsets>(const EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
           textStyle: MaterialStateProperty.all<TextStyle>(
-            const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.3),
+            const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700, letterSpacing: 0.3),
           ),
         ),
       ),
@@ -158,7 +176,7 @@ class _AdminAppState extends State<AdminApp> {
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           textStyle: MaterialStateProperty.all<TextStyle>(
-            const TextStyle(fontWeight: FontWeight.w700),
+            const TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700),
           ),
         ),
       ),
@@ -174,6 +192,24 @@ class _AdminAppState extends State<AdminApp> {
       useMaterial3: true,
       visualDensity: isTouch ? VisualDensity.standard : VisualDensity.compact,
       materialTapTargetSize: isTouch ? MaterialTapTargetSize.padded : MaterialTapTargetSize.shrinkWrap,
+      fontFamily: 'Poppins',
+      textTheme: const TextTheme(
+        displayLarge: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700),
+        displayMedium: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600),
+        displaySmall: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w500),
+        headlineLarge: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w700),
+        headlineMedium: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600),
+        headlineSmall: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w500),
+        titleLarge: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w600),
+        titleMedium: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w500),
+        titleSmall: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+        bodyLarge: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+        bodyMedium: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+        bodySmall: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+        labelLarge: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w500),
+        labelMedium: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+        labelSmall: TextStyle(fontFamily: 'Poppins', fontWeight: FontWeight.w400),
+      ),
     );
     final dark = baseDark.copyWith(
       scaffoldBackgroundColor: const Color(0xFF101214),
@@ -183,7 +219,7 @@ class _AdminAppState extends State<AdminApp> {
       inputDecorationTheme: const InputDecorationTheme(
         filled: true,
         fillColor: Color(0xFF23272E),
-        hintStyle: TextStyle(color: Colors.white70),
+        hintStyle: TextStyle(color: Colors.white70, fontFamily: 'Poppins'),
         border: OutlineInputBorder(),
       ),
     );

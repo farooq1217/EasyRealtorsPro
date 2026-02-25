@@ -8,6 +8,7 @@
 analyzer:
   exclude:
     - packages/**
+    - real-estate/**
   errors:
     include_file_not_found: ignore
     deprecated_member_use: ignore

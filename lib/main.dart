@@ -27,33 +27,35 @@ void main() async {
     return openAppExecutor(dbFile.path);
   });
 
-  // 2. Firebase Initialization (Pehle ye hona chahiye)
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    }
-
-    // 3. Firestore Settings (Initialization ke BAAD)
-    await runZonedGuarded(() async {
-      if (Firebase.apps.isNotEmpty) {
-        if (isWindows) {
-          FirebaseFirestore.instance.settings = const Settings(
-            persistenceEnabled: false,
-            cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-          );
-          debugPrint('Windows Firestore: Persistence Disabled');
-        } else {
-          FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
-        }
+  // 2. Firebase Initialization - Wrapped in postFrame callback to avoid threading issues
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
       }
-    }, (error, stack) {
-      debugPrint('Firestore settings skipped: $error');
-    });
-  } catch (e) {
-    debugPrint('Firebase Error: $e');
-  }
+
+      // 3. Firestore Settings (Initialization ke BAAD)
+      await runZonedGuarded(() async {
+        if (Firebase.apps.isNotEmpty) {
+          if (isWindows) {
+            FirebaseFirestore.instance.settings = const Settings(
+              persistenceEnabled: false,
+              cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+            );
+            debugPrint('Windows Firestore: Persistence Disabled');
+          } else {
+            FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
+          }
+        }
+      }, (error, stack) {
+        debugPrint('Firestore settings skipped: $error');
+      });
+    } catch (e) {
+      debugPrint('Firebase Error: $e');
+    }
+  });
 
   runApp(const AdminApp());
 }

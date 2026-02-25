@@ -1,8 +1,9 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute, kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
+import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart';
 // REMOVED: Firestore dependencies for SQLite-only operation
 // import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,7 +12,6 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
@@ -366,7 +366,7 @@ class _ToDoPageState extends State<ToDoPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('To-Do', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text('To-Do', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -471,7 +471,7 @@ class _ToDoPageState extends State<ToDoPage> {
                                   _searchQuery.isEmpty
                                       ? '${_tasks.length} task${_tasks.length == 1 ? '' : 's'} scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}'
                                       : '${filteredTasks.length} of ${_tasks.length} task${_tasks.length == 1 ? '' : 's'}',
-                                  style: GoogleFonts.poppins(
+                                  style: AppFonts.poppins(
                                     fontSize: 14,
                                     color: Colors.grey.shade700,
                                     fontWeight: FontWeight.w500,
@@ -495,7 +495,7 @@ class _ToDoPageState extends State<ToDoPage> {
                                     _searchQuery.isNotEmpty
                                         ? 'No tasks found for "$_searchQuery"'
                                         : 'No tasks scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}',
-                                    style: GoogleFonts.poppins(
+                                    style: AppFonts.poppins(
                                       fontSize: 18,
                                       color: Colors.grey.shade600,
                                     ),
@@ -504,7 +504,7 @@ class _ToDoPageState extends State<ToDoPage> {
                                     const SizedBox(height: 8),
                                     Text(
                                       'Tasks from Trading and Agent Working modules will appear here',
-                                      style: GoogleFonts.poppins(
+                                      style: AppFonts.poppins(
                                         fontSize: 14,
                                         color: Colors.grey.shade500,
                                       ),
@@ -540,7 +540,7 @@ class _ToDoPageState extends State<ToDoPage> {
                                       // Title - Most prominent
                                       Text(
                                         task['title'] as String? ?? 'N/A',
-                                        style: GoogleFonts.poppins(
+                                        style: AppFonts.poppins(
                                           fontSize: 18,
                                           fontWeight: FontWeight.w700,
                                           color: Colors.grey.shade900,
@@ -557,7 +557,7 @@ class _ToDoPageState extends State<ToDoPage> {
                                         },
                                         child: Text(
                                           task['subtitle'] as String? ?? '',
-                                          style: GoogleFonts.poppins(
+                                          style: AppFonts.poppins(
                                             fontSize: 12,
                                             color: Colors.grey.shade600,
                                             fontWeight: FontWeight.w400,
@@ -588,7 +588,7 @@ class _ToDoPageState extends State<ToDoPage> {
                                                 const SizedBox(width: 6),
                                                 Text(
                                                   task['source'] as String? ?? '',
-                                                  style: GoogleFonts.poppins(
+                                                  style: AppFonts.poppins(
                                                     fontSize: 11,
                                                     color: Colors.blue.shade700,
                                                     fontWeight: FontWeight.w600,
@@ -606,7 +606,7 @@ class _ToDoPageState extends State<ToDoPage> {
                                             ),
                                             child: Text(
                                               status,
-                                              style: GoogleFonts.poppins(
+                                              style: AppFonts.poppins(
                                                 fontSize: 11,
                                                 color: Colors.white,
                                                 fontWeight: FontWeight.w700,

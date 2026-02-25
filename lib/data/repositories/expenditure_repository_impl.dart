@@ -1,0 +1,329 @@
+import 'dart:async';
+import 'package:drift/drift.dart' as d;
+import 'package:uuid/uuid.dart';
+import '../../domain/models/expenditure_item.dart';
+import '../../domain/repositories/expenditure_repository.dart';
+import 'package:shared/shared.dart';
+
+class ExpenditureRepositoryImpl implements ExpenditureRepository {
+  final AppDatabase db;
+  
+  ExpenditureRepositoryImpl(this.db);
+
+  @override
+  Future<List<ExpenditureItem>> getExpenditures(String companyId) async {
+    try {
+      final rows = await db.customSelect(
+        'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) ORDER BY date DESC',
+        variables: [d.Variable.withString(companyId)],
+      ).get();
+      
+      return rows.map((r) => ExpenditureItem.fromMap(r.data)).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch Expenditures: $e');
+    }
+  }
+
+  @override
+  Future<List<ExpenditureItem>> getOfficeExpenses(String companyId) async {
+    try {
+      final rows = await db.customSelect(
+        'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type IS NULL) ORDER BY date DESC',
+        variables: [d.Variable.withString(companyId), d.Variable.withString('office')],
+      ).get();
+      
+      return rows.map((r) => ExpenditureItem.fromMap(r.data)).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch office expenses: $e');
+    }
+  }
+
+  @override
+  Future<List<ExpenditureItem>> getProjectExpenses(String companyId) async {
+    try {
+      final rows = await db.customSelect(
+        'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND category_type = ? ORDER BY date DESC',
+        variables: [d.Variable.withString(companyId), d.Variable.withString('project')],
+      ).get();
+      
+      return rows.map((r) => ExpenditureItem.fromMap(r.data)).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch project expenses: $e');
+    }
+  }
+
+  @override
+  Future<ExpenditureItem?> getExpenditureById(String id) async {
+    try {
+      final rows = await db.customSelect(
+        'SELECT * FROM Expenditures WHERE id = ? AND (is_active IS NULL OR is_active = 1)',
+        variables: [d.Variable.withString(id)],
+      ).get();
+      
+      if (rows.isEmpty) return null;
+      return ExpenditureItem.fromMap(rows.first.data);
+    } catch (e) {
+      throw Exception('Failed to fetch expenditure: $e');
+    }
+  }
+
+  @override
+  Future<void> addExpenditure(ExpenditureItem expenditure) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      final expenditureWithTimestamp = expenditure.copyWith(
+        id: expenditure.id.isEmpty ? const Uuid().v4() : expenditure.id,
+        createdAt: now,
+        updatedAt: now,
+      );
+      
+      await db.customStatement(
+        '''INSERT INTO Expenditures 
+           (id, date, description, amount, category_type, company_id, created_by, created_at, updated_at, is_active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        [
+          expenditureWithTimestamp.id,
+          expenditureWithTimestamp.date,
+          expenditureWithTimestamp.description,
+          expenditureWithTimestamp.amount,
+          expenditureWithTimestamp.categoryType ?? 'office',
+          expenditureWithTimestamp.companyId,
+          expenditureWithTimestamp.createdBy,
+          expenditureWithTimestamp.createdAt,
+          expenditureWithTimestamp.updatedAt,
+          expenditureWithTimestamp.isActive ? 1 : 0,
+        ],
+      );
+    } catch (e) {
+      throw Exception('Failed to add expenditure: $e');
+    }
+  }
+
+  @override
+  Future<void> updateExpenditure(ExpenditureItem expenditure) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      final updatedExpenditure = expenditure.copyWith(updatedAt: now);
+      
+      await db.customStatement(
+        '''UPDATE Expenditures SET 
+           date = ?, description = ?, amount = ?, category_type = ?, 
+           updated_at = ?, is_active = ? 
+           WHERE id = ?''',
+        [
+          updatedExpenditure.date,
+          updatedExpenditure.description,
+          updatedExpenditure.amount,
+          updatedExpenditure.categoryType,
+          updatedExpenditure.updatedAt,
+          updatedExpenditure.isActive ? 1 : 0,
+          updatedExpenditure.id,
+        ],
+      );
+    } catch (e) {
+      throw Exception('Failed to update expenditure: $e');
+    }
+  }
+
+  @override
+  Future<void> deleteExpenditure(String id) async {
+    try {
+      await db.customStatement('UPDATE Expenditures SET is_active = 0 WHERE id = ?', [id]);
+    } catch (e) {
+      throw Exception('Failed to delete expenditure: $e');
+    }
+  }
+
+  @override
+  Stream<List<ExpenditureItem>> watchExpenditures(String companyId) {
+    return db
+        .customSelect(
+          'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) ORDER BY date DESC',
+          variables: [d.Variable.withString(companyId)],
+        )
+        .watch()
+        .map((rows) => rows.map((r) => ExpenditureItem.fromMap(r.data)).toList());
+  }
+
+  @override
+  Stream<List<ExpenditureItem>> watchOfficeExpenses(String companyId) {
+    return db
+        .customSelect(
+          'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type IS NULL) ORDER BY date DESC',
+          variables: [d.Variable.withString(companyId), d.Variable.withString('office')],
+        )
+        .watch()
+        .map((rows) => rows.map((r) => ExpenditureItem.fromMap(r.data)).toList());
+  }
+
+  @override
+  Stream<List<ExpenditureItem>> watchProjectExpenses(String companyId) {
+    return db
+        .customSelect(
+          'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND category_type = ? ORDER BY date DESC',
+          variables: [d.Variable.withString(companyId), d.Variable.withString('project')],
+        )
+        .watch()
+        .map((rows) => rows.map((r) => ExpenditureItem.fromMap(r.data)).toList());
+  }
+
+  @override
+  Future<List<ExpenditureItem>> searchExpenditures(String companyId, String query) async {
+    try {
+      final rows = await db.customSelect(
+        '''SELECT * FROM Expenditures 
+           WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) 
+           AND (LOWER(description) LIKE LOWER(?) OR LOWER(amount) LIKE LOWER(?) OR LOWER(date) LIKE LOWER(?))
+           ORDER BY date DESC''',
+        variables: [
+          d.Variable.withString(companyId),
+          d.Variable.withString('%$query%'),
+          d.Variable.withString('%$query%'),
+          d.Variable.withString('%$query%'),
+        ],
+      ).get();
+      
+      return rows.map((r) => ExpenditureItem.fromMap(r.data)).toList();
+    } catch (e) {
+      throw Exception('Failed to search Expenditures: $e');
+    }
+  }
+
+  @override
+  Stream<List<ExpenditureItem>> watchSearchExpenditures(String companyId, String query) {
+    return db
+        .customSelect(
+          '''SELECT * FROM Expenditures 
+             WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) 
+             AND (LOWER(description) LIKE LOWER(?) OR LOWER(amount) LIKE LOWER(?) OR LOWER(date) LIKE LOWER(?))
+             ORDER BY date DESC''',
+          variables: [
+            d.Variable.withString(companyId),
+            d.Variable.withString('%$query%'),
+            d.Variable.withString('%$query%'),
+            d.Variable.withString('%$query%'),
+          ],
+        )
+        .watch()
+        .map((rows) => rows.map((r) => ExpenditureItem.fromMap(r.data)).toList());
+  }
+
+  @override
+  Future<List<ExpenditureSubItem>> getExpenditureSubItems(String parentId) async {
+    // Return empty list since sub-items functionality is not available
+    return [];
+  }
+
+  @override
+  Future<void> addExpenditureSubItem(ExpenditureSubItem subItem) async {
+    // No-op since sub-items functionality is not available
+    throw Exception('Sub-items functionality is not available');
+  }
+
+  @override
+  Future<void> deleteExpenditureSubItem(String id) async {
+    // No-op since sub-items functionality is not available
+    throw Exception('Sub-items functionality is not available');
+  }
+
+  @override
+  Stream<List<ExpenditureSubItem>> watchExpenditureSubItems(String parentId) {
+    // Return empty stream since sub-items functionality is not available
+    return Stream.value([]);
+  }
+
+  @override
+  Future<void> ensureExpenditureTableColumns() async {
+    try {
+      final cols = await db.customSelect('PRAGMA table_info(Expenditures)').get();
+      final columnNames = cols.map((r) => r.data['name']?.toString()).toList();
+      
+      if (!columnNames.contains('category_type')) {
+        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN category_type TEXT');
+      }
+      if (!columnNames.contains('kind')) {
+        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN kind TEXT');
+      }
+      if (!columnNames.contains('project_id')) {
+        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN project_id TEXT');
+      }
+      if (!columnNames.contains('category_id')) {
+        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN category_id TEXT');
+      }
+      if (!columnNames.contains('office_month')) {
+        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN office_month TEXT');
+      }
+      if (!columnNames.contains('is_active')) {
+        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN is_active INTEGER DEFAULT 1');
+      }
+      if (!columnNames.contains('is_synced')) {
+        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN is_synced INTEGER DEFAULT 1');
+      }
+      if (!columnNames.contains('created_at')) {
+        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN created_at TEXT');
+      }
+      if (!columnNames.contains('updated_at')) {
+        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN updated_at TEXT');
+      }
+    } catch (e) {
+      throw Exception('Failed to ensure expenditure table columns: $e');
+    }
+  }
+
+  @override
+  Future<void> ensureExpenditureItemsTable() async {
+    // No-op since expenditure_items table doesn't exist in schema
+    // Sub-items functionality is disabled
+  }
+
+  @override
+  Future<double> getTotalOfficeExpenses(String companyId) async {
+    try {
+      final rows = await db.customSelect(
+        '''SELECT COALESCE(SUM(amount), 0) as total FROM Expenditures 
+           WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) 
+           AND (category_type = ? OR category_type IS NULL)''',
+        variables: [d.Variable.withString(companyId), d.Variable.withString('office')],
+      ).get();
+      
+      return double.tryParse(rows.first.data['total']?.toString() ?? '0') ?? 0;
+    } catch (e) {
+      throw Exception('Failed to calculate total office expenses: $e');
+    }
+  }
+
+  @override
+  Future<double> getTotalProjectExpenses(String companyId) async {
+    try {
+      final rows = await db.customSelect(
+        '''SELECT COALESCE(SUM(amount), 0) as total FROM Expenditures 
+           WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND category_type = ?''',
+        variables: [d.Variable.withString(companyId), d.Variable.withString('project')],
+      ).get();
+      
+      return double.tryParse(rows.first.data['total']?.toString() ?? '0') ?? 0;
+    } catch (e) {
+      throw Exception('Failed to calculate total project expenses: $e');
+    }
+  }
+
+  @override
+  Future<double> getTotalExpenditureWithSubItems(String expenditureId) async {
+    try {
+      // Get main expenditure amount
+      final mainRows = await db.customSelect(
+        'SELECT amount FROM Expenditures WHERE id = ? AND (is_active IS NULL OR is_active = 1)',
+        variables: [d.Variable.withString(expenditureId)],
+      ).get();
+      
+      final mainAmount = mainRows.isEmpty 
+          ? 0.0 
+          : double.tryParse(mainRows.first.data['amount']?.toString() ?? '0') ?? 0;
+      
+      // Sub-items functionality is disabled, return only main amount
+      return mainAmount;
+    } catch (e) {
+      throw Exception('Failed to calculate total expenditure: $e');
+    }
+  }
+}

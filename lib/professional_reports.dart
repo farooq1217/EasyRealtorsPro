@@ -20,7 +20,7 @@ import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
 
 import 'core/services/auth_service.dart';
-import 'core/models/expenditure_model.dart';
+import 'domain/models/expenditure_item.dart';
 import 'image_cache_service.dart';
 
 class ReportBranding {
@@ -240,14 +240,14 @@ Future<Uint8List> _buildExpenseStatementPdfInIsolate(Map<String, dynamic> args) 
 
   final groupByCategory = args['groupByCategory'] == true;
   final rowsRaw = (args['rows'] as List).cast<Map>();
-  final rows = rowsRaw.map((m) => ExpenditureModel.fromMap(Map<String, dynamic>.from(m))).toList();
+  final rows = rowsRaw.map((m) => ExpenditureItem.fromMap(Map<String, dynamic>.from(m))).toList();
 
   final logoImage = logoBytes == null ? null : pw.MemoryImage(logoBytes);
   final currency = NumberFormat('#,##0.00');
   final total = rows.fold<double>(0, (s, e) => s + e.amount);
 
-  final grouped = <String, List<ExpenditureModel>>{};
-  String categoryOf(ExpenditureModel e) {
+  final grouped = <String, List<ExpenditureItem>>{};
+  String categoryOf(ExpenditureItem e) {
     final c = (e.category ?? '').trim();
     if (c.isNotEmpty) return c;
     final d = e.description.trim();
@@ -987,7 +987,7 @@ Future<Uint8List> buildExpenseStatementPdf({
   required AppDatabase db,
   required Map<String, dynamic>? currentUser,
   required String title,
-  required List<ExpenditureModel> rows,
+  required List<ExpenditureItem> rows,
   required bool groupByCategory,
   required String action,
   String? serialNumber,

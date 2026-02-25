@@ -1,6 +1,7 @@
 // presentation/inventory/widgets/inventory_list.dart
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/font_utils.dart';
+
 import 'package:provider/provider.dart';
 import '../../../domain/models/inventory_item.dart';
 import '../inventory_view_model.dart';
@@ -111,7 +112,7 @@ class _InventoryListState extends State<InventoryList> {
                               const SizedBox(height: 16),
                               Text(
                                 'No items found',
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   fontSize: 16,
                                   color: Colors.grey.shade600,
                                 ),
@@ -144,7 +145,7 @@ class _InventoryListState extends State<InventoryList> {
       },
       selectedColor: const Color(0xFF4A90E2).withOpacity(0.2),
       checkmarkColor: const Color(0xFF4A90E2),
-      labelStyle: GoogleFonts.poppins(
+      labelStyle: AppFonts.poppins(
         fontSize: 13,
         fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
         color: isSelected ? const Color(0xFF4A90E2) : Colors.grey.shade700,
@@ -428,7 +429,7 @@ class _InventoryListState extends State<InventoryList> {
               children: [
                 Text(
                   entry.label,
-                  style: GoogleFonts.poppins(
+                  style: AppFonts.poppins(
                     fontSize: 12,
                     color: Colors.grey.shade600,
                     fontWeight: FontWeight.w500,
@@ -437,7 +438,7 @@ class _InventoryListState extends State<InventoryList> {
                 const SizedBox(height: 2),
                 Text(
                   entry.value,
-                  style: entry.style ?? GoogleFonts.poppins(
+                  style: entry.style ?? AppFonts.poppins(
                     fontSize: 14,
                     color: Colors.black87,
                   ),

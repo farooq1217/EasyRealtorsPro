@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../../core/font_utils.dart';
 import 'package:drift/drift.dart' as d;
 import 'package:shared/shared.dart';
 import 'dart:typed_data';
@@ -217,7 +217,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
                 const SizedBox(height: 16),
                 Text(
                   'Generating PDF...',
-                  style: GoogleFonts.poppins(fontSize: 14),
+                  style: AppFonts.poppins(fontSize: 14),
                 ),
               ],
             ),
@@ -461,7 +461,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Filing System', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text('Filing System', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -609,7 +609,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
                               const SizedBox(height: 16),
                               Text(
                                 'No items found',
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   fontSize: 16,
                                   color: Colors.grey.shade600,
                                 ),
@@ -929,7 +929,7 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
       },
       selectedColor: const Color(0xFF4A90E2).withOpacity(0.2),
       checkmarkColor: const Color(0xFF4A90E2),
-      labelStyle: GoogleFonts.poppins(
+      labelStyle: AppFonts.poppins(
         fontSize: 13,
         fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
         color: isSelected ? const Color(0xFF4A90E2) : Colors.grey.shade700,
@@ -1110,7 +1110,7 @@ class _InventoryFormBodyState extends State<_InventoryFormBody> {
       child: Row(children: [
         Icon(icon, size: 20, color: const Color(0xFFFF6B35)),
         const SizedBox(width: 8),
-        Text(title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade800)),
+        Text(title, style: AppFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade800)),
       ]),
     );
   }
@@ -1121,7 +1121,7 @@ class _InventoryFormBodyState extends State<_InventoryFormBody> {
       key: _formKey,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(widget.existing == null ? 'Add ${widget.selectedType} Form' : 'Edit ${widget.selectedType} Form', 
-             style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold)),
+             style: AppFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold)),
         
         _buildSectionHeader('Location Details', Icons.map_outlined),
         _buildDropdown('Society', widget.societies, selSoc, (v) {
@@ -1383,7 +1383,7 @@ class InventoryDetailPage extends StatelessWidget {
     
     return Scaffold(
       appBar: AppBar(
-        title: Text('${type} Details', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text('${type} Details', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -1436,7 +1436,7 @@ class InventoryDetailPage extends StatelessWidget {
                     children: [
                       Text(
                         '${type} Details',
-                        style: GoogleFonts.poppins(
+                        style: AppFonts.poppins(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                           color: const Color(0xFFFF6B35),
@@ -1461,7 +1461,7 @@ class InventoryDetailPage extends StatelessWidget {
                                     flex: 1,
                                     child: Text(
                                       'Field',
-                                      style: GoogleFonts.poppins(
+                                      style: AppFonts.poppins(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 14,
                                       ),
@@ -1471,7 +1471,7 @@ class InventoryDetailPage extends StatelessWidget {
                                     flex: 2,
                                     child: Text(
                                       'Value',
-                                      style: GoogleFonts.poppins(
+                                      style: AppFonts.poppins(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 14,
                                       ),
@@ -1501,7 +1501,7 @@ class InventoryDetailPage extends StatelessWidget {
                                           flex: 1,
                                           child: Text(
                                             field.key,
-                                            style: GoogleFonts.poppins(
+                                            style: AppFonts.poppins(
                                               fontWeight: FontWeight.w600,
                                               fontSize: 13,
                                               color: Colors.grey.shade700,
@@ -1538,7 +1538,7 @@ class InventoryDetailPage extends StatelessWidget {
                       children: [
                         Text(
                           'Images',
-                          style: GoogleFonts.poppins(
+                          style: AppFonts.poppins(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                             color: const Color(0xFFFF6B35),
@@ -1717,7 +1717,7 @@ class InventoryDetailPage extends StatelessWidget {
       onTap: isPhone && value.trim().isNotEmpty ? () => showPhoneActionSheet(context, value) : null,
       child: Text(
         value,
-        style: GoogleFonts.poppins(
+        style: AppFonts.poppins(
           color: isPhone ? Colors.blue.shade700 : null,
           decoration: isPhone ? TextDecoration.underline : TextDecoration.none,
         ),

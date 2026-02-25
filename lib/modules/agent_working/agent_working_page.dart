@@ -1,15 +1,15 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
+import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -421,7 +421,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
             const SizedBox(width: 8),
             Text(
               'Scheduled Work Due Today',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+              style: AppFonts.poppins(fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -433,7 +433,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
             children: [
               Text(
                 'You have ${entries.length} item(s) scheduled for today:',
-                style: GoogleFonts.poppins(fontSize: 14),
+                style: AppFonts.poppins(fontSize: 14),
               ),
               const SizedBox(height: 12),
               ...entries.map((entry) => Padding(
@@ -445,14 +445,14 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
                     leading: Icon(Icons.work, color: Colors.purple.shade600),
                     title: Text(
                       entry['name']?.toString() ?? 'N/A',
-                      style: GoogleFonts.poppins(
+                      style: AppFonts.poppins(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     subtitle: Text(
                       'Date: ${entry['transfer_date'] ?? 'N/A'}',
-                      style: GoogleFonts.poppins(fontSize: 11),
+                      style: AppFonts.poppins(fontSize: 11),
                     ),
                   ),
                 ),
@@ -1244,7 +1244,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
         padding: const EdgeInsets.only(left: 16, right: 8),
         child: Text(
           'Rs',
-          style: GoogleFonts.poppins(
+          style: AppFonts.poppins(
             color: Colors.grey.shade700,
             fontWeight: FontWeight.w600,
             fontSize: 16,
@@ -1277,7 +1277,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
           ? const Color(0xFF23272E)
           : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      labelStyle: GoogleFonts.poppins(color: Colors.grey.shade700),
+      labelStyle: AppFonts.poppins(color: Colors.grey.shade700),
     );
   }
 
@@ -1289,7 +1289,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
         initiallyExpanded: initiallyExpanded,
         title: Text(
           title,
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          style: AppFonts.poppins(fontWeight: FontWeight.w600),
         ),
         children: [
           Padding(
@@ -1336,7 +1336,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
                       const SizedBox(width: 8),
                       Text(
                         title,
-                        style: GoogleFonts.poppins(
+                        style: AppFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey.shade800,
@@ -1353,7 +1353,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
                   children: [
                     Text(
                       'Transfer Form',
-                      style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
+                      style: AppFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
                     ),
                     
                     // Section 1: Property Details
@@ -1662,7 +1662,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
                 children: [
                   Text(
                     'Client Requirement Form',
-                    style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
+                    style: AppFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 24),
                   Wrap(
@@ -1846,7 +1846,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
     required bool isLoading,
     required String? error,
   }) {
-    final noteFormat = DateFormat('dd MMM yyyy Ã¢â‚¬Â¢ hh:mm a');
+    final noteFormat = DateFormat('dd MMM yyyy â€¢ hh:mm a');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1995,7 +1995,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
               // Build title similar to Inventory module
               final category = entry['category']?.toString() ?? '';
               final title = category.isNotEmpty 
-                  ? '${entry['name'] ?? 'N/A'} Ã¢â‚¬Â¢ $category'
+                  ? '${entry['name'] ?? 'N/A'} â€¢ $category'
                   : entry['name'] ?? 'N/A';
               
               return Card(
@@ -2341,7 +2341,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
       appBar: AppBar(
         title: Text(
           'Agent Working',
-          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+          style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         centerTitle: true,
         elevation: 0,
@@ -2605,7 +2605,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
     // Build title similar to Inventory module
     final category = entry['category']?.toString() ?? '';
     final title = category.isNotEmpty 
-        ? '${entry['name'] ?? 'N/A'} Ã¢â‚¬Â¢ $category'
+        ? '${entry['name'] ?? 'N/A'} â€¢ $category'
         : entry['name'] ?? 'N/A';
     
     // Get background color based on size

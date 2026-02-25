@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, compute;
 import 'package:flutter/material.dart';
+import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart';
 // REMOVED: Firestore dependencies for SQLite-only operation
 // import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,7 +12,6 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -52,7 +52,9 @@ import '../../core/shared_utils.dart' show TopRightSearch, buildResponsiveInfoRo
 import '../../modules/inventory/inventory_page.dart' show FilesPage;
 import '../../modules/todo/todo_page.dart' show ToDoPage;
 import '../../modules/trading/trading_page.dart' show TradingPage;
-import '../../modules/expenditure/expenditure_page.dart' show ExpenditurePage;
+import 'package:provider/provider.dart';
+import '../../presentation/expenditure/expenditure_page.dart' show ExpenditurePage;
+import '../../presentation/expenditure/expenditure_view_model.dart';
 import '../../modules/users/users_page.dart' as users show UsersPage;
 import '../../modules/companies/companies_page.dart' as companies show CompaniesPage;
 import '../../modules/settings/settings_page.dart' show SettingsPage;
@@ -540,7 +542,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                     children: [
                       Text(
                         existing == null ? 'Add Rental Item' : 'Edit Rental Item',
-                        style: GoogleFonts.poppins(
+                        style: AppFonts.poppins(
                           fontSize: isMobile ? 20 : 24,
                           fontWeight: FontWeight.w700,
                           color: Theme.of(context).brightness == Brightness.dark
@@ -676,7 +678,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                             icon: const Icon(Icons.close, size: 18),
                             label: Text(
                               'Cancel',
-                              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                              style: AppFonts.poppins(fontWeight: FontWeight.w600),
                             ),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -924,13 +926,13 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
       labelWidget = RichText(
         text: TextSpan(
           text: label,
-          style: GoogleFonts.poppins(
+          style: AppFonts.poppins(
             color: Colors.grey.shade700,
           ),
           children: [
             TextSpan(
               text: ' *',
-              style: GoogleFonts.poppins(
+              style: AppFonts.poppins(
                 color: Colors.red,
                 fontWeight: FontWeight.bold,
               ),
@@ -947,7 +949,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
         padding: const EdgeInsets.only(left: 16, right: 8),
         child: Text(
           'Rs',
-          style: GoogleFonts.poppins(
+          style: AppFonts.poppins(
             color: Colors.grey.shade700,
             fontWeight: FontWeight.w600,
             fontSize: 16,
@@ -980,7 +982,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
           ? const Color(0xFF23272E)
           : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      labelStyle: GoogleFonts.poppins(
+      labelStyle: AppFonts.poppins(
         color: Colors.grey.shade700,
       ),
     );
@@ -1043,7 +1045,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
     final showActionMenu = canEditRental || canDeleteRental;
     return Scaffold(
       appBar: AppBar(
-        title: Text('Rental Items', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text('Rental Items', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -1720,7 +1722,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Expanded(
                         child: Text(
                           'Your session is about to expire. Click anywhere to stay logged in.',
-                          style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+                          style: AppFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -2030,7 +2032,7 @@ class _HomeScreenState extends State<HomeScreen> {
       "UPDATE working_comments SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
       "UPDATE trading_file_entries SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
       "UPDATE trading_entries SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
-      "UPDATE expenditures SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
+      "UPDATE Expenditures SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
       "UPDATE expenditure_projects SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
       "UPDATE reports SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
       "UPDATE deletions SET company_id = ? WHERE company_id IS NULL OR company_id = ''",
@@ -2147,8 +2149,8 @@ class _HomeScreenState extends State<HomeScreen> {
     ).getSingle();
     final monthlyExpenditureRow = await _db!.customSelect(
       isSuper
-          ? "SELECT COALESCE(SUM(amount), 0) AS total FROM expenditures WHERE kind = 'office' AND office_month = ?"
-          : "SELECT COALESCE(SUM(amount), 0) AS total FROM expenditures WHERE company_id = ? AND kind = 'office' AND office_month = ?",
+          ? "SELECT COALESCE(SUM(amount), 0) AS total FROM Expenditures WHERE kind = 'office' AND office_month = ?"
+          : "SELECT COALESCE(SUM(amount), 0) AS total FROM Expenditures WHERE company_id = ? AND kind = 'office' AND office_month = ?",
       variables: isSuper
           ? [d.Variable.withString(monthKey)]
           : [d.Variable.withString(companyId ?? ''), d.Variable.withString(monthKey)],
@@ -2457,10 +2459,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _ensureExpenditureCategoryColumn() async {
     if (_db == null) return;
     try {
-      final cols = await _db!.customSelect('PRAGMA table_info(expenditures)').get();
+      final cols = await _db!.customSelect('PRAGMA table_info(Expenditures)').get();
       final hasCategory = cols.any((r) => (r.data['name']?.toString()) == 'category');
       if (!hasCategory) {
-        await _db!.customStatement('ALTER TABLE expenditures ADD COLUMN category TEXT');
+        await _db!.customStatement('ALTER TABLE Expenditures ADD COLUMN category TEXT');
       }
     } catch (_) {}
   }
@@ -2825,7 +2827,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 18),
+                style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 18),
               ),
             ),
           ),
@@ -2990,7 +2992,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 12),
               Text(
                 title,
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: Colors.grey.shade800,
@@ -3039,7 +3041,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 12),
               Text(
                 'Next Actions',
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: Colors.grey.shade800,
@@ -3056,7 +3058,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: Text(
                     '${_nextTodoTask!['title']} on ${_nextTodoTask!['date']}',
-                    style: GoogleFonts.poppins(
+                    style: AppFonts.poppins(
                       fontSize: 14,
                       color: Colors.grey.shade700,
                     ),
@@ -3072,7 +3074,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 8),
               Text(
                 'Pending Trades: $_pendingTradesCount',
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontSize: 14,
                   color: Colors.grey.shade700,
                 ),
@@ -3083,7 +3085,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 8),
             Text(
               'No upcoming actions',
-              style: GoogleFonts.poppins(
+              style: AppFonts.poppins(
                 fontSize: 12,
                 color: Colors.grey.shade500,
                 fontStyle: FontStyle.italic,
@@ -3214,7 +3216,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         final joinedPart = (joined == null) ? '' : ' | Joined: $joined';
                         return 'Welcome, $namePart$joinedPart';
                       }(),
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontWeight: FontWeight.w600,
                         fontSize: 22,
                         color: Colors.grey.shade800,
@@ -3257,7 +3259,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               Text(
                                 'Filter Active',
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                   color: Colors.orange.shade700,
@@ -3266,7 +3268,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               const SizedBox(height: 2),
                               Text(
                                 _dashboardDetailTitle!,
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.grey.shade800,
@@ -3311,7 +3313,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Text(
                           'Filtered Results (${_dashboardDetailData.length} items)',
-                          style: GoogleFonts.poppins(
+                          style: AppFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: Colors.grey.shade800,
@@ -3324,7 +3326,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: Center(
                               child: Text(
                                 'No data found for this filter',
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   fontSize: 14,
                                   color: Colors.grey.shade600,
                                 ),
@@ -3361,7 +3363,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         children: [
                                           Text(
                                             'Owner Name: $ownerName',
-                                            style: GoogleFonts.poppins(
+                                            style: AppFonts.poppins(
                                               fontWeight: FontWeight.w600,
                                               fontSize: 14,
                                               color: Colors.grey.shade800,
@@ -3422,7 +3424,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       children: [
                                         Text(
                                           title,
-                                          style: GoogleFonts.poppins(
+                                          style: AppFonts.poppins(
                                             fontWeight: FontWeight.w600,
                                             fontSize: 14,
                                             color: Colors.grey.shade800,
@@ -3455,7 +3457,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               '... and ${_dashboardDetailData.length - 10} more items',
-                              style: GoogleFonts.poppins(
+                              style: AppFonts.poppins(
                                 fontSize: 12,
                                 fontStyle: FontStyle.italic,
                                 color: Colors.grey.shade600,
@@ -3564,7 +3566,10 @@ class _HomeScreenState extends State<HomeScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) => _denyAndGoDashboard('Permission Denied'));
           content = const SizedBox.shrink();
         } else {
-          content = _db == null ? const SizedBox.shrink() : ExpenditurePage(db: _db!);
+          content = _db == null ? const SizedBox.shrink() : ChangeNotifierProvider(
+            create: (context) => ExpenditureViewModel(_db!),
+            child: ExpenditurePage(db: _db!),
+          );
         }
         break;
       default:
@@ -4204,7 +4209,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             const SizedBox(width: 8),
             Text(
               'Scheduled Work Due Today',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+              style: AppFonts.poppins(fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -4216,7 +4221,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             children: [
               Text(
                 'You have ${entries.length} item(s) scheduled for today:',
-                style: GoogleFonts.poppins(fontSize: 14),
+                style: AppFonts.poppins(fontSize: 14),
               ),
               const SizedBox(height: 12),
               ...entries.map((entry) => Padding(
@@ -4228,14 +4233,14 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                     leading: Icon(Icons.work, color: Colors.purple.shade600),
                     title: Text(
                       entry['name']?.toString() ?? 'N/A',
-                      style: GoogleFonts.poppins(
+                      style: AppFonts.poppins(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     subtitle: Text(
                       'Date: ${entry['transfer_date'] ?? 'N/A'}',
-                      style: GoogleFonts.poppins(fontSize: 11),
+                      style: AppFonts.poppins(fontSize: 11),
                     ),
                   ),
                 ),
@@ -5102,7 +5107,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         padding: const EdgeInsets.only(left: 16, right: 8),
         child: Text(
           'Rs',
-          style: GoogleFonts.poppins(
+          style: AppFonts.poppins(
             color: Colors.grey.shade700,
             fontWeight: FontWeight.w600,
             fontSize: 16,
@@ -5135,7 +5140,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
           ? const Color(0xFF23272E)
           : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      labelStyle: GoogleFonts.poppins(color: Colors.grey.shade700),
+      labelStyle: AppFonts.poppins(color: Colors.grey.shade700),
     );
   }
 
@@ -5147,7 +5152,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         initiallyExpanded: initiallyExpanded,
         title: Text(
           title,
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          style: AppFonts.poppins(fontWeight: FontWeight.w600),
         ),
         children: [
           Padding(
@@ -5194,7 +5199,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                       const SizedBox(width: 8),
                       Text(
                         title,
-                        style: GoogleFonts.poppins(
+                        style: AppFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey.shade800,
@@ -5211,7 +5216,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                   children: [
                     Text(
                       'Transfer Form',
-                      style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
+                      style: AppFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
                     ),
                     
                     // Section 1: Property Details
@@ -5520,7 +5525,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                 children: [
                   Text(
                     'Client Requirement Form',
-                    style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
+                    style: AppFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 24),
                   Wrap(
@@ -6196,7 +6201,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       appBar: AppBar(
         title: Text(
           'Agent Working',
-          style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+          style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         centerTitle: true,
         elevation: 0,
@@ -6232,11 +6237,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
           indicatorWeight: 3,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white.withOpacity(0.7),
-          labelStyle: GoogleFonts.poppins(
+          labelStyle: AppFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
-          unselectedLabelStyle: GoogleFonts.poppins(
+          unselectedLabelStyle: AppFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.normal,
           ),
@@ -6314,7 +6319,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
               const SizedBox(height: 16),
               Text(
                 'No ${tabType.toLowerCase()} entries found',
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontSize: 16,
                   color: Colors.grey.shade600,
                 ),
@@ -6888,7 +6893,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
               children: [
                 const CircularProgressIndicator(),
                 const SizedBox(height: 16),
-                Text('Generating PDF...', style: GoogleFonts.poppins(fontSize: 14)),
+                Text('Generating PDF...', style: AppFonts.poppins(fontSize: 14)),
               ],
             ),
           ),
@@ -7194,7 +7199,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
                 const SizedBox(width: 8),
                 Text(
                   title,
-                  style: GoogleFonts.poppins(
+                  style: AppFonts.poppins(
                     fontSize: isMobile ? 14 : 16,
                     fontWeight: FontWeight.w600,
                     color: const Color(0xFFFF6B35),
@@ -7240,7 +7245,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
           ),
           title: Text(
             isTransfer ? 'Transfer Details' : 'Client Requirements Details',
-            style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+            style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
           ),
           centerTitle: true,
           elevation: 0,
@@ -7301,7 +7306,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
                             Center(
                               child: Text(
                                 isTransfer ? 'Transfer Details' : 'Client Requirements Details',
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   fontSize: isMobile ? 20 : 22,
                                   fontWeight: FontWeight.bold,
                                   color: const Color(0xFFFF6B35),
@@ -7473,7 +7478,7 @@ class RentalDetailPage extends StatelessWidget {
         children: [
           SizedBox(
             width: 150,
-            child: Text(label, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+            child: Text(label, style: AppFonts.poppins(fontWeight: FontWeight.w600)),
           ),
           Expanded(
             child: GestureDetector(
@@ -7482,7 +7487,7 @@ class RentalDetailPage extends StatelessWidget {
                   : null,
               child: Text(
                 value,
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   color: label == 'Contact' ? Colors.blue.shade700 : null,
                   decoration: label == 'Contact' ? TextDecoration.underline : TextDecoration.none,
                 ),
@@ -7548,7 +7553,7 @@ class RentalDetailPage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(entry['name']?.toString() ?? 'Rental Item',
-                      style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700)),
+                      style: AppFonts.poppins(fontSize: 20, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 12),
                   Divider(color: Colors.grey.shade300),
                   const SizedBox(height: 12),
@@ -8225,7 +8230,7 @@ class _UsersPageState extends State<UsersPage> {
           width: 120,
           child: Text(
             label,
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: Colors.grey.shade700,
@@ -8235,7 +8240,7 @@ class _UsersPageState extends State<UsersPage> {
         Expanded(
           child: SelectableText(
             value,
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: Colors.grey.shade900,
@@ -8684,7 +8689,7 @@ class _UsersPageState extends State<UsersPage> {
             children: [
               Text(
                 existing == null ? 'Add New User' : 'Edit User',
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
                   color: Colors.grey.shade900,
@@ -8871,7 +8876,7 @@ class _UsersPageState extends State<UsersPage> {
                   children: [
                     Text(
                       'Module Permissions',
-                      style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700),
+                      style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 10),
                     LayoutBuilder(
@@ -8909,7 +8914,7 @@ class _UsersPageState extends State<UsersPage> {
                                     Expanded(
                                       child: Text(
                                         moduleLabel,
-                                        style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                                        style: AppFonts.poppins(fontWeight: FontWeight.w600),
                                       ),
                                     ),
                                     const SizedBox(width: 12),
@@ -8924,7 +8929,7 @@ class _UsersPageState extends State<UsersPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(moduleLabel, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                                  Text(moduleLabel, style: AppFonts.poppins(fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 8),
                                   dropdown,
                                 ],
@@ -8946,7 +8951,7 @@ class _UsersPageState extends State<UsersPage> {
                         : (_maxUserLimit != null && _currentActiveUsers != null)
                             ? 'Active users: $_currentActiveUsers / $_maxUserLimit'
                             : 'User limit status: unknown',
-                    style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade700),
+                    style: AppFonts.poppins(fontSize: 12, color: Colors.grey.shade700),
                   ),
                 ),
               Row(
@@ -8960,7 +8965,7 @@ class _UsersPageState extends State<UsersPage> {
                     icon: const Icon(Icons.close, size: 18),
                     label: Text(
                       'Cancel',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                      style: AppFonts.poppins(fontWeight: FontWeight.w600),
                     ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -9249,7 +9254,7 @@ class _UsersPageState extends State<UsersPage> {
                                           children: [
                                             Icon(Icons.info_outline, color: Colors.blue.shade700),
                                             const SizedBox(width: 8),
-                                            Text('Company Admin Credentials', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                                            Text('Company Admin Credentials', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
                                           ],
                                         ),
                                         content: Builder(
@@ -9266,7 +9271,7 @@ class _UsersPageState extends State<UsersPage> {
                                                   children: [
                                                     Text(
                                                       'Please share these credentials with the Company Admin:',
-                                                      style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey.shade700),
+                                                      style: AppFonts.poppins(fontSize: 14, color: Colors.grey.shade700),
                                                     ),
                                                     const SizedBox(height: 16),
                                                     Container(
@@ -9300,7 +9305,7 @@ class _UsersPageState extends State<UsersPage> {
                                                           Expanded(
                                                             child: Text(
                                                               'The user will be required to change their password on first login.',
-                                                              style: GoogleFonts.poppins(fontSize: 12, color: Colors.orange.shade900),
+                                                              style: AppFonts.poppins(fontSize: 12, color: Colors.orange.shade900),
                                                             ),
                                                           ),
                                                         ],
@@ -9389,11 +9394,11 @@ class _UsersPageState extends State<UsersPage> {
       labelWidget = RichText(
         text: TextSpan(
           text: label,
-          style: GoogleFonts.poppins(color: Colors.grey.shade700),
+          style: AppFonts.poppins(color: Colors.grey.shade700),
           children: [
             TextSpan(
               text: ' *',
-              style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.bold),
+              style: AppFonts.poppins(color: Colors.red, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -9407,7 +9412,7 @@ class _UsersPageState extends State<UsersPage> {
         padding: const EdgeInsets.only(left: 16, right: 8),
         child: Text(
           'Rs',
-          style: GoogleFonts.poppins(
+          style: AppFonts.poppins(
             color: Colors.grey.shade700,
             fontWeight: FontWeight.w600,
             fontSize: 16,
@@ -9439,7 +9444,7 @@ class _UsersPageState extends State<UsersPage> {
           ? const Color(0xFF23272E)
           : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      labelStyle: GoogleFonts.poppins(color: Colors.grey.shade700),
+      labelStyle: AppFonts.poppins(color: Colors.grey.shade700),
     );
   }
 
@@ -9604,7 +9609,7 @@ class _UsersPageState extends State<UsersPage> {
           children: [
             Icon(Icons.lock_reset, color: Colors.orange.shade700),
             const SizedBox(width: 8),
-            Text('Reset Password', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+            Text('Reset Password', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
           ],
         ),
         content: Form(
@@ -9616,12 +9621,12 @@ class _UsersPageState extends State<UsersPage> {
               children: [
                 Text(
                   'Reset password for:',
-                  style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey.shade700),
+                  style: AppFonts.poppins(fontSize: 14, color: Colors.grey.shade700),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Username: $username\nEmail: ${email ?? ''}',
-                  style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500),
+                  style: AppFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -9676,7 +9681,7 @@ class _UsersPageState extends State<UsersPage> {
                       Expanded(
                         child: Text(
                           'This will set a new temporary password. User will be required to change it on next login.',
-                          style: GoogleFonts.poppins(fontSize: 12, color: Colors.blue.shade900),
+                          style: AppFonts.poppins(fontSize: 12, color: Colors.blue.shade900),
                         ),
                       ),
                     ],
@@ -9774,7 +9779,7 @@ class _UsersPageState extends State<UsersPage> {
         : _rows.where((r) => r.values.any((v) => (v?.toString().toLowerCase() ?? '').contains(_q.toLowerCase()))).toList();
     return Scaffold(
       appBar: AppBar(
-        title: Text('Users', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text('Users', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -9858,7 +9863,7 @@ class _UsersPageState extends State<UsersPage> {
                         const SizedBox(height: 16),
                         Text(
                           'No users found',
-                          style: GoogleFonts.poppins(
+                          style: AppFonts.poppins(
                             fontSize: 18,
                             color: Colors.grey.shade600,
                           ),
@@ -9891,25 +9896,25 @@ class _UsersPageState extends State<UsersPage> {
                           ),
                           title: Text(
                             titleText,
-                            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                            style: AppFonts.poppins(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (normalizedUserId.isNotEmpty) Text('User ID: $normalizedUserId', style: GoogleFonts.poppins(fontSize: 12)),
+                              if (normalizedUserId.isNotEmpty) Text('User ID: $normalizedUserId', style: AppFonts.poppins(fontSize: 12)),
                               if (r['email'] != null)
-                                Text('Email: ${r['email']}', style: GoogleFonts.poppins(fontSize: 12)),
+                                Text('Email: ${r['email']}', style: AppFonts.poppins(fontSize: 12)),
                               if (r['contact_no'] != null)
-                                Text('Contact: ${r['contact_no']}', style: GoogleFonts.poppins(fontSize: 12)),
+                                Text('Contact: ${r['contact_no']}', style: AppFonts.poppins(fontSize: 12)),
                               if (isInactive)
                                 Text(
                                   'Status: $status',
-                                  style: GoogleFonts.poppins(fontSize: 12, color: Colors.red.shade700),
+                                  style: AppFonts.poppins(fontSize: 12, color: Colors.red.shade700),
                                 ),
                               if (r['permissions'] != null)
                                 Text(
                                   'Permissions: ${_getPermissionLabel(r['permissions'])}',
-                                  style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
+                                  style: AppFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
                                 ),
                             ],
                           ),
@@ -10296,7 +10301,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
             children: [
               Text(
                 existing == null ? 'Add New Company' : 'Edit Company',
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
                   color: Colors.grey.shade900,
@@ -10429,7 +10434,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                     icon: const Icon(Icons.close, size: 18),
                     label: Text(
                       'Cancel',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                      style: AppFonts.poppins(fontWeight: FontWeight.w600),
                     ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -10612,11 +10617,11 @@ class _CompaniesPageState extends State<CompaniesPage> {
       labelWidget = RichText(
         text: TextSpan(
           text: label,
-          style: GoogleFonts.poppins(color: Colors.grey.shade700),
+          style: AppFonts.poppins(color: Colors.grey.shade700),
           children: [
             TextSpan(
               text: ' *',
-              style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.bold),
+              style: AppFonts.poppins(color: Colors.red, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -10630,7 +10635,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
         padding: const EdgeInsets.only(left: 16, right: 8),
         child: Text(
           'Rs',
-          style: GoogleFonts.poppins(
+          style: AppFonts.poppins(
             color: Colors.grey.shade700,
             fontWeight: FontWeight.w600,
             fontSize: 16,
@@ -10662,7 +10667,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
           ? const Color(0xFF23272E)
           : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      labelStyle: GoogleFonts.poppins(color: Colors.grey.shade700),
+      labelStyle: AppFonts.poppins(color: Colors.grey.shade700),
     );
   }
 
@@ -10716,7 +10721,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
         : _rows.where((r) => r.values.any((v) => (v?.toString().toLowerCase() ?? '').contains(_q.toLowerCase()))).toList();
     return Scaffold(
       appBar: AppBar(
-        title: Text('Companies', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text('Companies', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -10766,7 +10771,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                         const SizedBox(height: 16),
                         Text(
                           'No companies found',
-                          style: GoogleFonts.poppins(
+                          style: AppFonts.poppins(
                             fontSize: 18,
                             color: Colors.grey.shade600,
                           ),
@@ -10774,7 +10779,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                         const SizedBox(height: 8),
                         Text(
                           'Click the + button to add a new company',
-                          style: GoogleFonts.poppins(
+                          style: AppFonts.poppins(
                             fontSize: 14,
                             color: Colors.grey.shade500,
                           ),
@@ -10804,7 +10809,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                           ),
                           title: Text(
                             r['name']?.toString() ?? 'N/A',
-                            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                            style: AppFonts.poppins(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -10821,7 +10826,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                                     ),
                                     child: Text(
                                       isActive ? 'Active' : 'Inactive',
-                                      style: GoogleFonts.poppins(
+                                      style: AppFonts.poppins(
                                         fontSize: 11,
                                         color: isActive ? Colors.green : Colors.grey,
                                         fontWeight: FontWeight.w600,
@@ -10832,7 +10837,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                                     const SizedBox(width: 8),
                                     Text(
                                       'Metadata available',
-                                      style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade600),
+                                      style: AppFonts.poppins(fontSize: 11, color: Colors.grey.shade600),
                                     ),
                                   ],
                                 ],
@@ -10840,7 +10845,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                               if (r['created_at'] != null)
                                 Text(
                                   'Created: ${DateFormat('dd MMM yyyy').format(DateTime.parse(r['created_at']))}',
-                                  style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey.shade500),
+                                  style: AppFonts.poppins(fontSize: 11, color: Colors.grey.shade500),
                                 ),
                             ],
                           ),
@@ -11074,7 +11079,7 @@ class _SubMenuOverlay extends StatelessWidget {
                                     Expanded(
                                       child: Text(
                                         subItems[i].label,
-                                        style: GoogleFonts.poppins(
+                                        style: AppFonts.poppins(
                                           fontSize: 14,
                                           color: subItems[i].isSelected
                                               ? const Color(0xFFFF6B35)

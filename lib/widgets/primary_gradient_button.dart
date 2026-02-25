@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/font_utils.dart';
+
 
 class PrimaryGradientButton extends StatelessWidget {
   final String text;
@@ -33,7 +34,7 @@ class PrimaryGradientButton extends StatelessWidget {
         icon: icon != null ? Icon(icon, color: Colors.white, size: 18) : const SizedBox.shrink(),
         label: Text(
           text,
-          style: GoogleFonts.poppins(
+          style: AppFonts.poppins(
             color: Colors.white,
             fontWeight: FontWeight.w600,
             letterSpacing: 0.5,

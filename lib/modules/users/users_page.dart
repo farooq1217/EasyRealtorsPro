@@ -1,10 +1,11 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
+import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey, FilteringTextInputFormatter, Clipboard, ClipboardData;
 // REMOVED: Firestore dependencies for SQLite-only operation
 // import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,7 +15,6 @@ import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey, Fi
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -218,11 +218,11 @@ class _UsersPageState extends State<UsersPage> {
           ? RichText(
               text: TextSpan(
                 text: label,
-                style: GoogleFonts.poppins(color: Colors.grey.shade700),
+                style: AppFonts.poppins(color: Colors.grey.shade700),
                 children: [
                   TextSpan(
                     text: ' *',
-                    style: GoogleFonts.poppins(color: Colors.red, fontWeight: FontWeight.bold),
+                    style: AppFonts.poppins(color: Colors.red, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -245,7 +245,7 @@ class _UsersPageState extends State<UsersPage> {
       filled: true,
       fillColor: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF23272E) : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      labelStyle: GoogleFonts.poppins(color: Colors.grey.shade700),
+      labelStyle: AppFonts.poppins(color: Colors.grey.shade700),
     );
   }
 
@@ -458,8 +458,8 @@ class _UsersPageState extends State<UsersPage> {
   // Test method to query user by email
   Future<void> _testQueryUserByEmail(String email) async {
     try {
-      debugPrint('\nÃ°Å¸â€Â Querying user with email: $email');
-      debugPrint('Ã¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€Â');
+      debugPrint('\nðŸ” Querying user with email: $email');
+      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
       
       final result = await widget.db.customSelect(
         'SELECT * FROM users WHERE email = ?',
@@ -468,8 +468,8 @@ class _UsersPageState extends State<UsersPage> {
       ).get();
       
       if (result.isEmpty) {
-        debugPrint('Ã¢ÂÅ’ No user found with email: $email');
-        debugPrint('Ã¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€Â\n');
+        debugPrint('âŒ No user found with email: $email');
+        debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('No user found with email: $email'), backgroundColor: Colors.orange),
@@ -478,10 +478,10 @@ class _UsersPageState extends State<UsersPage> {
         return;
       }
       
-      debugPrint('Ã¢Å“â€¦ Found ${result.length} user(s) with email: $email\n');
+      debugPrint('âœ… Found ${result.length} user(s) with email: $email\n');
       
       for (var row in result) {
-        debugPrint('Ã°Å¸â€œâ€¹ User Details:');
+        debugPrint('ðŸ“‹ User Details:');
         row.data.forEach((key, value) {
           // Don't print full password hash for security, just show it exists
           if (key == 'password_hash' && value != null) {
@@ -494,7 +494,7 @@ class _UsersPageState extends State<UsersPage> {
         debugPrint('');
       }
       
-      debugPrint('Ã¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€Â\n');
+      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -506,8 +506,8 @@ class _UsersPageState extends State<UsersPage> {
         );
       }
     } catch (e) {
-      debugPrint('Ã¢ÂÅ’ Error querying user: $e');
-      debugPrint('Ã¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€Â\n');
+      debugPrint('âŒ Error querying user: $e');
+      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
@@ -519,8 +519,8 @@ class _UsersPageState extends State<UsersPage> {
   // Method to check password hash (password cannot be retrieved, only reset)
   Future<void> _checkUserPasswordInfo(String email) async {
     try {
-      debugPrint('\nÃ°Å¸â€Â Checking Password Information for: $email');
-      debugPrint('Ã¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€Â');
+      debugPrint('\nðŸ” Checking Password Information for: $email');
+      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
       
       final result = await widget.db.customSelect(
         'SELECT id, username, email, password_hash, salt, iterations, is_first_login, company_id FROM users WHERE email = ?',
@@ -529,7 +529,7 @@ class _UsersPageState extends State<UsersPage> {
       ).get();
       
       if (result.isEmpty) {
-        debugPrint('Ã¢ÂÅ’ No user found with email: $email\n');
+        debugPrint('âŒ No user found with email: $email\n');
         return;
       }
       
@@ -540,34 +540,34 @@ class _UsersPageState extends State<UsersPage> {
       final isFirstLogin = userData['is_first_login'] as int? ?? 0;
       final companyId = userData['company_id'] as String?;
       
-      debugPrint('Ã¢Å¡Â Ã¯Â¸Â  SECURITY NOTE:');
+      debugPrint('âš ï¸  SECURITY NOTE:');
       debugPrint('   Passwords are stored as HASHED values for security.');
       debugPrint('   The original password CANNOT be retrieved from the database.\n');
       
-      debugPrint('Ã°Å¸â€œâ€¹ Password Hash Information:');
+      debugPrint('ðŸ“‹ Password Hash Information:');
       if (passwordHash != null) {
         debugPrint('   Password Hash: ${passwordHash.substring(0, passwordHash.length > 50 ? 50 : passwordHash.length)}...');
         debugPrint('   Salt: ${salt ?? "N/A"}');
         debugPrint('   Iterations: ${iterations ?? "N/A"}');
         debugPrint('   Hash Format: ${passwordHash.split(":").length} parts');
       } else {
-        debugPrint('   Ã¢Å¡Â Ã¯Â¸Â  No password hash found!');
+        debugPrint('   âš ï¸  No password hash found!');
       }
       
-      debugPrint('\nÃ°Å¸â€˜Â¤ User Status:');
+      debugPrint('\nðŸ‘¤ User Status:');
       debugPrint('   Username: ${userData['username']}');
       debugPrint('   Email: ${userData['email']}');
       debugPrint('   is_first_login: $isFirstLogin ${isFirstLogin == 1 ? "(Must change password)" : "(Password already changed)"}');
       debugPrint('   Company ID: ${companyId ?? "None (Regular User)"}');
       
       if (isFirstLogin == 1 && companyId != null) {
-        debugPrint('\nÃ°Å¸â€™Â¡ IMPORTANT:');
+        debugPrint('\nðŸ’¡ IMPORTANT:');
         debugPrint('   This is a Company Admin with is_first_login = true.');
         debugPrint('   The temporary password was shown when the user was created.');
         debugPrint('   If you don\'t have it, you need to RESET the password.\n');
       }
       
-      debugPrint('Ã¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€ÂÃ¢â€Â\n');
+      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -579,7 +579,7 @@ class _UsersPageState extends State<UsersPage> {
         );
       }
     } catch (e) {
-      debugPrint('Ã¢ÂÅ’ Error: $e\n');
+      debugPrint('âŒ Error: $e\n');
     }
   }
 
@@ -803,7 +803,7 @@ class _UsersPageState extends State<UsersPage> {
           width: 120,
           child: Text(
             label,
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: Colors.grey.shade700,
@@ -813,7 +813,7 @@ class _UsersPageState extends State<UsersPage> {
         Expanded(
           child: SelectableText(
             value,
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 13,
               fontWeight: FontWeight.w500,
               color: Colors.grey.shade900,
@@ -1273,7 +1273,7 @@ class _UsersPageState extends State<UsersPage> {
             children: [
               Text(
                 existing == null ? 'Add New User' : 'Edit User',
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
                   color: Colors.grey.shade900,
@@ -1502,7 +1502,7 @@ class _UsersPageState extends State<UsersPage> {
                   children: [
                     Text(
                       'Module Permissions',
-                      style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700),
+                      style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 10),
                     LayoutBuilder(
@@ -1540,7 +1540,7 @@ class _UsersPageState extends State<UsersPage> {
                                     Expanded(
                                       child: Text(
                                         moduleLabel,
-                                        style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                                        style: AppFonts.poppins(fontWeight: FontWeight.w600),
                                       ),
                                     ),
                                     const SizedBox(width: 12),
@@ -1555,7 +1555,7 @@ class _UsersPageState extends State<UsersPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(moduleLabel, style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                                  Text(moduleLabel, style: AppFonts.poppins(fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 8),
                                   dropdown,
                                 ],
@@ -1577,7 +1577,7 @@ class _UsersPageState extends State<UsersPage> {
                         : (_maxUserLimit != null && _currentActiveUsers != null)
                             ? 'Active users: $_currentActiveUsers / $_maxUserLimit'
                             : 'User limit status: unknown',
-                    style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade700),
+                    style: AppFonts.poppins(fontSize: 12, color: Colors.grey.shade700),
                   ),
                 ),
               Row(
@@ -1591,7 +1591,7 @@ class _UsersPageState extends State<UsersPage> {
                     icon: const Icon(Icons.close, size: 18),
                     label: Text(
                       'Cancel',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                      style: AppFonts.poppins(fontWeight: FontWeight.w600),
                     ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -2016,7 +2016,7 @@ class _UsersPageState extends State<UsersPage> {
                                           children: [
                                             Icon(Icons.info_outline, color: Colors.blue.shade700),
                                             const SizedBox(width: 8),
-                                            Text('Company Admin Credentials', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+                                            Text('Company Admin Credentials', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
                                           ],
                                         ),
                                         content: Builder(
@@ -2033,7 +2033,7 @@ class _UsersPageState extends State<UsersPage> {
                                                   children: [
                                                     Text(
                                                       'Please share these credentials with the Company Admin:',
-                                                      style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey.shade700),
+                                                      style: AppFonts.poppins(fontSize: 14, color: Colors.grey.shade700),
                                                     ),
                                                     const SizedBox(height: 16),
                                                     Container(
@@ -2067,7 +2067,7 @@ class _UsersPageState extends State<UsersPage> {
                                                           Expanded(
                                                             child: Text(
                                                               'The user will be required to change their password on first login.',
-                                                              style: GoogleFonts.poppins(fontSize: 12, color: Colors.orange.shade900),
+                                                              style: AppFonts.poppins(fontSize: 12, color: Colors.orange.shade900),
                                                             ),
                                                           ),
                                                         ],
@@ -2366,7 +2366,7 @@ class _UsersPageState extends State<UsersPage> {
           children: [
             Icon(Icons.lock_reset, color: Colors.orange.shade700),
             const SizedBox(width: 8),
-            Text('Reset Password', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+            Text('Reset Password', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
           ],
         ),
         content: Form(
@@ -2378,12 +2378,12 @@ class _UsersPageState extends State<UsersPage> {
               children: [
                 Text(
                   'Reset password for:',
-                  style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey.shade700),
+                  style: AppFonts.poppins(fontSize: 14, color: Colors.grey.shade700),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Username: $username\nEmail: ${email ?? ''}',
-                  style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500),
+                  style: AppFonts.poppins(fontSize: 13, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -2438,7 +2438,7 @@ class _UsersPageState extends State<UsersPage> {
                       Expanded(
                         child: Text(
                           'This will set a new temporary password. User will be required to change it on next login.',
-                          style: GoogleFonts.poppins(fontSize: 12, color: Colors.blue.shade900),
+                          style: AppFonts.poppins(fontSize: 12, color: Colors.blue.shade900),
                         ),
                       ),
                     ],
@@ -2566,7 +2566,7 @@ class _UsersPageState extends State<UsersPage> {
         : _rows.where((r) => r.values.any((v) => (v?.toString().toLowerCase() ?? '').contains(_q.toLowerCase()))).toList();
     return Scaffold(
       appBar: AppBar(
-        title: Text('Users', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text('Users', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -2616,7 +2616,7 @@ class _UsersPageState extends State<UsersPage> {
                         const SizedBox(height: 16),
                         Text(
                           'No users found',
-                          style: GoogleFonts.poppins(
+                          style: AppFonts.poppins(
                             fontSize: 18,
                             color: Colors.grey.shade600,
                           ),
@@ -2647,7 +2647,7 @@ class _UsersPageState extends State<UsersPage> {
                                 ),
                                 child: Text(
                                   isInactive ? 'Inactive' : 'Active',
-                                  style: GoogleFonts.poppins(
+                                  style: AppFonts.poppins(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
                                     color: isInactive ? Colors.red : Colors.green,
@@ -2664,7 +2664,7 @@ class _UsersPageState extends State<UsersPage> {
                           ),
                           title: Text(
                             titleText,
-                            style: GoogleFonts.poppins(
+                            style: AppFonts.poppins(
                               fontWeight: FontWeight.w600,
                               color: isInactive ? Colors.grey : null,
                             ),
@@ -2677,18 +2677,18 @@ class _UsersPageState extends State<UsersPage> {
                                   statusLabel,
                                   if (normalizedUserId.isNotEmpty) ...[
                                     const SizedBox(width: 8),
-                                    Text('User ID: $normalizedUserId', style: GoogleFonts.poppins(fontSize: 12)),
+                                    Text('User ID: $normalizedUserId', style: AppFonts.poppins(fontSize: 12)),
                                   ],
                                 ],
                               ),
                               if (r['email'] != null)
-                                Text('Email: ${r['email']}', style: GoogleFonts.poppins(fontSize: 12)),
+                                Text('Email: ${r['email']}', style: AppFonts.poppins(fontSize: 12)),
                               if (r['contact_no'] != null)
-                                Text('Contact: ${r['contact_no']}', style: GoogleFonts.poppins(fontSize: 12)),
+                                Text('Contact: ${r['contact_no']}', style: AppFonts.poppins(fontSize: 12)),
                               if (r['permissions'] != null)
                                 Text(
                                   'Permissions: ${_getPermissionLabel(r['permissions'])}',
-                                  style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
+                                  style: AppFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
                                 ),
                             ],
                           ),

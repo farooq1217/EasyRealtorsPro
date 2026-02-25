@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../core/font_utils.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:google_fonts/google_fonts.dart';
+
 
 class PerformanceChartCard extends StatelessWidget {
   final List<Map<String, dynamic>> data;
@@ -28,7 +29,7 @@ class PerformanceChartCard extends StatelessWidget {
         child: Center(
           child: Text(
             'No performance data available',
-            style: GoogleFonts.poppins(color: Colors.grey.shade600),
+            style: AppFonts.poppins(color: Colors.grey.shade600),
           ),
         ),
       );
@@ -58,7 +59,7 @@ class PerformanceChartCard extends StatelessWidget {
         children: [
           Text(
             'Total Value of Sales/Rentals (Last 6 Months)',
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: Colors.grey.shade800,
@@ -101,7 +102,7 @@ class PerformanceChartCard extends StatelessWidget {
                               width: 60, // Fixed width to prevent overlap
                               child: Text(
                                 data[index]['month'] as String,
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.grey.shade800,
@@ -125,7 +126,7 @@ class PerformanceChartCard extends StatelessWidget {
                       getTitlesWidget: (value, meta) {
                         return Text(
                           value.toInt().toString(),
-                          style: GoogleFonts.poppins(
+                          style: AppFonts.poppins(
                             fontSize: 10,
                             color: Colors.grey.shade600,
                           ),

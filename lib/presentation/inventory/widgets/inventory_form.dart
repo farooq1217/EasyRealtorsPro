@@ -1,6 +1,7 @@
 // presentation/inventory/widgets/inventory_form.dart
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/font_utils.dart';
+
 import 'package:provider/provider.dart';
 import 'dart:typed_data';
 import 'dart:convert';
@@ -190,7 +191,7 @@ class _InventoryFormState extends State<InventoryForm> {
       child: Row(children: [
         Icon(icon, size: 20, color: const Color(0xFFFF6B35)),
         const SizedBox(width: 8),
-        Text(title, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade800)),
+        Text(title, style: AppFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade800)),
       ]),
     );
   }
@@ -206,7 +207,7 @@ class _InventoryFormState extends State<InventoryForm> {
               widget.existing == null 
                   ? 'Add ${viewModel.selectedType == InventoryType.file ? 'File' : 'Property'} Form' 
                   : 'Edit ${viewModel.selectedType == InventoryType.file ? 'File' : 'Property'} Form', 
-              style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold),
+              style: AppFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             
             _buildSectionHeader('Location Details', Icons.map_outlined),

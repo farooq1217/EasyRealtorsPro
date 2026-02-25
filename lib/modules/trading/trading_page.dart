@@ -1,7 +1,8 @@
 // lib/modules/trading/trading_page.dart
 import 'package:flutter/material.dart';
+import '../../../core/font_utils.dart';
 import 'package:flutter/foundation.dart';
-import 'package:google_fonts/google_fonts.dart';
+
 import 'package:intl/intl.dart';
 import '../../domain/models/trading_entry.dart';
 import '../../domain/repositories/trading_repository.dart';
@@ -55,7 +56,7 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Trading Management', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        title: Text('Trading Management', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         flexibleSpace: Container(

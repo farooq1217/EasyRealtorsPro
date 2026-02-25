@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import '../core/font_utils.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import 'core/services/auth_service.dart';
@@ -643,7 +643,7 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 32),
           Text(
             'Welcome!',
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 48,
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -652,7 +652,7 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 16),
           Text(
             'Real Estate Management System',
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 24,
               fontWeight: FontWeight.w600,
               color: Colors.white.withOpacity(0.95),
@@ -661,7 +661,7 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 24),
           Text(
             'Manage your properties, files, and rental items efficiently. Track sales, monitor inventory, and streamline your real estate business operations.',
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 16,
               color: Colors.white.withOpacity(0.9),
               height: 1.6,
@@ -670,7 +670,7 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 40),
           Text(
             '© 2024 Real Estate Management',
-            style: GoogleFonts.poppins(
+            style: AppFonts.poppins(
               fontSize: 14,
               color: Colors.white.withOpacity(0.7),
                   ),
@@ -697,7 +697,7 @@ class _LoginPageState extends State<LoginPage> {
               children: [
                 Text(
                   'Login',
-                  style: GoogleFonts.poppins(
+                  style: AppFonts.poppins(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: const Color(0xFFFF6B35), // Orange
@@ -788,7 +788,7 @@ class _LoginPageState extends State<LoginPage> {
                               Flexible(
                                 child: Text(
                                   'Remember Me (7 days)',
-                                  style: GoogleFonts.poppins(
+                                  style: AppFonts.poppins(
                                     fontSize: 14,
                                     color: Colors.grey.shade700,
                                   ),
@@ -802,7 +802,7 @@ class _LoginPageState extends State<LoginPage> {
                               onPressed: _showForgotPasswordDialog,
                               child: Text(
                                 'Forgot Password?',
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   color: const Color(0xFFFF6B35),
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
@@ -828,7 +828,7 @@ class _LoginPageState extends State<LoginPage> {
                           Flexible(
                             child: Text(
                               'Remember Me (7 days)',
-                              style: GoogleFonts.poppins(
+                              style: AppFonts.poppins(
                                 fontSize: 14,
                                 color: Colors.grey.shade700,
                               ),
@@ -841,7 +841,7 @@ class _LoginPageState extends State<LoginPage> {
                               onPressed: _showForgotPasswordDialog,
                               child: Text(
                                 'Forgot Password?',
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   color: const Color(0xFFFF6B35),
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
@@ -881,7 +881,7 @@ class _LoginPageState extends State<LoginPage> {
                               const SizedBox(width: 12),
                           Text(
                                 'Authenticating...',
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: 1,
@@ -892,7 +892,7 @@ class _LoginPageState extends State<LoginPage> {
                           )
                         : Text(
                             'LOGIN',
-                            style: GoogleFonts.poppins(
+                            style: AppFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 1,
@@ -905,7 +905,7 @@ class _LoginPageState extends State<LoginPage> {
                   onPressed: _isLoading ? null : _showCreateAccountDialog,
                   child: Text(
                     'Create Account',
-                    style: GoogleFonts.poppins(
+                    style: AppFonts.poppins(
                       fontSize: 14,
                       color: const Color(0xFFFF6B35),
                       fontWeight: FontWeight.w500,

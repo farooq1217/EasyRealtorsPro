@@ -1,6 +1,7 @@
 // presentation/inventory/inventory_page.dart
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../../core/font_utils.dart';
+
 import 'package:provider/provider.dart';
 import '../../domain/models/inventory_item.dart';
 import '../../data/repositories/inventory_repository_impl.dart';
@@ -153,7 +154,7 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
     if (_viewModel == null || !_viewModel!.initialized) {
       return Scaffold(
         appBar: AppBar(
-          title: Text('Filing System', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+          title: Text('Filing System', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
           centerTitle: true,
           elevation: 0,
           backgroundColor: Colors.transparent,
@@ -180,7 +181,7 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
       value: _viewModel!,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('Filing System', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+          title: Text('Filing System', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
           centerTitle: true,
           elevation: 0,
           backgroundColor: Colors.transparent,

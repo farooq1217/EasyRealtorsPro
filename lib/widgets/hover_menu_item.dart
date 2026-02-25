@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/font_utils.dart';
+
 
 /// Desktop-only hover menu item with sub-menu support
 class HoverMenuItem extends StatefulWidget {
@@ -194,7 +195,7 @@ class _HoverMenuItemState extends State<HoverMenuItem>
                 Expanded(
                   child: Text(
                     widget.label,
-                    style: GoogleFonts.poppins(
+                    style: AppFonts.poppins(
                       fontSize: 14,
                       color: widget.isSelected
                           ? Colors.white
@@ -374,7 +375,7 @@ class _SubMenuOverlay extends StatelessWidget {
                               Expanded(
                                 child: Text(
                                   subItems[i].label,
-                                  style: GoogleFonts.poppins(
+                                  style: AppFonts.poppins(
                                     fontSize: 14,
                                     color: subItems[i].isSelected
                                         ? const Color(0xFFFF6B35)

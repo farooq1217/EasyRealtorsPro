@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/font_utils.dart';
 import '../../../domain/models/trading_entry.dart';
 
 class GenericTradingForm extends StatefulWidget {
@@ -68,13 +68,13 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
       labelWidget = RichText(
         text: TextSpan(
           text: label,
-          style: GoogleFonts.poppins(
+          style: AppFonts.poppins(
             color: Colors.grey.shade700,
           ),
           children: [
             TextSpan(
               text: ' *',
-              style: GoogleFonts.poppins(
+              style: AppFonts.poppins(
                 color: Colors.red,
                 fontWeight: FontWeight.bold,
               ),
@@ -91,7 +91,7 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
         padding: const EdgeInsets.only(left: 16, right: 8),
         child: Text(
           'Rs',
-          style: GoogleFonts.poppins(
+          style: AppFonts.poppins(
             color: Colors.grey.shade700,
             fontWeight: FontWeight.w600,
             fontSize: 16,
@@ -127,8 +127,8 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
           ? const Color(0xFF23272E)
           : Colors.grey.shade50,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      labelStyle: GoogleFonts.poppins(color: Colors.grey.shade700),
-      hintStyle: GoogleFonts.poppins(color: Colors.grey.shade500),
+      labelStyle: AppFonts.poppins(color: Colors.grey.shade700),
+      hintStyle: AppFonts.poppins(color: Colors.grey.shade500),
     );
   }
 
@@ -260,7 +260,7 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
             children: [
               Text(
                 "${widget.type == TradingType.buy ? 'Buy' : 'Sell'} - ${widget.isFileTab ? 'File' : 'Form'}",
-                style: GoogleFonts.poppins(
+                style: AppFonts.poppins(
                   fontSize: 20, 
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).brightness == Brightness.dark 
@@ -389,7 +389,7 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                   ),
                   child: Text(
                     'Save Entry',
-                    style: GoogleFonts.poppins(
+                    style: AppFonts.poppins(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -414,7 +414,7 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                           }
                         },
                         icon: const Icon(Icons.shopping_cart),
-                        label: Text('Buy', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+                        label: Text('Buy', style: AppFonts.poppins(fontWeight: FontWeight.bold)),
                         backgroundColor: const Color(0xFFFF6B35),
                       ),
                     if (widget.onBuyEntry != null && widget.onSellEntry != null)
@@ -430,7 +430,7 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                           }
                         },
                         icon: const Icon(Icons.work),
-                        label: Text('Sell', style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+                        label: Text('Sell', style: AppFonts.poppins(fontWeight: FontWeight.bold)),
                         backgroundColor: Colors.blue,
                       ),
                   ],

@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   provider: ^6.1.2
+  equatable: ^2.0.5
   url_launcher: ^6.3.0
   path_provider: ^2.1.4
   http: ^1.2.1
@@ -22,7 +23,6 @@ dependencies:
   printing: ^5.12.0
   flutter_local_notifications: ^19.5.0
   syncfusion_flutter_pdf: ^32.1.23
-  google_fonts: ^7.0.2
   image: ^4.2.0
   file_selector: ^1.0.3
   image_picker: ^1.1.2
@@ -52,6 +52,16 @@ flutter:
     # - assets/app_icon.ico  # Temporarily disabled: file missing
     - assets/fonts/
   fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
     - family: Roboto
       fonts:
         - asset: assets/fonts/Roboto-Regular.ttf

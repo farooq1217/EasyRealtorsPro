@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../../../core/font_utils.dart';
 import 'package:intl/intl.dart';
 import '../../../domain/models/trading_entry.dart';
 import '../../../core/services/pdf_service.dart';
@@ -21,7 +21,7 @@ class TradingList extends StatelessWidget {
             Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey.shade400),
             const SizedBox(height: 16),
             Text("No transactions found", 
-              style: GoogleFonts.poppins(color: Colors.grey.shade600, fontSize: 16)),
+              style: AppFonts.poppins(color: Colors.grey.shade600, fontSize: 16)),
           ],
         ),
       );
@@ -49,11 +49,11 @@ class TradingList extends StatelessWidget {
             ),
             title: Text(
               entry.personName,
-              style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 15),
+              style: AppFonts.poppins(fontWeight: FontWeight.bold, fontSize: 15),
             ),
             subtitle: Text(
               "${entry.estateName} • ${DateFormat('dd MMM').format(entry.date)}",
-              style: GoogleFonts.poppins(fontSize: 12),
+              style: AppFonts.poppins(fontSize: 12),
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
             ),
@@ -63,7 +63,7 @@ class TradingList extends StatelessWidget {
               children: [
                 Text(
                   "Rs. ${NumberFormat('#,###').format(entry.totalAmount)}",
-                  style: GoogleFonts.poppins(
+                  style: AppFonts.poppins(
                     fontWeight: FontWeight.bold,
                     color: isBuy ? Colors.green.shade700 : Colors.red.shade700,
                   ),
@@ -76,7 +76,7 @@ class TradingList extends StatelessWidget {
                   ),
                   child: Text(
                     entry.entryType.toString().split('.').last.toUpperCase(),
-                    style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w600),
+                    style: AppFonts.poppins(fontSize: 9, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
@@ -133,8 +133,8 @@ class TradingList extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey.shade600)),
-          Text(value, style: GoogleFonts.poppins(
+          Text(label, style: AppFonts.poppins(fontSize: 13, color: Colors.grey.shade600)),
+          Text(value, style: AppFonts.poppins(
             fontSize: 13, 
             fontWeight: FontWeight.w500,
             color: isStatus ? Colors.orange.shade800 : Colors.black87,

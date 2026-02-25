@@ -1,13 +1,13 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
+import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey, rootBundle;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -177,7 +177,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
               children: [
                 const CircularProgressIndicator(),
                 const SizedBox(height: 16),
-                Text('Generating PDF...', style: GoogleFonts.poppins(fontSize: 14)),
+                Text('Generating PDF...', style: AppFonts.poppins(fontSize: 14)),
               ],
             ),
           ),
@@ -538,7 +538,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
                 const SizedBox(width: 8),
                 Text(
                   title,
-                  style: GoogleFonts.poppins(
+                  style: AppFonts.poppins(
                     fontSize: isMobile ? 14 : 16,
                     fontWeight: FontWeight.w600,
                     color: const Color(0xFFFF6B35),
@@ -584,7 +584,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
           ),
           title: Text(
             'Agent Working Details',
-            style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+            style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
           ),
           centerTitle: true,
           elevation: 0,
@@ -647,7 +647,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
                             Center(
                               child: Text(
                                 'Agent Working Details',
-                                style: GoogleFonts.poppins(
+                                style: AppFonts.poppins(
                                   fontSize: isMobile ? 20 : 22,
                                   fontWeight: FontWeight.bold,
                                   color: const Color(0xFFFF6B35),
@@ -676,7 +676,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
                                           flex: 1,
                                           child: Text(
                                             'Field',
-                                            style: GoogleFonts.poppins(
+                                            style: AppFonts.poppins(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 14,
                                             ),
@@ -686,7 +686,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
                                           flex: 2,
                                           child: Text(
                                             'Value',
-                                            style: GoogleFonts.poppins(
+                                            style: AppFonts.poppins(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 14,
                                             ),
@@ -716,7 +716,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
                                                 flex: 1,
                                                 child: Text(
                                                   field.key,
-                                                  style: GoogleFonts.poppins(
+                                                  style: AppFonts.poppins(
                                                     fontWeight: FontWeight.w600,
                                                     fontSize: 13,
                                                     color: Colors.grey.shade700,
@@ -727,7 +727,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
                                                 flex: 2,
                                                 child: Text(
                                                   field.value,
-                                                  style: GoogleFonts.poppins(fontSize: 13),
+                                                  style: AppFonts.poppins(fontSize: 13),
                                                 ),
                                               ),
                                             ],

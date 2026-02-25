@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
+import '../../core/font_utils.dart';
 import 'package:flutter/services.dart';
 import 'package:googleapis_auth/googleapis_auth.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
 import 'services/auth_service.dart';
@@ -276,7 +276,7 @@ class _TopRightSearchState extends State<TopRightSearch> {
                 )
               : null,
           hintText: widget.hintText ?? 'Search...',
-          hintStyle: GoogleFonts.poppins(fontSize: 13, color: Colors.grey.shade500),
+          hintStyle: AppFonts.poppins(fontSize: 13, color: Colors.grey.shade500),
           filled: true,
           fillColor: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFF252A32)
@@ -295,7 +295,7 @@ class _TopRightSearchState extends State<TopRightSearch> {
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         ),
-        style: GoogleFonts.poppins(
+        style: AppFonts.poppins(
           fontSize: 13,
           color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.grey.shade900,
         ),
