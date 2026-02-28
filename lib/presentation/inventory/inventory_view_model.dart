@@ -2,9 +2,11 @@
 import 'package:flutter/foundation.dart';
 import '../../domain/models/inventory_item.dart';
 import '../../domain/repositories/inventory_repository.dart';
+import '../../domain/repositories/society_repository.dart';
 
 class InventoryViewModel extends ChangeNotifier {
-  final InventoryRepository _repository;
+  final InventoryRepository _inventoryRepository;
+  final SocietyRepository _societyRepository;
   
   List<InventoryItem> _allItems = [];
   List<InventoryItem> _filteredItems = [];
@@ -22,7 +24,7 @@ class InventoryViewModel extends ChangeNotifier {
   String? _selectedBlockId;
   String? _selectedStatusFilter;
 
-  InventoryViewModel(this._repository) {
+  InventoryViewModel(this._inventoryRepository, this._societyRepository) {
     _initialized = true;
   }
 
@@ -40,7 +42,7 @@ class InventoryViewModel extends ChangeNotifier {
   String? get selectedSocietyId => _selectedSocietyId;
   String? get selectedBlockId => _selectedBlockId;
   String? get selectedStatusFilter => _selectedStatusFilter;
-  InventoryRepository get repository => _repository;
+  InventoryRepository get repository => _inventoryRepository;
 
   // Load all data
   Future<void> loadAllData() async {
@@ -56,7 +58,7 @@ class InventoryViewModel extends ChangeNotifier {
     notifyListeners();
     
     try {
-      _allItems = await _repository.getFilteredItems(
+      _allItems = await _inventoryRepository.getFilteredItems(
         type: _selectedType,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
         societyId: _selectedSocietyId,
@@ -80,7 +82,7 @@ class InventoryViewModel extends ChangeNotifier {
     notifyListeners();
     
     try {
-      _societies = await _repository.getSocieties();
+      _societies = await _societyRepository.getSocieties();
     } catch (e) {
       debugPrint('Error loading societies: $e');
       _societies = [];
@@ -97,9 +99,9 @@ class InventoryViewModel extends ChangeNotifier {
     
     try {
       if (societyId != null) {
-        _blocks = await _repository.getBlocksBySociety(societyId);
+        _blocks = await _societyRepository.getBlocksBySociety(societyId);
       } else {
-        _blocks = await _repository.getBlocks();
+        _blocks = await _societyRepository.getBlocks();
       }
     } catch (e) {
       debugPrint('Error loading blocks: $e');
@@ -165,9 +167,9 @@ class InventoryViewModel extends ChangeNotifier {
   Future<void> saveItem(InventoryItem item) async {
     try {
       if (_allItems.any((existing) => existing.id == item.id)) {
-        await _repository.updateItem(item);
+        await _inventoryRepository.updateItem(item);
       } else {
-        await _repository.addItem(item);
+        await _inventoryRepository.addItem(item);
       }
       await loadItems(); // Reload to reflect changes
     } catch (e) {
@@ -178,7 +180,7 @@ class InventoryViewModel extends ChangeNotifier {
 
   Future<void> deleteItem(String id) async {
     try {
-      await _repository.deleteItem(id);
+      await _inventoryRepository.deleteItem(id);
       await loadItems(); // Reload to reflect changes
     } catch (e) {
       debugPrint('Error deleting inventory item: $e');

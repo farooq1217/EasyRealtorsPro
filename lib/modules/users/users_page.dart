@@ -459,17 +459,16 @@ class _UsersPageState extends State<UsersPage> {
   Future<void> _testQueryUserByEmail(String email) async {
     try {
       debugPrint('\nðŸ” Querying user with email: $email');
-      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
+      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
       
       final result = await widget.db.customSelect(
         'SELECT * FROM users WHERE email = ?',
         variables: [d.Variable.withString(email)],
-        readsFrom: {widget.db.users},
       ).get();
       
       if (result.isEmpty) {
         debugPrint('âŒ No user found with email: $email');
-        debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
+        debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('No user found with email: $email'), backgroundColor: Colors.orange),
@@ -494,7 +493,7 @@ class _UsersPageState extends State<UsersPage> {
         debugPrint('');
       }
       
-      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
+      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -507,7 +506,7 @@ class _UsersPageState extends State<UsersPage> {
       }
     } catch (e) {
       debugPrint('âŒ Error querying user: $e');
-      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
+      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
@@ -520,12 +519,11 @@ class _UsersPageState extends State<UsersPage> {
   Future<void> _checkUserPasswordInfo(String email) async {
     try {
       debugPrint('\nðŸ” Checking Password Information for: $email');
-      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
+      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
       
       final result = await widget.db.customSelect(
         'SELECT id, username, email, password_hash, salt, iterations, is_first_login, company_id FROM users WHERE email = ?',
         variables: [d.Variable.withString(email)],
-        readsFrom: {widget.db.users},
       ).get();
       
       if (result.isEmpty) {
@@ -567,7 +565,7 @@ class _UsersPageState extends State<UsersPage> {
         debugPrint('   If you don\'t have it, you need to RESET the password.\n');
       }
       
-      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
+      debugPrint('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n');
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -614,7 +612,6 @@ class _UsersPageState extends State<UsersPage> {
 
       final all = await widget.db.customSelect(
         'SELECT company_id, user_id FROM users',
-        readsFrom: {widget.db.users},
       ).get();
 
       final maxSeqByCompany = <String, int>{};
@@ -936,7 +933,6 @@ class _UsersPageState extends State<UsersPage> {
         final res = await widget.db.customSelect(
           'SELECT user_id FROM users WHERE company_id = ? AND user_id IS NOT NULL',
           variables: [d.Variable.withString(companyId)],
-          readsFrom: {widget.db.users},
         ).get();
 
         int extractSeq(String raw) {
@@ -991,7 +987,6 @@ class _UsersPageState extends State<UsersPage> {
             d.Variable.withString(candidate),
             d.Variable.withString(currentUserId),
           ],
-          readsFrom: {widget.db.users},
         ).getSingle();
         final cRaw = res.data['c'];
         final c = cRaw is int ? cRaw : int.tryParse(cRaw?.toString() ?? '0') ?? 0;
@@ -1012,7 +1007,6 @@ class _UsersPageState extends State<UsersPage> {
         final res = await widget.db.customSelect(
           'SELECT user_id FROM users WHERE company_id = ? AND user_id IS NOT NULL',
           variables: [d.Variable.withString(companyId)],
-          readsFrom: {widget.db.users},
         ).get();
 
         final used = <String>{};
@@ -1076,7 +1070,6 @@ class _UsersPageState extends State<UsersPage> {
           d.Variable.withString(userId),
           d.Variable.withString(currentUserId),
         ],
-        readsFrom: {widget.db.users},
       ).getSingle();
       final cRaw = res.data['c'];
       final c = cRaw is int ? cRaw : int.tryParse(cRaw?.toString() ?? '0') ?? 0;
@@ -1142,7 +1135,6 @@ class _UsersPageState extends State<UsersPage> {
           final limitRes = await widget.db.customSelect(
             'SELECT max_user_limit, subscription_tier FROM companies WHERE id = ? LIMIT 1',
             variables: [d.Variable.withString(companyId)],
-            readsFrom: {widget.db.companies},
           ).get();
 
           final row = limitRes.isNotEmpty ? limitRes.first.data : null;
@@ -1155,7 +1147,6 @@ class _UsersPageState extends State<UsersPage> {
           final countRes = await widget.db.customSelect(
             "SELECT COUNT(*) as cnt FROM users WHERE company_id = ? AND (status = 'active' OR status IS NULL)",
             variables: [d.Variable.withString(companyId)],
-            readsFrom: {widget.db.users},
           ).get();
 
           final cntRaw = countRes.isNotEmpty ? countRes.first.data['cnt'] : 0;
@@ -1712,7 +1703,7 @@ class _UsersPageState extends State<UsersPage> {
                                     tier = normalizeSubscriptionTier(data?['subscription_tier'] ?? data?['subscriptionTier']);
                                   } catch (e) {
                                     if (kDebugMode) {
-                                      debugPrint('UserLimit(final): Firestore company limit read failed for companyId=$effectiveCompanyId: $e');
+                                    debugPrint('UserLimit(final): Firestore company limit read failed for companyId=$effectiveCompanyId: $e');
                                     }
                                   }
 
@@ -1745,19 +1736,20 @@ class _UsersPageState extends State<UsersPage> {
                                   final limitRes = await widget.db.customSelect(
                                     'SELECT max_user_limit, subscription_tier FROM companies WHERE id = ? LIMIT 1',
                                     variables: [d.Variable.withString(effectiveCompanyId)],
-                                    readsFrom: {widget.db.companies},
                                   ).get();
+
                                   final row = limitRes.isNotEmpty ? limitRes.first.data : null;
                                   final limitRaw = row?['max_user_limit'];
                                   final tierRaw = row?['subscription_tier'];
                                   tier = normalizeSubscriptionTier(tierRaw ?? tier);
                                   limit ??= (limitRaw is int ? limitRaw : int.tryParse(limitRaw?.toString() ?? ''));
                                   limit ??= subscriptionLimitForTier(tier);
+
                                   final countRes = await widget.db.customSelect(
                                     "SELECT COUNT(*) as cnt FROM users WHERE company_id = ? AND (status = 'active' OR status IS NULL)",
                                     variables: [d.Variable.withString(effectiveCompanyId)],
-                                    readsFrom: {widget.db.users},
                                   ).get();
+
                                   final cntRaw = countRes.isNotEmpty ? countRes.first.data['cnt'] : 0;
                                   cnt ??= cntRaw is int ? cntRaw : int.tryParse(cntRaw.toString()) ?? 0;
                                 }

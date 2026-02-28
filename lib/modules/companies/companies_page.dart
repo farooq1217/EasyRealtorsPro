@@ -173,9 +173,8 @@ class _CompaniesPageState extends State<CompaniesPage> {
 
       final result = await widget.db.customSelect(
         "SELECT * FROM companies WHERE (status IS NULL OR (status != 'archived' AND status != 'deleted')) ORDER BY updated_at DESC",
-        readsFrom: {widget.db.companies},
       ).get();
-      final rows = result.map((r) => r.data).toList();
+      final rows = result.map((r) => Map<String, dynamic>.from(r.data)).toList();
 
       if (mounted) {
         setState(() {
@@ -188,9 +187,8 @@ class _CompaniesPageState extends State<CompaniesPage> {
       try {
         final fallback = await widget.db.customSelect(
           "SELECT * FROM companies WHERE (status IS NULL OR (status != 'archived' AND status != 'deleted')) ORDER BY updated_at DESC",
-          readsFrom: {widget.db.companies},
         ).get();
-        final rows = fallback.map((r) => r.data).toList();
+        final rows = fallback.map((r) => Map<String, dynamic>.from(r.data)).toList();
         if (mounted) {
           setState(() {
             _rows = rows;

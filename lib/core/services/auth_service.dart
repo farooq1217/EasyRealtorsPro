@@ -114,7 +114,6 @@ class AuthService {
           d.Variable.withString(emailKey),
           d.Variable.withString(emailKey),
         ],
-        readsFrom: {db.users},
       ).get();
       if (dbResult.isEmpty) return null;
       final u = dbResult.first.data;
@@ -153,7 +152,6 @@ class AuthService {
       final res = await db.customSelect(
         'SELECT id, username, email, password_hash, name, contact_no, permissions, company_id, status, is_active, is_first_login, user_id, created_at FROM users WHERE id = ?',
         variables: [d.Variable.withString(userId)],
-        readsFrom: {db.users},
       ).get();
       if (res.isEmpty) return;
       final u = res.first.data;
@@ -336,7 +334,7 @@ class AuthService {
     } catch (e) {
       debugPrint('AuthService: Failed to get app dir, using temp dir. Error: $e');
       final tmp = await getTemporaryDirectory();
-      return tmp;
+      return io.Directory(tmp.path);
     }
   }
 
@@ -598,7 +596,6 @@ class AuthService {
             d.Variable.withString(emailKey),
             d.Variable.withString(emailKey),
           ],
-          readsFrom: {db.users},
         ).get();
 
         if (dbResult.isNotEmpty) {

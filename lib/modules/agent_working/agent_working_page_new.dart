@@ -1,17 +1,16 @@
-// modules/settings/settings_page.dart - Clean Architecture Entry Point
 import 'package:flutter/material.dart';
 import 'package:shared/shared.dart' show AppDatabase;
-import '../../presentation/settings/settings_page.dart' as clean_arch;
+import '../../presentation/agent_working/agent_working_page_clean.dart' as clean_arch;
 
 // This is entry point that maintains the original import path
 // but delegates to clean architecture implementation
-class SettingsPage extends StatelessWidget {
+class AgentWorkingPage extends StatelessWidget {
   final AppDatabase db;
   
-  const SettingsPage({super.key, required this.db});
+  const AgentWorkingPage({super.key, required this.db});
 
   @override
   Widget build(BuildContext context) {
-    return clean_arch.SettingsPageClean(db: db);
+    return clean_arch.AgentWorkingPageClean(db: db);
   }
 }

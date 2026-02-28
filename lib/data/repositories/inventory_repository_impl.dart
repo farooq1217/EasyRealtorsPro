@@ -183,116 +183,60 @@ class InventoryRepositoryImpl implements InventoryRepository {
     }
   }
 
-  @override
-  Future<List<Map<String, String>>> getSocieties() async {
-    try {
-      final result = await db.customSelect('''
-        SELECT id, name FROM societies 
-        WHERE is_active = 1
-        ORDER BY name
-      ''').get();
-      
-      final items = result.map((r) => {
-        'id': r.data['id'] as String,
-        'name': r.data['name'] as String,
-      }).toList();
-      
-      // Filter by company if not super admin
-      if (!isSuperAdmin && companyId != null) {
-        return items.where((item) => item['id'] == companyId).toList();
-      }
-      
-      return items;
-    } catch (e) {
-      debugPrint('Error loading societies: $e');
-      return [];
-    }
-  }
-
-  @override
-  Future<List<Map<String, String>>> getBlocks() async {
-    try {
-      final result = await db.customSelect('''
-        SELECT id, society_id, name FROM blocks 
-        WHERE is_active = 1
-        ORDER BY name
-      ''').get();
-      
-      final items = result.map((r) => {
-        'id': r.data['id'] as String,
-        'society_id': r.data['society_id'] as String,
-        'name': r.data['name'] as String,
-      }).toList();
-      
-      // Filter by company if not super admin
-      if (!isSuperAdmin && companyId != null) {
-        return items.where((item) => item['society_id'] == companyId).toList();
-      }
-      
-      return items;
-    } catch (e) {
-      debugPrint('Error loading blocks: $e');
-      return [];
-    }
-  }
-
-  @override
-  Future<List<Map<String, String>>> getBlocksBySociety(String societyId) async {
-    try {
-      final result = await db.customSelect(
-        'SELECT id, name FROM blocks WHERE society_id = ? AND is_active = 1 ORDER BY name',
-        variables: [d.Variable.withString(societyId)],
-      ).get();
-      
-      final items = result.map((r) => {
-        'id': r.data['id'] as String,
-        'name': r.data['name'] as String,
-      }).toList();
-      
-      // Filter by company if not super admin
-      if (!isSuperAdmin && companyId != null) {
-        return items.where((item) => item['id'] == companyId).toList();
-      }
-      
-      return items;
-    } catch (e) {
-      debugPrint('Error loading blocks by society: $e');
-      return [];
-    }
-  }
-
   // Private helper methods
   Future<List<InventoryItem>> _getFiles() async {
-    final result = await db.customSelect('''
-      SELECT * FROM files_table 
-      WHERE is_active = 1
-      ORDER BY updated_at DESC
-    ''').get();
-    
-    final items = result.map((r) => InventoryItem.fromMap(r.data, InventoryType.file)).toList();
-    
-    // Filter by company if not super admin
-    if (!isSuperAdmin && companyId != null) {
-      return items.where((item) => item.companyId == companyId).toList();
+    try {
+      final result = await db.customSelect('''
+        SELECT * FROM files_table 
+        WHERE is_active = 1
+        ORDER BY updated_at DESC
+      ''').get();
+      
+      // Explicit type-safe mapping
+      final List<InventoryItem> items = [];
+      for (final row in result) {
+        final Map<String, dynamic> data = Map<String, dynamic>.from(row.data);
+        final item = InventoryItem.fromMap(data, InventoryType.file);
+        items.add(item);
+      }
+      
+      // Filter by company if not super admin
+      if (!isSuperAdmin && companyId != null) {
+        return items.where((item) => item.companyId == companyId).toList();
+      }
+      
+      return items;
+    } catch (e) {
+      debugPrint('Error in _getFiles: $e');
+      rethrow;
     }
-    
-    return items;
   }
 
   Future<List<InventoryItem>> _getProperties() async {
-    final result = await db.customSelect('''
-      SELECT * FROM properties 
-      WHERE is_active = 1
-      ORDER BY updated_at DESC
-    ''').get();
-    
-    final items = result.map((r) => InventoryItem.fromMap(r.data, InventoryType.property)).toList();
-    
-    // Filter by company if not super admin
-    if (!isSuperAdmin && companyId != null) {
-      return items.where((item) => item.companyId == companyId).toList();
+    try {
+      final result = await db.customSelect('''
+        SELECT * FROM properties 
+        WHERE is_active = 1
+        ORDER BY updated_at DESC
+      ''').get();
+      
+      // Explicit type-safe mapping
+      final List<InventoryItem> items = [];
+      for (final row in result) {
+        final Map<String, dynamic> data = Map<String, dynamic>.from(row.data);
+        final item = InventoryItem.fromMap(data, InventoryType.property);
+        items.add(item);
+      }
+      
+      // Filter by company if not super admin
+      if (!isSuperAdmin && companyId != null) {
+        return items.where((item) => item.companyId == companyId).toList();
+      }
+      
+      return items;
+    } catch (e) {
+      debugPrint('Error in _getProperties: $e');
+      rethrow;
     }
-    
-    return items;
   }
 }

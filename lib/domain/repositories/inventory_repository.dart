@@ -25,13 +25,4 @@ abstract class InventoryRepository {
   
   // Delete item (soft delete)
   Future<void> deleteItem(String id);
-  
-  // Get societies for filters
-  Future<List<Map<String, String>>> getSocieties();
-  
-  // Get blocks for filters
-  Future<List<Map<String, String>>> getBlocks();
-  
-  // Get blocks by society
-  Future<List<Map<String, String>>> getBlocksBySociety(String societyId);
 }

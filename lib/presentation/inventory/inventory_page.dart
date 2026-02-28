@@ -5,6 +5,7 @@ import '../../../core/font_utils.dart';
 import 'package:provider/provider.dart';
 import '../../domain/models/inventory_item.dart';
 import '../../data/repositories/inventory_repository_impl.dart';
+import '../../data/repositories/society_repository_impl.dart';
 import '../../core/services/app_storage.dart' show AppStorage;
 import '../../core/services/auth_service.dart';
 import '../../core/shared_utils.dart' show TopRightSearch;
@@ -74,6 +75,11 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
     
     _viewModel = InventoryViewModel(
       InventoryRepositoryImpl(
+        widget.db,
+        companyId: companyId,
+        isSuperAdmin: isSuper,
+      ),
+      SocietyRepositoryImpl(
         widget.db,
         companyId: companyId,
         isSuperAdmin: isSuper,

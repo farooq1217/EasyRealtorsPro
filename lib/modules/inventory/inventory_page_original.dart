@@ -134,7 +134,10 @@ class _FilesPageState extends State<FilesPage> with SingleTickerProviderStateMix
         .customSelect('SELECT * FROM $table $where ORDER BY updated_at DESC', variables: vars)
         .get();
     if (!mounted) return;
-    setState(() { _rows = result.map((r) => r.data).toList(); _loading = false; });
+    setState(() { 
+      _rows = result.map((r) => Map<String, dynamic>.from(r.data)).toList(); 
+      _loading = false; 
+    });
   }
 
   // Get filtered rows based on search query, status filter, society, and block

@@ -213,7 +213,12 @@ class _InventoryFormState extends State<InventoryForm> {
             _buildSectionHeader('Location Details', Icons.map_outlined),
             _buildDropdown('Society', viewModel.societies, selSoc, (v) {
               if (!mounted) return;
-              setState(() { selSoc = v; selBlk = null; });
+              setState(() { 
+                selSoc = v; 
+                selBlk = null; // Reset block selection
+                // Trigger block reload in ViewModel
+                viewModel.setSelectedSociety(v);
+              });
             }),
             const SizedBox(height: 16),
             _buildDropdown('Block', viewModel.getAvailableBlocks(), selBlk, (v) {

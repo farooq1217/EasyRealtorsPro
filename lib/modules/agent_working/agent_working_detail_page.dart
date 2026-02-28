@@ -29,6 +29,8 @@ import '../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../core/services/app_storage.dart' show AppStorage;
 import '../../widgets/image_upload_widget.dart' show ImageUploadWidget;
 import '../../widgets/primary_gradient_button.dart' show PrimaryGradientButton;
+import '../../presentation/view_models/report_view_model.dart';
+import '../../data/repositories/report_repository_impl.dart';
 
 class AgentWorkingDetailPage extends StatefulWidget {
   final Map<String, dynamic> entryData;
@@ -48,10 +50,18 @@ class AgentWorkingDetailPage extends StatefulWidget {
 
 class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
   DateTime? _selectedNextDate;
+  late ReportViewModel _reportViewModel;
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize report view model
+    final isSuperAdmin = RoleUtils.isSuperAdmin(null) || PermissionHelper.isBypassUser(null);
+    final companyId = RoleUtils.getUserCompanyId(null);
+    final repository = ReportRepositoryImpl(widget.db, companyId: companyId, isSuperAdmin: isSuperAdmin);
+    _reportViewModel = ReportViewModel(repository);
+    
     // Initialize next date from existing data
     final nextDateStr = widget.entryData['nextWorkingDate']?.toString() ?? 
                         widget.entryData['next_working_date']?.toString();
@@ -267,41 +277,270 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
 
   Future<void> _generateProfessionalReceipt() async {
     final entry = widget.entryData;
+    final entryId = entry['id']?.toString();
     final isTransfer = entry['type']?.toString() == 'transfer' ||
         (entry['type']?.toString()?.isEmpty ?? true && entry['category'] != null);
-    final title = 'Agent Working Receipt';
+    final entryType = isTransfer ? 'transfer' : 'requirement';
+    
+    if (entryId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid entry ID'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
 
-    final keyValues = <MapEntry<String, String>>[
-      MapEntry('ID', entry['id']?.toString() ?? 'N/A'),
-      MapEntry('Type', isTransfer ? 'Transfer' : 'Client Requirement'),
-      MapEntry('Status', entry['status']?.toString() ?? 'N/A'),
-      MapEntry('Category', entry['category']?.toString() ?? 'N/A'),
-      MapEntry('Client', entry['name']?.toString() ?? 'N/A'),
-      MapEntry('Client Mobile', entry['clientMobile']?.toString() ?? 'N/A'),
-      MapEntry('From User', entry['fromUser']?.toString() ?? 'N/A'),
-      MapEntry('To User', entry['toUser']?.toString() ?? 'N/A'),
-      MapEntry('Updated', (entry['updated_at'] ?? entry['updatedAt'])?.toString().split('T').first ?? 'N/A'),
-      if (entry['remarks'] != null && entry['remarks'].toString().trim().isNotEmpty) MapEntry('Remarks', entry['remarks'].toString()),
-    ];
-
-    final gridRows = <Map<String, String>>[
-      {
-        'Plot/Block': (entry['plotNo'] ?? entry['registryNumber'] ?? '-').toString(),
-        'Next Date': ((entry['nextWorkingDate'] ?? entry['next_working_date']) ?? '-').toString(),
-        'Status': entry['status']?.toString() ?? 'N/A',
-        'Company': entry['companyId']?.toString() ?? 'N/A',
-      },
-    ];
-
-    await ProfessionalPdfGenerator.generateReceipt(
+    // Show preview dialog
+    if (!mounted) return;
+    
+    showDialog(
       context: context,
-      db: widget.db,
-      module: 'AgentWorking',
-      title: title,
-      entityId: entry['id']?.toString(),
-      keyValues: keyValues,
-      gridRows: gridRows,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(dialogContext).size.width * 0.8,
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.8,
+          ),
+          child: Column(
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF6B35),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(12),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.receipt_long, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Professional Receipt Preview',
+                        style: AppFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Preview content
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Receipt details preview
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildPreviewRow('Receipt ID', entryId),
+                            _buildPreviewRow('Type', isTransfer ? 'Transfer' : 'Client Requirement'),
+                            _buildPreviewRow('Owner Name', entry['name']?.toString() ?? 'N/A'),
+                            if (entry['category'] != null)
+                              _buildPreviewRow('Category', entry['category']!.toString()),
+                            if (entry['transferDate'] != null || entry['transfer_date'] != null)
+                              _buildPreviewRow('Date', _formatPreviewDate(
+                                entry['transferDate']?.toString() ?? entry['transfer_date']?.toString()
+                              )),
+                            if (entry['status'] != null)
+                              _buildPreviewRow('Status', entry['status']!.toString()),
+                            if (entry['remarks'] != null && entry['remarks']!.toString().isNotEmpty)
+                              _buildPreviewRow('Remarks', entry['remarks']!.toString()),
+                          ],
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 20),
+                      
+                      // Company info preview
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Company Information',
+                              style: AppFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            _buildPreviewRow('Company', _reportViewModel.companyInfo?['name']?.toString() ?? 'N/A'),
+                            _buildPreviewRow('Address', _reportViewModel.companyInfo?['address']?.toString() ?? 'N/A'),
+                            _buildPreviewRow('Contact', _reportViewModel.companyInfo?['contact']?.toString() ?? 'N/A'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Action buttons
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: BorderSide(color: Colors.grey.shade400),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: AppFonts.poppins(color: Colors.grey.shade600),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: PrimaryGradientButton(
+                        text: 'Generate & Print',
+                        onPressed: () async {
+                          Navigator.of(dialogContext).pop();
+                          await _generateAndPrintReceipt(entryId, entryType);
+                        },
+                        icon: Icons.print,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
+  }
+
+  Widget _buildPreviewRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: AppFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: AppFonts.poppins(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatPreviewDate(String? dateString) {
+    if (dateString == null || dateString.isEmpty) return 'N/A';
+    try {
+      final date = DateTime.parse(dateString);
+      return DateFormat('dd MMM yyyy').format(date);
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  Future<void> _generateAndPrintReceipt(String entryId, String entryType) async {
+    try {
+      // Generate PDF
+      final pdfBytes = await _reportViewModel.generateProfessionalReceipt(
+        entryId: entryId,
+        entryType: entryType,
+      );
+      
+      if (pdfBytes != null && mounted) {
+        // Show loading dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => Dialog(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text('Preparing receipt...', style: AppFonts.poppins(fontSize: 14)),
+                ],
+              ),
+            ),
+          ),
+        );
+        
+        // Print the PDF
+        await Printing.layoutPdf(
+          onLayout: (_) => pdfBytes,
+          name: 'professional_receipt_${DateTime.now().millisecondsSinceEpoch}.pdf',
+        );
+        
+        // Close loading dialog
+        if (context.mounted) {
+          Navigator.of(context).pop();
+        }
+        
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Professional receipt generated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error generating receipt: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate receipt: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
   
   
