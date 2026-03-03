@@ -132,7 +132,14 @@ class InventoryViewModel extends ChangeNotifier {
     if (_selectedSocietyId != societyId) {
       _selectedSocietyId = societyId;
       _selectedBlockId = null; // Reset block when society changes
-      loadBlocks(societyId: societyId);
+      notifyListeners(); // Immediate UI update for society change
+      
+      // Load blocks asynchronously and notify when complete
+      loadBlocks(societyId: societyId).then((_) {
+        notifyListeners(); // Second notification after blocks are loaded
+      });
+      
+      // Load items with new filters
       loadItems();
     }
   }
@@ -140,6 +147,7 @@ class InventoryViewModel extends ChangeNotifier {
   void setSelectedBlock(String? blockId) {
     if (_selectedBlockId != blockId) {
       _selectedBlockId = blockId;
+      notifyListeners(); // Immediate UI update for block change
       loadItems();
     }
   }

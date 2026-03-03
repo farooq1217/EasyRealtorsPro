@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey, FilteringTextInputFormatter, Clipboard, ClipboardData;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -12,6 +11,7 @@ import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import 'package:provider/provider.dart';
+import '../../core/font_utils.dart';
 import '../../core/services/auth_service.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart' show buildKeyValueReportPdf, loadCurrentUserFromStorage, loadReportBranding, savePdfBytesToDisk, generateReportSerial, logReportHistory;
@@ -44,18 +44,12 @@ class _CompaniesPageState extends State<CompaniesPage> {
   @override
   void initState() {
     super.initState();
-    _viewModel = CompanyViewModel(CompanyRepositoryImpl(widget.db));
     
-    // Initialize ViewModel
+    // Initialize ViewModel with Provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _viewModel = CompanyViewModel(CompanyRepositoryImpl(widget.db));
       _viewModel.initialize();
     });
-  }
-
-  @override
-  void dispose() {
-    _viewModel.dispose();
-    super.dispose();
   }
 
   @override

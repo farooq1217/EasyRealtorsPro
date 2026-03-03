@@ -1,5 +1,6 @@
 // lib/modules/trading/trading_page.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../core/font_utils.dart';
 import 'package:flutter/foundation.dart';
 
@@ -7,7 +8,7 @@ import 'package:intl/intl.dart';
 import '../../domain/models/trading_entry.dart';
 import '../../domain/repositories/trading_repository.dart';
 import '../../data/repositories/trading_repository_impl.dart';
-import '../../presentation/trading/trading_view_model.dart';
+import '../../presentation/view_models/trading_view_model.dart';
 import '../../presentation/trading/widgets/trading_form.dart';
 import '../../presentation/trading/widgets/trading_list.dart';
 import '../../core/services/pdf_service.dart';
@@ -27,7 +28,6 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
   String _searchQuery = '';
   String _dateRangeFilter = 'All';
   String _transactionTypeFilter = 'All';
-  
 
   @override
   void initState() {
@@ -43,250 +43,376 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     
     final repo = TradingRepositoryImpl(widget.db);
     viewModel = TradingViewModel(repo);
-    viewModel.loadEntries();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    viewModel.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Trading Management', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
+    return ChangeNotifierProvider<TradingViewModel>.value(
+      value: viewModel,
+      child: Consumer<TradingViewModel>(
+        builder: (context, viewModel, child) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFF8F9FA),
+            appBar: AppBar(
+              title: Text('Trading', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
+              backgroundColor: const Color(0xFF2D3748),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              bottom: TabBar(
+                controller: _tabController,
+                indicatorColor: const Color(0xFFFF6B35),
+                labelColor: const Color(0xFFFF6B35),
+                unselectedLabelColor: Colors.white70,
+                tabs: const [
+                  Tab(text: 'Files'),
+                  Tab(text: 'Forms'),
+                ],
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.white),
+                  onPressed: () => viewModel.refresh(),
+                  tooltip: 'Refresh',
+                ),
+              ],
             ),
-          ),
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          tabs: const [Tab(text: "Trading File"), Tab(text: "Trading Form")],
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TopRightSearch(onChanged: (q) => setState(() => _searchQuery = q)),
-          ),
-        ],
-      ),
-      body: ListenableBuilder(
-        listenable: viewModel,
-        builder: (context, _) {
-          if (viewModel.entries == null) return Center(child: Text('Loading...'));
-          
-          return Column(
-            children: [
-              _buildFilterRow(),
-              // Tab content with buttons
-              Container(
-                height: 80,
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildTabContent(isFileTab: true),
-                    _buildTabContent(isFileTab: false),
-                  ],
-                ),
-              ),
-              // List Section
-              Expanded(
-                child: Stack(
-                  children: [
-                    // TradingList is ALWAYS visible
-                    TradingList(
-                      // Filter by entryType based on current tab
-                      entries: viewModel.entries.where((entry) {
-                        // 1. Tab Filter - CRITICAL: Only show entries matching current tab
-                        final currentTabIndex = _tabController.index;
-                        final matchesTab = (currentTabIndex == 0 && entry.entryType == TradingEntryType.file) ||
-                                           (currentTabIndex == 1 && entry.entryType == TradingEntryType.form);
-                        
-                        if (!matchesTab) return false;
-                        
-                        // 2. Search Filter
-                        final matchesSearch = entry.personName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                            entry.estateName.toLowerCase().contains(_searchQuery.toLowerCase());
-
-                        // 3. Transaction Type Filter
-                        final matchesType = _transactionTypeFilter == 'All' || 
-                            entry.type.toString().split('.').last.toLowerCase() == _transactionTypeFilter.toLowerCase();
-
-                        // 4. Date Filter (Simplified)
-                        // Note: Aap isey mazeed behtar kar sakte hain DateFormat use karke
-                        bool matchesDate = true; 
-                        if (_dateRangeFilter == 'Today') {
-                          final now = DateTime.now();
-                          matchesDate = entry.date.year == now.year && 
-                                        entry.date.month == now.month && 
-                                        entry.date.day == now.day;
-                        } else if (_dateRangeFilter == 'This Week') {
-                          final now = DateTime.now();
-                          final weekStart = now.subtract(Duration(days: now.weekday - 1));
-                          final weekEnd = weekStart.add(const Duration(days: 6));
-                          matchesDate = entry.date.isAfter(weekStart.subtract(const Duration(days: 1))) && 
-                                        entry.date.isBefore(weekEnd.add(const Duration(days: 1)));
-                        } else if (_dateRangeFilter == 'This Month') {
-                          final now = DateTime.now();
-                          matchesDate = entry.date.year == now.year && 
-                                        entry.date.month == now.month;
-                        }
-
-                        return matchesSearch && matchesType && matchesDate;
-                      }).toList(),
-                      onDelete: (id) async {
-                        await viewModel.deleteEntry(id);
-                      },
-                    ),
-                    // Show loading indicator ONLY when loading, on top of the list
-                    if (viewModel.isLoading)
-                      Container(
-                        color: Colors.white.withOpacity(0.8),
-                        child: const Center(
-                          child: CircularProgressIndicator(),
-                        ),
+            body: Column(
+              children: [
+                // Search and Filters
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  color: Colors.white,
+                  child: Column(
+                    children: [
+                      // Search Bar
+                      TopRightSearch(
+                        onChanged: (value) {
+                          _searchQuery = value;
+                          viewModel.searchEntries(value);
+                        },
                       ),
-                  ],
+                      const SizedBox(height: 12),
+                      
+                      // Filter Chips
+                      Row(
+                        children: [
+                          // Date Range Filter
+                          FilterChip(
+                            label: Text(_dateRangeFilter),
+                            selected: _dateRangeFilter != 'All',
+                            onSelected: (selected) {
+                              _showDateRangeFilter();
+                            },
+                            backgroundColor: Colors.grey.shade100,
+                            selectedColor: const Color(0xFFFF6B35).withOpacity(0.2),
+                            labelStyle: TextStyle(
+                              color: _dateRangeFilter != 'All' 
+                                ? const Color(0xFFFF6B35) 
+                                : Colors.grey.shade700,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          
+                          // Transaction Type Filter
+                          FilterChip(
+                            label: Text(_transactionTypeFilter),
+                            selected: _transactionTypeFilter != 'All',
+                            onSelected: (selected) {
+                              _showTransactionTypeFilter();
+                            },
+                            backgroundColor: Colors.grey.shade100,
+                            selectedColor: const Color(0xFFFF6B35).withOpacity(0.2),
+                            labelStyle: TextStyle(
+                              color: _transactionTypeFilter != 'All' 
+                                ? const Color(0xFFFF6B35) 
+                                : Colors.grey.shade700,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          
+                          // Status Filter
+                          FilterChip(
+                            label: Text(viewModel.statusFilter),
+                            selected: viewModel.statusFilter != 'All',
+                            onSelected: (selected) {
+                              _showStatusFilter();
+                            },
+                            backgroundColor: Colors.grey.shade100,
+                            selectedColor: const Color(0xFFFF6B35).withOpacity(0.2),
+                            labelStyle: TextStyle(
+                              color: viewModel.statusFilter != 'All' 
+                                ? const Color(0xFFFF6B35) 
+                                : Colors.grey.shade700,
+                            ),
+                          ),
+                          
+                          const Spacer(),
+                          
+                          // Clear Filters
+                          if (_dateRangeFilter != 'All' || 
+                              _transactionTypeFilter != 'All' || 
+                              viewModel.statusFilter != 'All')
+                            TextButton.icon(
+                              onPressed: () {
+                                _dateRangeFilter = 'All';
+                                _transactionTypeFilter = 'All';
+                                viewModel.clearFilters();
+                                setState(() {});
+                              },
+                              icon: const Icon(Icons.clear, size: 16),
+                              label: const Text('Clear'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFFFF6B35),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                
+                // Tab Content
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      // Files Tab
+                      _buildFilesTab(viewModel),
+                      
+                      // Forms Tab
+                      _buildFormsTab(viewModel),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            floatingActionButton: FloatingActionButton(
+              onPressed: () => _showTradingFormDialog(_tabController.index == 0),
+              backgroundColor: const Color(0xFFFF6B35),
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
           );
-        }
+        },
       ),
     );
   }
 
-  Widget _buildFilterRow() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Expanded(child: _buildDropdown('Date Range', _dateRangeFilter, ['All', 'Today', 'This Week', 'This Month'], (v) => setState(() => _dateRangeFilter = v!))),
-          const SizedBox(width: 10),
-          Expanded(child: _buildDropdown('Type', _transactionTypeFilter, ['All', 'Buy', 'Sell'], (v) => setState(() => _transactionTypeFilter = v!))),
-        ],
-      ),
+  Widget _buildFilesTab(TradingViewModel viewModel) {
+    final fileEntries = viewModel.fileEntries;
+    
+    if (viewModel.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
+    if (viewModel.error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading data',
+              style: AppFonts.poppins(fontSize: 18, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              viewModel.error!,
+              style: AppFonts.poppins(fontSize: 14, color: Colors.grey.shade500),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => viewModel.refresh(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6B35),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    if (fileEntries.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.description_outlined, size: 64, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              'No file entries found',
+              style: AppFonts.poppins(fontSize: 18, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Add your first file entry to get started',
+              style: AppFonts.poppins(fontSize: 14, color: Colors.grey.shade500),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return TradingList(
+      entries: fileEntries,
+      onDelete: (entryId) => viewModel.deleteEntry(entryId),
+      isLoading: viewModel.isLoading,
     );
   }
 
-  Widget _buildDropdown(String label, String value, List<String> items, ValueChanged<String?> onChanged) {
-    return DropdownButtonFormField<String>(
-      value: value,
-      decoration: InputDecoration(labelText: label, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-      items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-      onChanged: onChanged,
+  Widget _buildFormsTab(TradingViewModel viewModel) {
+    final formEntries = viewModel.formEntries;
+    
+    if (viewModel.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
+    if (viewModel.error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading data',
+              style: AppFonts.poppins(fontSize: 18, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              viewModel.error!,
+              style: AppFonts.poppins(fontSize: 14, color: Colors.grey.shade500),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => viewModel.refresh(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6B35),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    if (formEntries.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.description_outlined, size: 64, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              'No form entries found',
+              style: AppFonts.poppins(fontSize: 18, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Add your first form entry to get started',
+              style: AppFonts.poppins(fontSize: 14, color: Colors.grey.shade500),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return TradingList(
+      entries: formEntries,
+      onDelete: (entryId) => viewModel.deleteEntry(entryId),
+      isLoading: viewModel.isLoading,
     );
   }
 
-  Widget _buildTabContent({required bool isFileTab}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          _buildActionButton(isFileTab, TradingType.buy),
-          const SizedBox(width: 8),
-          _buildActionButton(isFileTab, TradingType.sell),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(bool isFileTab, TradingType type) {
-    String label = "${type == TradingType.buy ? 'Buy' : 'Sell'} ${isFileTab ? 'File' : 'Form'}";
-    return FloatingActionButton.extended(
-      heroTag: label, // Unique tag to prevent crash
-      onPressed: () => _showTradingFormDialog(isFileTab, type),
-      label: Text(label),
-      icon: Icon(type == TradingType.buy ? Icons.add_shopping_cart : Icons.sell),
-    );
-  }
-
-
-  void _showTradingFormDialog(bool isFileTab, TradingType type) {
+  void _showTradingFormDialog(bool isFileTab) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogBuilderContext) => Dialog(
+      builder: (dialogContext) => Dialog(
         insetPadding: const EdgeInsets.all(16),
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(dialogBuilderContext).size.width * 0.9,
-            maxHeight: MediaQuery.of(dialogBuilderContext).size.height * 0.9,
+            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
           ),
           child: Column(
             children: [
-              // Header with back button
+              // Header
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF2D3748),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () => Navigator.of(dialogBuilderContext).pop(),
-                      style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                    ),
+                    const SizedBox(width: 16),
+                    Text(
+                      'Add ${isFileTab ? 'File' : 'Form'} Entry',
+                      style: AppFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
                     ),
                     const Spacer(),
                   ],
                 ),
               ),
-              // Scrollable form content
+              
+              // Form Content
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: GenericTradingForm(
-                    type: type,
-                    isFileTab: isFileTab,
-                    onSave: (entry) async {
-  try {
-    // Save entry first and wait for completion
-    await viewModel.saveEntry(entry);
-    
-    // Add small delay to ensure database operation completes
-    await Future.delayed(const Duration(milliseconds: 500));
-    
-    // Explicitly reload entries to ensure UI updates immediately
-    await viewModel.loadEntries();
-    
-    // Only close dialog after successful save
-    if (dialogBuilderContext.mounted) {
-      Navigator.of(dialogBuilderContext).pop();
-    }
-    
-    // Show success message
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Trading ${isFileTab ? 'File' : 'Form'} entry saved successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  } catch (e) {
-    // Keep dialog open on error so user can try again
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Error saving entry: ${e.toString()}'),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 5),
-      ),
-    );
-  }
-},
-                    onFormReset: () {
-                      if (dialogBuilderContext.mounted) {
-                        Navigator.of(dialogBuilderContext).pop();
+                child: GenericTradingForm(
+                  type: TradingType.buy, // Default type
+                  isFileTab: isFileTab,
+                  onSave: (entry) async {
+                    try {
+                      await viewModel.saveEntry(entry);
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Trading ${isFileTab ? 'File' : 'Form'} entry saved successfully!',
+                              style: AppFonts.poppins(),
+                            ),
+                            backgroundColor: const Color(0xFFFF6B35),
+                          ),
+                        );
                       }
-                    },
-                  ),
+                    } catch (e) {
+                      if (dialogContext.mounted) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Error saving entry: $e',
+                              style: AppFonts.poppins(),
+                            ),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
                 ),
               ),
             ],
@@ -296,19 +422,147 @@ class _TradingPageState extends State<TradingPage> with SingleTickerProviderStat
     );
   }
 
-  void _showDeleteDialog(BuildContext context, String id) {
+  void _showDateRangeFilter() {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Delete?"),
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          'Filter by Date Range',
+          style: AppFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildDateOption('All', 'All'),
+            _buildDateOption('Today', 'Today'),
+            _buildDateOption('This Week', 'This Week'),
+            _buildDateOption('This Month', 'This Month'),
+            _buildDateOption('This Year', 'This Year'),
+          ],
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("No")),
-          TextButton(onPressed: () async {
-            await viewModel.deleteEntry(id);
-            Navigator.pop(ctx);
-          }, child: const Text("Yes")),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(
+              'Cancel',
+              style: AppFonts.poppins(color: Colors.grey.shade600),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDateOption(String label, String value) {
+    return RadioListTile<String>(
+      title: Text(label, style: AppFonts.poppins()),
+      value: value,
+      groupValue: _dateRangeFilter,
+      onChanged: (value) {
+        if (value != null) {
+          setState(() {
+            _dateRangeFilter = value;
+            viewModel.filterByDateRange(value);
+          });
+          Navigator.of(context).pop();
+        }
+      },
+    );
+  }
+
+  void _showTransactionTypeFilter() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          'Filter by Transaction Type',
+          style: AppFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildTransactionTypeOption('All', 'All'),
+            _buildTransactionTypeOption('Buy', 'Buy'),
+            _buildTransactionTypeOption('Sell', 'Sell'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(
+              'Cancel',
+              style: AppFonts.poppins(color: Colors.grey.shade600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransactionTypeOption(String label, String value) {
+    return RadioListTile<String>(
+      title: Text(label, style: AppFonts.poppins()),
+      value: value,
+      groupValue: _transactionTypeFilter,
+      onChanged: (value) {
+        if (value != null) {
+          setState(() {
+            _transactionTypeFilter = value;
+            if (value == 'All') {
+              viewModel.filterByType(null);
+            } else {
+              // For transaction type filter, we need to filter by type in the search query
+              // This will be handled in the ViewModel's _getFilteredEntries method
+              viewModel.searchEntries(_searchQuery);
+            }
+          });
+          Navigator.of(context).pop();
+        }
+      },
+    );
+  }
+
+  void _showStatusFilter() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          'Filter by Status',
+          style: AppFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildStatusOption('All', 'All'),
+            _buildStatusOption('Pending', 'Pending'),
+            _buildStatusOption('Completed', 'Completed'),
+            _buildStatusOption('Cancelled', 'Cancelled'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(
+              'Cancel',
+              style: AppFonts.poppins(color: Colors.grey.shade600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusOption(String label, String value) {
+    return RadioListTile<String>(
+      title: Text(label, style: AppFonts.poppins()),
+      value: value,
+      groupValue: viewModel.statusFilter,
+      onChanged: (value) {
+        if (value != null) {
+          viewModel.filterByStatus(value);
+          Navigator.of(context).pop();
+        }
+      },
     );
   }
 }

@@ -10,6 +10,7 @@ import 'services/auth_service.dart';
 import '../responsive_widgets.dart';
 import '../image_cache_service.dart';
 import '../offline_sync_service.dart';
+import 'package:shared/shared.dart' show RoleUtils;
 
 // Note: PermissionHelper and AppStorage are in main.dart and should be imported directly
 // from '../main.dart' when needed

@@ -21,6 +21,8 @@ class TradingEntry {
   final double? netAmount; // Calculated field
   final String status;
   final String? comments;
+  final String? companyId; // Company ID for role-based access
+  final String? createdBy; // User ID who created this entry
 
   const TradingEntry({
     required this.id,
@@ -40,14 +42,16 @@ class TradingEntry {
     this.netAmount,
     this.status = 'Pending',
     this.comments,
+    this.companyId,
+    this.createdBy,
   });
 
   // Data save karne ke liye Map mein convert karna (Duplication khatam karne ke liye)
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'company_id': '', // Will be set by repository
-      'created_by': '', // Will be set by repository
+      'company_id': companyId, // Will be set by repository
+      'created_by': createdBy, // Will be set by repository
       'type': type == TradingType.buy ? 'buy' : 'sell',
       'entry_type': entryType == TradingEntryType.file ? 'file' : 'form',
       'date': date.toIso8601String(),

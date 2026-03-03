@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
-import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey, FilteringTextInputFormatter, Clipboard, ClipboardData;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -12,6 +12,7 @@ import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import 'package:provider/provider.dart';
+import '../../core/font_utils.dart';
 import '../../core/services/auth_service.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart' show buildKeyValueReportPdf, loadCurrentUserFromStorage, loadReportBranding, savePdfBytesToDisk, generateReportSerial, logReportHistory;
@@ -26,25 +27,25 @@ import '../../core/services/app_storage.dart' show AppStorage;
 import '../../widgets/image_upload_widget.dart' show ImageUploadWidget;
 import '../../widgets/primary_gradient_button.dart' show PrimaryGradientButton;
 import '../../core/shared_utils.dart' show TopRightSearch;
-import '../../presentation/view_models/company_view_model.dart';
-import '../../domain/models/company_model.dart';
-import '../../data/repositories/company_repository_impl.dart';
+import '../../presentation/view_models/user_view_model.dart';
+import '../../domain/models/user_model.dart';
+import '../../data/repositories/user_repository_impl.dart';
 
-class CompaniesPage extends StatefulWidget {
+class UsersPage extends StatefulWidget {
   final AppDatabase db;
-  const CompaniesPage({super.key, required this.db});
+  const UsersPage({super.key, required this.db});
 
   @override
-  State<CompaniesPage> createState() => _CompaniesPageState();
+  State<UsersPage> createState() => _UsersPageState();
 }
 
-class _CompaniesPageState extends State<CompaniesPage> {
-  late CompanyViewModel _viewModel;
+class _UsersPageState extends State<UsersPage> {
+  late UserViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
-    _viewModel = CompanyViewModel(CompanyRepositoryImpl(widget.db));
+    _viewModel = UserViewModel(UserRepositoryImpl(widget.db));
     
     // Initialize ViewModel
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -60,9 +61,9 @@ class _CompaniesPageState extends State<CompaniesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<CompanyViewModel>.value(
+    return ChangeNotifierProvider<UserViewModel>.value(
       value: _viewModel,
-      child: Consumer<CompanyViewModel>(
+      child: Consumer<UserViewModel>(
         builder: (context, viewModel, child) {
           if (viewModel.loading) {
             return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -70,19 +71,41 @@ class _CompaniesPageState extends State<CompaniesPage> {
 
           return Scaffold(
             appBar: AppBar(
-              title: Text('Companies Management', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
+              title: Text('Users Management', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
               actions: [
+                // Backfill User IDs button
+                if (RoleUtils.isSuperAdmin(viewModel.currentUser) || PermissionHelper.isBypassUser(viewModel.currentUser))
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) {
+                      if (value == 'backfill_ids') {
+                        viewModel.backfillUserIds();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'backfill_ids',
+                        child: Row(
+                          children: [
+                            Icon(Icons.format_list_numbered),
+                            SizedBox(width: 8),
+                            Text('Backfill User IDs'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 // Add button
                 if (viewModel.canAdd)
                   IconButton(
                     icon: const Icon(Icons.add),
-                    onPressed: () => _showAddCompanyDialog(context, viewModel),
-                    tooltip: 'Add Company',
+                    onPressed: () => _showAddUserDialog(context, viewModel),
+                    tooltip: 'Add User',
                   ),
                 // Global Search
                 TopRightSearch(
                   onChanged: (query) => viewModel.setSearchQuery(query),
-                  hintText: 'Search companies...',
+                  hintText: 'Search users...',
                 ),
               ],
             ),
@@ -91,11 +114,35 @@ class _CompaniesPageState extends State<CompaniesPage> {
                 // Statistics Cards
                 _buildStatisticsCards(context, viewModel),
                 
-                // Company List
+                // Backfill progress
+                if (viewModel.backfillingUserIds)
+                  Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      border: Border.all(color: Colors.orange.shade200),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            'Backfilling user IDs... Please wait.',
+                            style: AppFonts.poppins(color: Colors.orange.shade800),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                
+                // User List
                 Expanded(
-                  child: viewModel.filteredCompanies.isEmpty
+                  child: viewModel.filteredUsers.isEmpty
                       ? _buildEmptyState(context, viewModel)
-                      : _buildCompanyList(context, viewModel),
+                      : _buildUserList(context, viewModel),
                 ),
               ],
             ),
@@ -105,9 +152,9 @@ class _CompaniesPageState extends State<CompaniesPage> {
     );
   }
 
-  Widget _buildStatisticsCards(BuildContext context, CompanyViewModel viewModel) {
+  Widget _buildStatisticsCards(BuildContext context, UserViewModel viewModel) {
     return FutureBuilder<Map<String, dynamic>>(
-      future: viewModel.getCompanyStatistics(),
+      future: viewModel.getUserStatistics(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const SizedBox.shrink();
@@ -121,9 +168,9 @@ class _CompaniesPageState extends State<CompaniesPage> {
               Expanded(
                 child: _buildStatCard(
                   context,
-                  'Total Companies',
-                  stats['total_companies'].toString(),
-                  Icons.business,
+                  'Total Users',
+                  stats['total_users'].toString(),
+                  Icons.people,
                   Colors.blue,
                 ),
               ),
@@ -132,8 +179,8 @@ class _CompaniesPageState extends State<CompaniesPage> {
                 child: _buildStatCard(
                   context,
                   'Active',
-                  stats['active_companies'].toString(),
-                  Icons.check_circle,
+                  stats['active_users'].toString(),
+                  Icons.person,
                   Colors.green,
                 ),
               ),
@@ -142,8 +189,8 @@ class _CompaniesPageState extends State<CompaniesPage> {
                 child: _buildStatCard(
                   context,
                   'Inactive',
-                  stats['inactive_companies'].toString(),
-                  Icons.pause_circle,
+                  stats['inactive_users'].toString(),
+                  Icons.person_off,
                   Colors.orange,
                 ),
               ),
@@ -152,7 +199,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                 child: _buildStatCard(
                   context,
                   'Archived',
-                  stats['archived_companies'].toString(),
+                  stats['archived_users'].toString(),
                   Icons.archive,
                   Colors.red,
                 ),
@@ -198,19 +245,19 @@ class _CompaniesPageState extends State<CompaniesPage> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, CompanyViewModel viewModel) {
+  Widget _buildEmptyState(BuildContext context, UserViewModel viewModel) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.business,
+            Icons.people,
             size: 64,
             color: Colors.grey.shade400,
           ),
           const SizedBox(height: 16),
           Text(
-            "No Companies Found",
+            "No Users Found",
             style: AppFonts.poppins(
               fontSize: 16,
               color: Colors.grey.shade600,
@@ -219,7 +266,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
           ),
           if (viewModel.canAdd)
             Text(
-              "Tap the + button to add your first company",
+              "Tap the + button to add your first user",
               style: AppFonts.poppins(
                 fontSize: 14,
                 color: Colors.grey.shade500,
@@ -230,18 +277,18 @@ class _CompaniesPageState extends State<CompaniesPage> {
     );
   }
 
-  Widget _buildCompanyList(BuildContext context, CompanyViewModel viewModel) {
+  Widget _buildUserList(BuildContext context, UserViewModel viewModel) {
     return ListView.builder(
       padding: const EdgeInsets.all(12),
-      itemCount: viewModel.filteredCompanies.length,
+      itemCount: viewModel.filteredUsers.length,
       itemBuilder: (context, index) {
-        final company = viewModel.filteredCompanies[index];
-        return _buildCompanyCard(context, company, viewModel);
+        final user = viewModel.filteredUsers[index];
+        return _buildUserCard(context, user, viewModel);
       },
     );
   }
 
-  Widget _buildCompanyCard(BuildContext context, CompanyModel company, CompanyViewModel viewModel) {
+  Widget _buildUserCard(BuildContext context, UserModel user, UserViewModel viewModel) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 2,
@@ -251,9 +298,9 @@ class _CompaniesPageState extends State<CompaniesPage> {
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
         leading: CircleAvatar(
-          backgroundColor: company.isActive ? Colors.blue : Colors.grey,
+          backgroundColor: user.isActive ? Colors.green : Colors.grey,
           child: Text(
-            company.name.isNotEmpty ? company.name[0].toUpperCase() : 'C',
+            user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
             style: AppFonts.poppins(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -261,7 +308,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
           ),
         ),
         title: Text(
-          company.name,
+          user.name,
           style: AppFonts.poppins(
             fontWeight: FontWeight.w600,
             fontSize: 15,
@@ -271,58 +318,34 @@ class _CompaniesPageState extends State<CompaniesPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
+            Text(
+              user.email,
+              style: AppFonts.poppins(
+                fontSize: 13,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 2),
             Row(
               children: [
                 Icon(
-                  Icons.people,
+                  Icons.business,
                   size: 14,
                   color: Colors.grey.shade600,
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  '${company.maxUserLimit ?? 5} users',
-                  style: AppFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Icon(
-                  Icons.star,
-                  size: 14,
-                  color: Colors.grey.shade600,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  company.subscriptionTier ?? 'Starter',
-                  style: AppFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
+                Expanded(
+                  child: Text(
+                    user.userId,
+                    style: AppFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
                   ),
                 ),
               ],
             ),
-            if (company.address != null)
-              Row(
-                children: [
-                  Icon(
-                    Icons.location_on,
-                    size: 14,
-                    color: Colors.grey.shade600,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      company.address!,
-                      style: AppFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            if (company.contact != null)
+            if (user.contactNo != null)
               Row(
                 children: [
                   Icon(
@@ -333,7 +356,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      company.contact!,
+                      user.contactNo!,
                       style: AppFonts.poppins(
                         fontSize: 12,
                         color: Colors.grey.shade600,
@@ -351,11 +374,11 @@ class _CompaniesPageState extends State<CompaniesPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: _getStatusColor(company.status),
+                color: _getStatusColor(user.status),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                company.status ?? 'active',
+                user.status ?? 'active',
                 style: AppFonts.poppins(
                   fontSize: 10,
                   color: Colors.white,
@@ -370,13 +393,13 @@ class _CompaniesPageState extends State<CompaniesPage> {
                 icon: const Icon(Icons.more_vert),
                 onSelected: (value) {
                   if (value == 'edit') {
-                    viewModel.editCompany(company);
-                    _showAddCompanyDialog(context, viewModel);
+                    viewModel.editUser(user);
+                    _showAddUserDialog(context, viewModel);
                   } else if (value == 'toggle_status') {
-                    final newStatus = company.status == 'active' ? 'inactive' : 'active';
-                    viewModel.toggleCompanyStatus(company.id, newStatus);
+                    final newStatus = user.status == 'active' ? 'inactive' : 'active';
+                    viewModel.toggleUserStatus(user.id, newStatus);
                   } else if (value == 'delete') {
-                    _showDeleteConfirmation(context, company, viewModel);
+                    _showDeleteConfirmation(context, user, viewModel);
                   }
                 },
                 itemBuilder: (context) => [
@@ -396,9 +419,9 @@ class _CompaniesPageState extends State<CompaniesPage> {
                       value: 'toggle_status',
                       child: Row(
                         children: [
-                          Icon(company.status == 'active' ? Icons.pause : Icons.play_arrow),
+                          Icon(user.status == 'active' ? Icons.person_off : Icons.person),
                           const SizedBox(width: 8),
-                          Text(company.status == 'active' ? 'Deactivate' : 'Activate'),
+                          Text(user.status == 'active' ? 'Deactivate' : 'Activate'),
                         ],
                       ),
                     ),
@@ -434,7 +457,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
     }
   }
 
-  void _showAddCompanyDialog(BuildContext context, CompanyViewModel viewModel) {
+  void _showAddUserDialog(BuildContext context, UserViewModel viewModel) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -467,7 +490,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                     ),
                     const Spacer(),
                     Text(
-                      viewModel.editingCompany == null ? 'Add Company' : 'Edit Company',
+                      viewModel.editingUser == null ? 'Add User' : 'Edit User',
                       style: AppFonts.poppins(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -484,7 +507,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
-                  child: _buildCompanyForm(dialogContext, viewModel),
+                  child: _buildUserForm(dialogContext, viewModel),
                 ),
               ),
             ],
@@ -494,13 +517,13 @@ class _CompaniesPageState extends State<CompaniesPage> {
     );
   }
 
-  Widget _buildCompanyForm(BuildContext context, CompanyViewModel viewModel) {
+  Widget _buildUserForm(BuildContext context, UserViewModel viewModel) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Name field
         Text(
-          'Company Name',
+          'Full Name',
           style: AppFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -511,7 +534,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
         TextField(
           controller: viewModel.nameController,
           decoration: InputDecoration(
-            hintText: 'Enter company name',
+            hintText: 'Enter full name',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(color: Colors.grey.shade300),
@@ -525,9 +548,9 @@ class _CompaniesPageState extends State<CompaniesPage> {
         ),
         const SizedBox(height: 16),
 
-        // Address field
+        // Email field
         Text(
-          'Address',
+          'Email',
           style: AppFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -536,9 +559,9 @@ class _CompaniesPageState extends State<CompaniesPage> {
         ),
         const SizedBox(height: 8),
         TextField(
-          controller: viewModel.addressController,
+          controller: viewModel.emailController,
           decoration: InputDecoration(
-            hintText: 'Enter company address',
+            hintText: 'Enter email address',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(color: Colors.grey.shade300),
@@ -548,7 +571,59 @@ class _CompaniesPageState extends State<CompaniesPage> {
               borderSide: const BorderSide(color: Color(0xFFFF6B35)),
             ),
           ),
-          maxLines: 2,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 16),
+
+        // Username field
+        Text(
+          'Username',
+          style: AppFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: viewModel.usernameController,
+          decoration: InputDecoration(
+            hintText: 'Enter username',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // User ID field
+        Text(
+          'User ID',
+          style: AppFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: viewModel.userIdController,
+          decoration: InputDecoration(
+            hintText: 'Leave blank to auto-generate',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+            ),
+          ),
         ),
         const SizedBox(height: 16),
 
@@ -579,36 +654,9 @@ class _CompaniesPageState extends State<CompaniesPage> {
         ),
         const SizedBox(height: 16),
 
-        // Max User Limit field
+        // Company dropdown
         Text(
-          'Max User Limit',
-          style: AppFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey.shade700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: viewModel.maxUserLimitController,
-          decoration: InputDecoration(
-            hintText: 'Leave blank for default based on subscription',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-            ),
-          ),
-          keyboardType: TextInputType.number,
-        ),
-        const SizedBox(height: 16),
-
-        // Subscription tier dropdown
-        Text(
-          'Subscription Tier',
+          'Company',
           style: AppFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -617,7 +665,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: viewModel.selectedSubscriptionTier,
+          value: viewModel.selectedCompanyId,
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -628,14 +676,14 @@ class _CompaniesPageState extends State<CompaniesPage> {
               borderSide: const BorderSide(color: Color(0xFFFF6B35)),
             ),
           ),
-          items: viewModel.subscriptionTiers.map((tier) {
+          items: viewModel.companies.map((company) {
             return DropdownMenuItem<String>(
-              value: tier,
-              child: Text('$tier (${viewModel.getUserLimitForTier(tier)} users)'),
+              value: company['id'],
+              child: Text(company['name']!),
             );
           }).toList(),
           onChanged: (value) {
-            viewModel.selectedSubscriptionTier = value;
+            viewModel.selectedCompanyId = value;
           },
         ),
         const SizedBox(height: 16),
@@ -671,7 +719,62 @@ class _CompaniesPageState extends State<CompaniesPage> {
             viewModel.selectedStatus = value;
           },
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
+
+        // Password fields (only for new users)
+        if (viewModel.editingUser == null) ...[
+          Text(
+            'Password',
+            style: AppFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: viewModel.passwordController,
+            obscureText: true,
+            decoration: InputDecoration(
+              hintText: 'Enter password',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Text(
+            'Confirm Password',
+            style: AppFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: viewModel.confirmPasswordController,
+            obscureText: true,
+            decoration: InputDecoration(
+              hintText: 'Confirm password',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
 
         // Error message
         if (viewModel.error.isNotEmpty)
@@ -736,13 +839,13 @@ class _CompaniesPageState extends State<CompaniesPage> {
                 ),
                 child: ElevatedButton(
                   onPressed: () async {
-                    final success = await viewModel.saveCompany();
+                    final success = await viewModel.saveUser();
                     if (success && context.mounted) {
                       Navigator.of(context).pop();
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            viewModel.editingCompany == null ? 'Company added successfully!' : 'Company updated successfully!',
+                            viewModel.editingUser == null ? 'User added successfully!' : 'User updated successfully!',
                             style: AppFonts.poppins(),
                           ),
                           backgroundColor: const Color(0xFFFF6B35),
@@ -768,7 +871,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                           ),
                         )
                       : Text(
-                          viewModel.editingCompany == null ? "Add Company" : "Update Company",
+                          viewModel.editingUser == null ? "Add User" : "Update User",
                           style: AppFonts.poppins(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
@@ -783,12 +886,12 @@ class _CompaniesPageState extends State<CompaniesPage> {
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context, CompanyModel company, CompanyViewModel viewModel) {
+  void _showDeleteConfirmation(BuildContext context, UserModel user, UserViewModel viewModel) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Delete Company?"),
-        content: Text("Are you sure you want to delete ${company.name}?"),
+        title: const Text("Delete User?"),
+        content: Text("Are you sure you want to delete ${user.name}?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -797,12 +900,12 @@ class _CompaniesPageState extends State<CompaniesPage> {
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx, true);
-              final success = await viewModel.deleteCompany(company.id);
+              final success = await viewModel.deleteUser(user.id);
               if (success && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Company deleted successfully!',
+                      'User deleted successfully!',
                       style: AppFonts.poppins(),
                     ),
                     backgroundColor: Colors.red.shade600,
