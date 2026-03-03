@@ -60,6 +60,8 @@ import '../../domain/repositories/rental_repository.dart';
 import '../../data/repositories/rental_repository_impl.dart';
 import 'package:shared/shared.dart' show AppDatabase;
 import 'package:shared/shared.dart' as shared;
+import 'rental_form_dialog.dart';
+import 'rental_receipt_generator.dart';
 
 class RentalItemsPage extends StatefulWidget {
   final AppDatabase db;
@@ -114,18 +116,26 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   }
 
   void _showAddFormDialog({Map<String, dynamic>? existing}) {
-    // TODO: Implement form dialog with ViewModel integration
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(existing == null ? 'Add Rental Item' : 'Edit Rental Item'),
-        content: const Text('Form dialog will be implemented with ViewModel integration'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
+      barrierDismissible: false,
+      builder: (dialogContext) => RentalFormDialog(
+        existing: existing,
+        onSave: (rentalItem) async {
+          final success = existing == null 
+              ? await _viewModel.addRentalItem(rentalItem)
+              : await _viewModel.updateRentalItem(rentalItem);
+          
+          if (!success && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(_viewModel.errorMessage ?? 'Failed to save rental item'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        },
+        onCancel: () => Navigator.of(dialogContext).pop(),
       ),
     );
   }
@@ -167,6 +177,29 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_viewModel.errorMessage ?? 'Failed to delete rental item'), backgroundColor: Colors.red),
       );
+    }
+  }
+
+  Future<void> _generateReceipt(Map<String, dynamic> rentalItem) async {
+    try {
+      await RentalReceiptGenerator.printReceipt(rentalItem);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Rental receipt generated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate receipt: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -233,6 +266,8 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                     onPressed: () => _showAddFormDialog(),
                     icon: const Icon(Icons.add),
                     label: const Text('Add Rental Item'),
+                    backgroundColor: const Color(0xFFFF6B35), // Orange color
+                    foregroundColor: Colors.white,
                   )
                 : null,
             body: LayoutBuilder(
@@ -290,15 +325,14 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                                             ),
                                                           ),
                                                           FilledButton.icon(
-                                                            icon: const Icon(Icons.visibility, size: 16),
-                                                            label: const Text('Details'),
+                                                            icon: const Icon(Icons.picture_as_pdf, size: 16),
+                                                            label: const Text('Generate Receipt'),
                                                             style: FilledButton.styleFrom(
                                                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                                               textStyle: const TextStyle(fontSize: 12),
+                                                              backgroundColor: const Color(0xFF4A90E2),
                                                             ),
-                                                            onPressed: () {
-                                                              // TODO: Navigate to detail page
-                                                            },
+                                                            onPressed: () => _generateReceipt(r),
                                                           ),
                                                           const SizedBox(width: 8),
                                                           if (showActionMenu)

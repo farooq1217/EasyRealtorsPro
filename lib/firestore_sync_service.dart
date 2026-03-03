@@ -311,7 +311,15 @@ class FirestoreSyncService {
       await waitForAuth();
     }
     try {
-      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      // On Windows, avoid getIdToken() calls that can cause platform thread errors
+      if (io.Platform.isWindows) {
+        // Just ensure Firebase is initialized without refreshing token
+        if (FirebaseAuth.instance.currentUser != null) {
+          debugPrint('Windows: Skipping ID token refresh to avoid platform thread errors');
+        }
+      } else {
+        await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      }
     } catch (e) {
       debugPrint('Failed to refresh ID token before Firestore operation: $e');
     }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
@@ -171,7 +172,15 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> {
         return;
       }
       try {
-        await FirebaseAuth.instance.currentUser?.getIdToken(true);
+        // On Windows, avoid getIdToken() calls that can cause platform thread errors
+        if (io.Platform.isWindows) {
+          // Just ensure Firebase is initialized without refreshing token
+          if (FirebaseAuth.instance.currentUser != null) {
+            debugPrint('Windows: Skipping ID token refresh to avoid platform thread errors');
+          }
+        } else {
+          await FirebaseAuth.instance.currentUser?.getIdToken(true);
+        }
       } catch (_) {}
 
       final firestore = FirebaseFirestore.instance;

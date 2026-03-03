@@ -383,6 +383,7 @@ class AppDatabase extends _$AppDatabase {
             'CREATE TABLE reminders ('
             'reminder_id INTEGER PRIMARY KEY AUTOINCREMENT,'
             'agent_id TEXT NOT NULL,'
+            'company_id TEXT,'
             'client_name TEXT,'
             'client_phone TEXT,'
             'reminder_title TEXT NOT NULL,'
@@ -390,6 +391,7 @@ class AppDatabase extends _$AppDatabase {
             'reminder_date TEXT NOT NULL,'
             'reminder_time TEXT NOT NULL,'
             'notification_status TEXT NOT NULL,'
+            'is_active INTEGER NOT NULL DEFAULT 1,'
             'is_synced INTEGER NOT NULL DEFAULT 1,'
             'created_at TEXT NOT NULL,'
             'updated_at TEXT NOT NULL,'
@@ -400,6 +402,13 @@ class AppDatabase extends _$AppDatabase {
         beforeOpen: (details) async {
           // Ensure business tables exist even when version is unchanged or DB was manually deleted
           await _ensureBusinessTables(this);
+          
+          // Ensure reminders table has company_id column for existing databases
+          try {
+            await this.customStatement('ALTER TABLE reminders ADD COLUMN company_id TEXT');
+          } catch (e) {
+            // Column might already exist, ignore error
+          }
         },
         onUpgrade: (m, from, to) async {
           // Always make sure core business tables exist after upgrades too
@@ -545,6 +554,7 @@ class AppDatabase extends _$AppDatabase {
               'ALTER TABLE working_progress ADD COLUMN company_id TEXT',
               'ALTER TABLE working_comments ADD COLUMN company_id TEXT',
               'ALTER TABLE reminders ADD COLUMN company_id TEXT',
+              'ALTER TABLE reminders ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
               'ALTER TABLE reports ADD COLUMN company_id TEXT',
               'ALTER TABLE deletions ADD COLUMN company_id TEXT',
               'ALTER TABLE sync_logs ADD COLUMN company_id TEXT',

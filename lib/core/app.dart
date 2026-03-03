@@ -11,6 +11,7 @@ import '../modules/rental/rental_page_original.dart' show HomeScreen;
 import 'services/auth_service.dart';
 import 'services/permission_helper.dart';
 import 'services/background_sync_manager.dart';
+import 'services/notification_service.dart';
 
 /// Main application widget with MaterialApp configuration
 class AdminApp extends StatefulWidget {
@@ -50,6 +51,10 @@ class _AdminAppState extends State<AdminApp> {
     // Initialize background sync manager
     BackgroundSyncManager().initialize().catchError((e) {
       debugPrint('[APP] Error initializing background sync manager: $e');
+    });
+    // Initialize notification service
+    NotificationService().initialize().catchError((e) {
+      debugPrint('[APP] Error initializing notification service: $e');
     });
   }
 

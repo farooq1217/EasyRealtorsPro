@@ -30,6 +30,9 @@ import '../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../core/services/app_storage.dart' show AppStorage;
 import '../../core/shared_utils.dart' show TopRightSearch;
 import '../../core/phone_actions.dart';
+import '../../presentation/view_models/todo_view_model.dart';
+import '../../data/repositories/todo_repository_impl.dart';
+import 'reminder_dialog.dart';
 
 class ToDoPage extends StatefulWidget {
   final AppDatabase db;
@@ -39,7 +42,7 @@ class ToDoPage extends StatefulWidget {
 }
 
 class _ToDoPageState extends State<ToDoPage> {
-  final List<Map<String, dynamic>> _tasks = [];
+  late TodoViewModel _viewModel;
   bool _loading = true;
   // REMOVED: Firestore-related state variables for SQLite-only operation
   // bool _firestoreReady = false;
@@ -75,6 +78,7 @@ class _ToDoPageState extends State<ToDoPage> {
   @override
   void initState() {
     super.initState();
+    _viewModel = TodoViewModel(repository: TodoRepositoryImpl(widget.db));
     _dateController.text = DateFormat('dd MMM yyyy').format(_selectedDate);
     Future.microtask(() async {
       if (!mounted) return;
@@ -159,6 +163,8 @@ class _ToDoPageState extends State<ToDoPage> {
         _selectedDate = picked;
         _dateController.text = DateFormat('dd MMM yyyy').format(picked);
       });
+      // Update ViewModel with new date before loading tasks
+      _viewModel.setSelectedDate(_selectedDate);
       await _loadTasks();
     }
   }
@@ -166,136 +172,12 @@ class _ToDoPageState extends State<ToDoPage> {
 
   Future<void> _loadTasks() async {
     if (!mounted) return;
-    setState(() => _loading = true);
-    try {
-      final selectedDateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
-      final tasks = <Map<String, dynamic>>[];
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-      final isAgent = RoleUtils.isAgent(_currentUser);
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
-      final myUserId = _currentUser?['id']?.toString();
-      final myAlias = creatorFields(_currentUser)['creator_user_id_alias']?.toString() ?? myUserId;
-
-
-      // Load Trading Form entries
-      try {
-        final tradingFormResults = await widget.db.customSelect(
-          isSuperAdmin
-              ? 'SELECT * FROM trading_entries WHERE date(date) = ? ORDER BY date ASC'
-              : (isAgent
-                  ? 'SELECT * FROM trading_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) AND date(date) = ? ORDER BY date ASC'
-                  : 'SELECT * FROM trading_entries WHERE company_id = ? AND date(date) = ? ORDER BY date ASC'),
-          variables: [
-            if (!isSuperAdmin) d.Variable.withString(companyId!),
-            if (!isSuperAdmin && isAgent) d.Variable.withString(myUserId ?? ''),
-            if (!isSuperAdmin && isAgent) d.Variable.withString(myAlias ?? myUserId ?? ''),
-            d.Variable.withString(selectedDateStr),
-          ],
-        ).get();
-        
-        for (final row in tradingFormResults) {
-          final data = row.data;
-          final type = data['type'] == 'buy' ? 'Buy' : 'Sell';
-          final status = data['status'] ?? 'Pending';
-          tasks.add({
-            'id': 'trading_form_${data['id']}',
-            'source': 'Trading Form',
-            'type': type,
-            'title': '$type - ${data['estate_name'] ?? 'N/A'}',
-            'mobile': data['mobile']?.toString(),
-            'subtitle': 'Mobile: ${data['mobile'] ?? 'N/A'} | Payment: ${data['payment'] ?? 0} | Status: $status',
-            'status': status,
-            'module': 'trading_form',
-            'originalId': data['id'],
-          });
-        }
-      } catch (e) {
-        // Table might not exist yet
-      }
-
-      // Load Trading File entries
-      try {
-        final tradingFileResults = await widget.db.customSelect(
-          isSuperAdmin
-              ? 'SELECT * FROM trading_file_entries WHERE date(date) = ? ORDER BY date ASC'
-              : (isAgent
-                  ? 'SELECT * FROM trading_file_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) AND date(date) = ? ORDER BY date ASC'
-                  : 'SELECT * FROM trading_file_entries WHERE company_id = ? AND date(date) = ? ORDER BY date ASC'),
-          variables: [
-            if (!isSuperAdmin) d.Variable.withString(companyId!),
-            if (!isSuperAdmin && isAgent) d.Variable.withString(myUserId ?? ''),
-            if (!isSuperAdmin && isAgent) d.Variable.withString(myAlias ?? myUserId ?? ''),
-            d.Variable.withString(selectedDateStr),
-          ],
-        ).get();
-        
-        for (final row in tradingFileResults) {
-          final data = row.data;
-          final type = data['type'] == 'buy' ? 'Buy' : 'Sell';
-          final status = data['status'] ?? 'Pending';
-          tasks.add({
-            'id': 'trading_file_${data['id']}',
-            'source': 'Trading File',
-            'type': type,
-            'title': '$type - ${data['estate'] ?? 'N/A'}',
-            'mobile': data['mobile']?.toString(),
-            'subtitle': 'Mobile: ${data['mobile'] ?? 'N/A'} | Payment: ${data['payment'] ?? 0} | Status: $status',
-            'status': status,
-            'module': 'trading_file',
-            'originalId': data['id'],
-          });
-        }
-      } catch (e) {
-        // Table might not exist yet
-      }
-
-      // Load Agent Working entries
-      try {
-        final workingResults = await widget.db.customSelect(
-          isSuperAdmin
-              ? 'SELECT * FROM working_progress WHERE date(transfer_date) = ? ORDER BY transfer_date ASC'
-              : 'SELECT * FROM working_progress WHERE company_id = ? AND date(transfer_date) = ? ORDER BY transfer_date ASC',
-          variables: [
-            if (!isSuperAdmin) d.Variable.withString(companyId!),
-            d.Variable.withString(selectedDateStr),
-          ],
-        ).get();
-        
-        for (final row in workingResults) {
-          final data = row.data;
-          final name = data['name'] ?? 'N/A';
-          final status = data['status'] ?? 'Pending';
-          tasks.add({
-            'id': 'working_${data['id']}',
-            'source': 'Agent Working',
-            'type': 'Transfer',
-            'title': name,
-            'mobile': data['clientMobile']?.toString(),
-            'subtitle': 'Mobile: ${data['clientMobile'] ?? 'N/A'} | Status: $status | From: ${data['from_user'] ?? 'N/A'} | To: ${data['to_user'] ?? 'N/A'}',
-            'status': status,
-            'module': 'working',
-            'originalId': data['id'],
-          });
-        }
-      } catch (e) {
-        // Table might not exist yet
-      }
-
-      
-      if (!mounted) return;
-      setState(() {
-        _tasks.clear();
-        _tasks.addAll(tasks);
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading tasks: $e')),
-      );
-    }
+    if (_currentUser == null) return;
+    
+    final userId = _currentUser!['id']?.toString() ?? '';
+    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    
+    await _viewModel.loadTasks(userId, companyId);
   }
 
   Color _getStatusColor(String status) {
@@ -338,28 +220,294 @@ class _ToDoPageState extends State<ToDoPage> {
   }
 
   
-  List<Map<String, dynamic>> get _filteredTasks {
-    if (_searchQuery.isEmpty) return _tasks;
-    final query = _searchQuery.toLowerCase();
-    return _tasks.where((task) {
-      final title = (task['title'] ?? '').toString().toLowerCase();
-      final subtitle = (task['subtitle'] ?? '').toString().toLowerCase();
-      final source = (task['source'] ?? '').toString().toLowerCase();
-      final type = (task['type'] ?? '').toString().toLowerCase();
-      final status = (task['status'] ?? '').toString().toLowerCase();
-      return title.contains(query) ||
-          subtitle.contains(query) ||
-          source.contains(query) ||
-          type.contains(query) ||
-          status.contains(query);
-    }).toList();
-  }
 
   @override
   void dispose() {
     _dateController.dispose();
     _searchController.dispose();
+    _viewModel.dispose();
     super.dispose();
+  }
+
+  void _showAddReminderDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => ReminderDialog(
+        selectedDate: _selectedDate,
+        onAddReminder: ({
+          required String title,
+          String? description,
+          required DateTime reminderDate,
+          required TimeOfDay reminderTime,
+          String? clientName,
+          String? clientPhone,
+          String priority = 'Medium',
+        }) async {
+          final userId = _currentUser!['id']?.toString() ?? '';
+          final companyId = RoleUtils.getUserCompanyId(_currentUser);
+          
+          await _viewModel.addReminder(
+            userId: userId,
+            companyId: companyId,
+            title: title,
+            description: description,
+            reminderDate: reminderDate,
+            reminderTime: reminderTime,
+            clientName: clientName,
+            clientPhone: clientPhone,
+            priority: priority,
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildReminderCard(Reminder reminder) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200, width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title with delete button
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    reminder.reminderTitle,
+                    style: AppFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade900,
+                    ),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert, color: Colors.grey.shade600),
+                  onSelected: (value) async {
+                    if (value == 'delete') {
+                      await _viewModel.deleteReminder(reminder.reminderId);
+                    } else if (value == 'toggle') {
+                      await _viewModel.toggleReminderStatus(
+                        reminder.reminderId, 
+                        !reminder.is_active,
+                      );
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'toggle',
+                      child: Text(reminder.is_active ? 'Mark Inactive' : 'Mark Active'),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Description
+            if (reminder.reminderDetails != null && reminder.reminderDetails!.isNotEmpty)
+              Text(
+                reminder.reminderDetails!,
+                style: AppFonts.poppins(
+                  fontSize: 14,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            const SizedBox(height: 8),
+            // Date, Time, and Client info
+            Row(
+              children: [
+                Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
+                const SizedBox(width: 4),
+                Text(
+                  '${reminder.reminderDate} at ${reminder.reminderTime}',
+                  style: AppFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+            if (reminder.clientName != null || reminder.clientPhone != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(Icons.person, size: 16, color: Colors.grey.shade600),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${reminder.clientName ?? 'N/A'} | ${reminder.clientPhone ?? 'N/A'}',
+                    style: AppFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            // Status badges
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                // Manual reminder badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.orange.shade200, width: 1),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_alert, size: 14, color: Colors.orange.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Manual Reminder',
+                        style: AppFonts.poppins(
+                          fontSize: 11,
+                          color: Colors.orange.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Status badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: reminder.is_active ? Colors.green.shade700 : Colors.grey.shade700,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    reminder.is_active ? 'Active' : 'Inactive',
+                    style: AppFonts.poppins(
+                      fontSize: 11,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAggregatedTaskCard(Map<String, dynamic> task) {
+    final status = task['status'] as String? ?? 'Pending';
+    final statusColor = _getStatusColor(status);
+    final sourceIcon = _getSourceIcon(task['source'] as String);
+    final statusBgColor = _getStatusBackgroundColor(status);
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200, width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title - Most prominent
+            Text(
+              task['title'] as String? ?? 'N/A',
+              style: AppFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Details - Smaller and lighter
+            GestureDetector(
+              onTap: () {
+                final mobile = task['mobile']?.toString() ?? '';
+                if (mobile.trim().isNotEmpty) {
+                  showPhoneActionSheet(context, mobile);
+                }
+              },
+              child: Text(
+                task['subtitle'] as String? ?? '',
+                style: AppFonts.poppins(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w400,
+                  decoration: (task['mobile'] ?? '').toString().trim().isNotEmpty
+                      ? TextDecoration.underline
+                      : TextDecoration.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Status pills with high-contrast backgrounds
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                // Source badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.blue.shade200, width: 1),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(sourceIcon, size: 14, color: Colors.blue.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        task['source'] as String? ?? '',
+                        style: AppFonts.poppins(
+                          fontSize: 11,
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Status badge with high-contrast background
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: statusBgColor,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    status,
+                    style: AppFonts.poppins(
+                      fontSize: 11,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -389,7 +537,7 @@ class _ToDoPageState extends State<ToDoPage> {
               hintText: 'Search tasks...',
               onChanged: (q) {
                 if (!mounted) return;
-                setState(() => _searchQuery = q.toLowerCase());
+                _viewModel.setSearchQuery(q);
               },
             ),
           ),
@@ -452,178 +600,102 @@ class _ToDoPageState extends State<ToDoPage> {
                               _selectedDate = DateTime.now();
                               _dateController.text = DateFormat('dd MMM yyyy').format(_selectedDate);
                             });
+                            _viewModel.setSelectedDate(_selectedDate);
                             _loadTasks();
                           },
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          onPressed: _showAddReminderDialog,
+                          icon: const Icon(Icons.add_alert),
+                          label: const Text('Add Reminder'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF6B35), // Orange
+                          ),
                         ),
                       ],
                     ),
                   ),
                   Builder(
                     builder: (context) {
-                      final filteredTasks = _filteredTasks;
-                      return Expanded(
-                        child: Column(
-                          children: [
-                            if (_tasks.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                child: Text(
-                                  _searchQuery.isEmpty
-                                      ? '${_tasks.length} task${_tasks.length == 1 ? '' : 's'} scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}'
-                                      : '${filteredTasks.length} of ${_tasks.length} task${_tasks.length == 1 ? '' : 's'}',
-                                  style: AppFonts.poppins(
-                                    fontSize: 14,
-                                    color: Colors.grey.shade700,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            const SizedBox(height: 8),
-                            Expanded(
-                              child: filteredTasks.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    _searchQuery.isNotEmpty ? Icons.search_off : Icons.checklist,
-                                    size: 64,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    _searchQuery.isNotEmpty
-                                        ? 'No tasks found for "$_searchQuery"'
-                                        : 'No tasks scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}',
-                                    style: AppFonts.poppins(
-                                      fontSize: 18,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                  if (_searchQuery.isEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Tasks from Trading and Agent Working modules will appear here',
+                      return AnimatedBuilder(
+                        builder: (context, child) {
+                          final allTasks = _viewModel.allTasks;
+                          
+                          return Expanded(
+                            child: Column(
+                              children: [
+                                if (allTasks.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    child: Text(
+                                      _viewModel.searchQuery.isEmpty
+                                          ? '${allTasks.length} task${allTasks.length == 1 ? '' : 's'} scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}'
+                                          : '${allTasks.length} task${allTasks.length == 1 ? '' : 's'} found',
                                       style: AppFonts.poppins(
                                         fontSize: 14,
-                                        color: Colors.grey.shade500,
+                                        color: Colors.grey.shade700,
+                                        fontWeight: FontWeight.w500,
                                       ),
-                                      textAlign: TextAlign.center,
                                     ),
-                                  ],
-                                ],
-                              ),
-                            )
-                              : ListView.builder(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  itemCount: filteredTasks.length,
-                                itemBuilder: (context, index) {
-                              final task = filteredTasks[index];
-                              final status = task['status'] as String? ?? 'Pending';
-                              final statusColor = _getStatusColor(status);
-                              final sourceIcon = _getSourceIcon(task['source'] as String);
-                              
-                              final statusBgColor = _getStatusBackgroundColor(status);
-                              
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                elevation: 2,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  side: BorderSide(color: Colors.grey.shade200, width: 1),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      // Title - Most prominent
-                                      Text(
-                                        task['title'] as String? ?? 'N/A',
-                                        style: AppFonts.poppins(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.grey.shade900,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      // Details - Smaller and lighter
-                                      GestureDetector(
-                                        onTap: () {
-                                          final mobile = task['mobile']?.toString() ?? '';
-                                          if (mobile.trim().isNotEmpty) {
-                                            showPhoneActionSheet(context, mobile);
-                                          }
-                                        },
-                                        child: Text(
-                                          task['subtitle'] as String? ?? '',
-                                          style: AppFonts.poppins(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade600,
-                                            fontWeight: FontWeight.w400,
-                                            decoration: (task['mobile'] ?? '').toString().trim().isNotEmpty
-                                                ? TextDecoration.underline
-                                                : TextDecoration.none,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      // Status pills with high-contrast backgrounds
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          // Source badge
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: Colors.blue.shade50,
-                                              borderRadius: BorderRadius.circular(16),
-                                              border: Border.all(color: Colors.blue.shade200, width: 1),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(sourceIcon, size: 14, color: Colors.blue.shade700),
-                                                const SizedBox(width: 6),
+                                  ),
+                                const SizedBox(height: 8),
+                                Expanded(
+                                  child: allTasks.isEmpty
+                                      ? Center(
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                _viewModel.searchQuery.isNotEmpty ? Icons.search_off : Icons.checklist,
+                                                size: 64,
+                                                color: Colors.grey.shade400,
+                                              ),
+                                              const SizedBox(height: 16),
+                                              Text(
+                                                _viewModel.searchQuery.isNotEmpty
+                                                    ? 'No tasks found for "${_viewModel.searchQuery}"'
+                                                    : 'No tasks scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}',
+                                                style: AppFonts.poppins(
+                                                  fontSize: 18,
+                                                  color: Colors.grey.shade600,
+                                                ),
+                                              ),
+                                              if (_viewModel.searchQuery.isEmpty) ...[
+                                                const SizedBox(height: 8),
                                                 Text(
-                                                  task['source'] as String? ?? '',
+                                                  'Tasks from Trading and Agent Working modules will appear here',
                                                   style: AppFonts.poppins(
-                                                    fontSize: 11,
-                                                    color: Colors.blue.shade700,
-                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 14,
+                                                    color: Colors.grey.shade500,
                                                   ),
+                                                  textAlign: TextAlign.center,
                                                 ),
                                               ],
-                                            ),
+                                            ],
                                           ),
-                                          // Status badge with high-contrast background
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: statusBgColor,
-                                              borderRadius: BorderRadius.circular(16),
-                                            ),
-                                            child: Text(
-                                              status,
-                                              style: AppFonts.poppins(
-                                                fontSize: 11,
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
+                                        )
+                                      : ListView.builder(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                                          itemCount: allTasks.length,
+                                          itemBuilder: (context, index) {
+                                            final task = allTasks[index];
+                                            
+                                            if (task is Reminder) {
+                                              return _buildReminderCard(task);
+                                            } else if (task is Map<String, dynamic>) {
+                                              return _buildAggregatedTaskCard(task);
+                                            }
+                                            
+                                            return const SizedBox.shrink();
+                                          },
+                                        ),
                                 ),
-                              );
-                                },
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
+                        animation: _viewModel,
                       );
                     },
                   ),

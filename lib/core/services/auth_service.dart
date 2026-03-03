@@ -194,7 +194,13 @@ class AuthService {
       return false;
     }
     try {
-      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      // On Windows, avoid getIdToken() calls that can cause platform thread errors
+      if (_isWindows) {
+        // Just check if user exists without refreshing token
+        return FirebaseAuth.instance.currentUser != null;
+      } else {
+        await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      }
       return true;
     } catch (e) {
       debugPrint('AuthService: Failed to refresh ID token: $e');

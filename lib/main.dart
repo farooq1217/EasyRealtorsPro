@@ -20,42 +20,62 @@ void main() async {
 
   final isWindows = !kIsWeb && io.Platform.isWindows;
 
-  // 1. Database Configuration (Theek hai)
-  AppDatabase.configureOpener(() async {
-    final appDir = await getApplicationSupportDirectory();
-    final dbFile = io.File(p.join(appDir.path, 'data.sqlite'));
-    return openAppExecutor(dbFile.path);
-  });
+  // Enhanced error handling for platform channel threading issues
+  await runZonedGuarded(() async {
+    // 1. Database Configuration (Theek hai)
+    AppDatabase.configureOpener(() async {
+      final appDir = await getApplicationSupportDirectory();
+      final dbFile = io.File(p.join(appDir.path, 'data.sqlite'));
+      return openAppExecutor(dbFile.path);
+    });
 
-  // 2. Firebase Initialization - Wrapped in postFrame callback to avoid threading issues
-  WidgetsBinding.instance.addPostFrameCallback((_) async {
-    try {
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
-      }
-
-      // 3. Firestore Settings (Initialization ke BAAD)
+    // 2. Firebase Initialization - Wrapped in postFrame callback to avoid threading issues
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       await runZonedGuarded(() async {
-        if (Firebase.apps.isNotEmpty) {
-          if (isWindows) {
-            FirebaseFirestore.instance.settings = const Settings(
-              persistenceEnabled: false,
-              cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+        try {
+          if (Firebase.apps.isEmpty) {
+            await Firebase.initializeApp(
+              options: DefaultFirebaseOptions.currentPlatform,
             );
-            debugPrint('Windows Firestore: Persistence Disabled');
-          } else {
-            FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
           }
+
+          // 3. Firestore Settings (Initialization ke BAAD)
+          if (Firebase.apps.isNotEmpty) {
+            if (isWindows) {
+              FirebaseFirestore.instance.settings = const Settings(
+                persistenceEnabled: false,
+                cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+              );
+              debugPrint('Windows Firestore: Persistence Disabled');
+            } else {
+              FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
+            }
+          }
+        } catch (e) {
+          debugPrint('Firebase Error: $e');
         }
       }, (error, stack) {
-        debugPrint('Firestore settings skipped: $error');
+        // Silence non-blocking native plugin warnings
+        if (error.toString().contains('channel sent a message') || 
+            error.toString().contains('non-platform thread')) {
+          debugPrint('Platform channel warning silenced: ${error.runtimeType}');
+        } else {
+          debugPrint('Firebase initialization error: $error');
+        }
       });
-    } catch (e) {
-      debugPrint('Firebase Error: $e');
+    });
+  }, (error, stack) {
+    // Global error handler for platform channel issues
+    if (error.toString().contains('channel sent a message') || 
+        error.toString().contains('non-platform thread') ||
+        error.toString().contains('Announce message') ||
+        error.toString().contains('viewId')) {
+      debugPrint('Platform warning silenced: ${error.runtimeType}');
+    } else {
+      debugPrint('Global error: $error');
     }
   });
 
+  // 4. Run App
   runApp(const AdminApp());
 }
