@@ -289,6 +289,21 @@ class Expenditures extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class ExpenditureSubItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get parentId => text().references(Expenditures, #id)(); // Foreign key to main expenditure
+  TextColumn get description => text()();
+  RealColumn get amount => real()();
+  TextColumn get companyId => text().nullable()();
+  TextColumn get createdBy => text().nullable()();
+  TextColumn get createdAt => text().nullable()();
+  TextColumn get updatedAt => text()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DriftDatabase(tables: [
   Companies,
   Users,
@@ -308,6 +323,7 @@ class Expenditures extends Table {
   SyncLogs,
   Clients,
   Expenditures,
+  ExpenditureSubItems,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(QueryExecutor e) : super(e);
@@ -354,7 +370,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 27;
+  int get schemaVersion => 28;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -845,6 +861,23 @@ Future<void> _ensureBusinessTables(dynamic db) async {
       closed_at TEXT
     )
   ''');
+
+  // Expenditure sub-items
+  await run('''
+    CREATE TABLE IF NOT EXISTS expenditure_sub_items (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT NOT NULL,
+      company_id TEXT,
+      created_by TEXT,
+      description TEXT NOT NULL,
+      amount REAL NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      is_synced INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(parent_id) REFERENCES expenditures(id)
+    )
+  ''');
 }
 
 /// Ensures is_active columns exist for business tables.
@@ -876,6 +909,7 @@ Future<void> _safeAddIsActiveColumnsToBusinessTables(GeneratedDatabase db) async
     'UPDATE trading_file_entries SET is_active = 1 WHERE is_active IS NULL',
     'UPDATE expenditures SET is_active = 1 WHERE is_active IS NULL',
     'UPDATE expenditure_projects SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE expenditure_sub_items SET is_active = 1 WHERE is_active IS NULL',
   ]) {
     try {
       await db.customStatement(stmt);
@@ -908,6 +942,8 @@ Future<void> _safeAddIsSyncedColumns(GeneratedDatabase db) async {
     'ALTER TABLE trading_entries ADD COLUMN is_synced INTEGER DEFAULT 1',
     'ALTER TABLE trading_file_entries ADD COLUMN is_synced INTEGER DEFAULT 1',
     'ALTER TABLE expenditures ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE expenditure_projects ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE expenditure_sub_items ADD COLUMN is_synced INTEGER DEFAULT 1',
   ]) {
     try {
       await db.customStatement(stmt);
@@ -933,6 +969,8 @@ Future<void> _safeAddIsSyncedColumns(GeneratedDatabase db) async {
     'UPDATE trading_entries SET is_synced = 1 WHERE is_synced IS NULL',
     'UPDATE trading_file_entries SET is_synced = 1 WHERE is_synced IS NULL',
     'UPDATE expenditures SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE expenditure_projects SET is_synced = 1 WHERE is_synced IS NULL',
+    'UPDATE expenditure_sub_items SET is_synced = 1 WHERE is_synced IS NULL',
   ]) {
     try {
       await db.customStatement(stmt);

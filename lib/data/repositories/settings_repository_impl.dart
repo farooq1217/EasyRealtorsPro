@@ -166,6 +166,56 @@ class SettingsRepositoryImpl implements SettingsRepository {
     return await _societyRepository.getBlocksBySociety(societyId);
   }
 
+  // Stream-based methods for real-time updates
+  Stream<List<Map<String, String>>> watchSocieties(String? companyId, bool isSuper) {
+    final clauses = <String>['is_active = 1'];
+    final vars = <d.Variable<String>>[];
+    if (!isSuper && companyId != null) {
+      clauses.add('company_id = ?');
+      vars.add(d.Variable.withString(companyId));
+    }
+    final where = clauses.isNotEmpty ? 'WHERE ${clauses.join(' AND ')}' : '';
+    
+    return db
+        .customSelect('SELECT id, name FROM societies $where ORDER BY name', variables: vars)
+        .watch()
+        .map((rows) {
+          final List<Map<String, String>> societies = [];
+          for (final row in rows) {
+            societies.add({
+              'id': row.read<String>('id'),
+              'name': row.read<String>('name'),
+            });
+          }
+          return societies;
+        });
+  }
+
+  Stream<List<Map<String, String>>> watchBlocks(String? societyId) {
+    final clauses = <String>['is_active = 1'];
+    final vars = <d.Variable<String>>[];
+    if (societyId != null) {
+      clauses.add('society_id = ?');
+      vars.add(d.Variable.withString(societyId));
+    }
+    final where = clauses.isNotEmpty ? 'WHERE ${clauses.join(' AND ')}' : '';
+    
+    return db
+        .customSelect('SELECT id, society_id, name FROM blocks $where ORDER BY name', variables: vars)
+        .watch()
+        .map((rows) {
+          final List<Map<String, String>> blocks = [];
+          for (final row in rows) {
+            blocks.add({
+              'id': row.read<String>('id'),
+              'society_id': row.read<String>('society_id'),
+              'name': row.read<String>('name'),
+            });
+          }
+          return blocks;
+        });
+  }
+
   @override
   Future<void> addBlock(String societyId, String name) async {
     try {

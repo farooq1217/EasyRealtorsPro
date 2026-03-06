@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-import '../../domain/models/expenditure_item.dart';
+import '../../domain/models/expenditure_item.dart' as domain;
 import '../../domain/repositories/expenditure_repository.dart';
 import '../../data/repositories/expenditure_repository_impl.dart';
 import '../../core/services/auth_service.dart';
@@ -25,10 +25,10 @@ class ExpenditureViewModel extends ChangeNotifier {
   ExpenditureTab _currentTab = ExpenditureTab.office;
   
   // Data lists
-  List<ExpenditureItem> _officeExpenses = [];
-  List<ExpenditureItem> _projectExpenses = [];
-  List<ExpenditureItem> _filteredOfficeExpenses = [];
-  List<ExpenditureItem> _filteredProjectExpenses = [];
+  List<domain.ExpenditureItem> _officeExpenses = [];
+  List<domain.ExpenditureItem> _projectExpenses = [];
+  List<domain.ExpenditureItem> _filteredOfficeExpenses = [];
+  List<domain.ExpenditureItem> _filteredProjectExpenses = [];
   
   // Search
   String _searchQuery = '';
@@ -39,35 +39,36 @@ class ExpenditureViewModel extends ChangeNotifier {
   final TextEditingController _dateController = TextEditingController();
   DateTime? _selectedDate;
   
-  // Sub-items functionality - DISABLED since expenditure_items table doesn't exist in schema
-  List<ExpenditureSubItem> _subItems = [];
+  // Sub-items functionality
+  List<domain.ExpenditureSubItem> _subItems = [];
   final TextEditingController _itemDescriptionController = TextEditingController();
   final TextEditingController _itemAmountController = TextEditingController();
   
   // Stream subscriptions
-  StreamSubscription<List<ExpenditureItem>>? _officeExpensesSubscription;
-  StreamSubscription<List<ExpenditureItem>>? _projectExpensesSubscription;
-  StreamSubscription<List<ExpenditureSubItem>>? _subItemsSubscription;
+  StreamSubscription<List<domain.ExpenditureItem>>? _officeExpensesSubscription;
+  StreamSubscription<List<domain.ExpenditureItem>>? _projectExpensesSubscription;
+  StreamSubscription<List<domain.ExpenditureSubItem>>? _subItemsSubscription;
   
   // Getters
   bool get loading => _loading;
   Map<String, dynamic>? get user => _user;
   ExpenditureTab get currentTab => _currentTab;
-  List<ExpenditureItem> get officeExpenses => _officeExpenses;
-  List<ExpenditureItem> get projectExpenses => _projectExpenses;
-  List<ExpenditureItem> get filteredOfficeExpenses => _filteredOfficeExpenses;
-  List<ExpenditureItem> get filteredProjectExpenses => _filteredProjectExpenses;
+  List<domain.ExpenditureItem> get officeExpenses => _officeExpenses;
+  List<domain.ExpenditureItem> get projectExpenses => _projectExpenses;
+  List<domain.ExpenditureItem> get filteredOfficeExpenses => _filteredOfficeExpenses;
+  List<domain.ExpenditureItem> get filteredProjectExpenses => _filteredProjectExpenses;
   String get searchQuery => _searchQuery;
   TextEditingController get descriptionController => _descriptionController;
   TextEditingController get amountController => _amountController;
   TextEditingController get dateController => _dateController;
   DateTime? get selectedDate => _selectedDate;
-  List<ExpenditureSubItem> get subItems => _subItems;
+  List<domain.ExpenditureSubItem> get subItems => _subItems;
   TextEditingController get itemDescriptionController => _itemDescriptionController;
   TextEditingController get itemAmountController => _itemAmountController;
+  ExpenditureRepository get repository => _repository; // Expose repository
   
   // Computed properties
-  List<ExpenditureItem> get currentExpenses {
+  List<domain.ExpenditureItem> get currentExpenses {
     return _currentTab == ExpenditureTab.office ? _filteredOfficeExpenses : _filteredProjectExpenses;
   }
   
@@ -228,7 +229,7 @@ class ExpenditureViewModel extends ChangeNotifier {
         return false;
       }
       
-      final expenditure = ExpenditureItem(
+      final expenditure = domain.ExpenditureItem(
         id: const Uuid().v4(),
         date: DateFormat('yyyy-MM-dd').format(_selectedDate!),
         description: description,
@@ -262,14 +263,19 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // Sub-items operations - DISABLED since expenditure_items table doesn't exist in schema
+  // Sub-items operations
   Future<void> loadSubItems(String parentId) async {
-    // No-op since sub-items functionality is not available
-    _subItems = [];
-    // Defer notifyListeners to avoid setState during build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    try {
+      _subItemsSubscription?.cancel();
+      _subItemsSubscription = _repository.watchExpenditureSubItems(parentId).listen((subItems) {
+        _subItems = subItems;
+        notifyListeners();
+      });
+    } catch (e) {
+      debugPrint('Error loading sub-items: $e');
+      _subItems = [];
       notifyListeners();
-    });
+    }
   }
 
   void clearSubItemForm() {
@@ -279,15 +285,49 @@ class ExpenditureViewModel extends ChangeNotifier {
   }
 
   Future<bool> saveSubItem(String parentId) async {
-    // Always return failure since sub-items functionality is not available
-    _showErrorSnackBar('Sub-items functionality is not available');
-    return false;
+    if (_itemDescriptionController.text.trim().isEmpty ||
+        _itemAmountController.text.trim().isEmpty) {
+      _showErrorSnackBar('Please fill all fields');
+      return false;
+    }
+    
+    try {
+      final subItem = domain.ExpenditureSubItem(
+        id: const Uuid().v4(),
+        parentId: parentId,
+        description: _itemDescriptionController.text.trim(),
+        amount: double.parse(_itemAmountController.text.trim()),
+        companyId: RoleUtils.getUserCompanyId(_user) ?? '',
+        createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
+        isActive: true,
+        isSynced: true,
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
+      );
+      
+      await _repository.addExpenditureSubItem(subItem);
+      
+      // Clear form
+      _itemDescriptionController.clear();
+      _itemAmountController.clear();
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error saving sub-item: $e');
+      _showErrorSnackBar('Failed to save sub-item');
+      return false;
+    }
   }
 
   Future<bool> deleteSubItem(String id) async {
-    // Always return failure since sub-items functionality is not available
-    _showErrorSnackBar('Sub-items functionality is not available');
-    return false;
+    try {
+      await _repository.deleteExpenditureSubItem(id);
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting sub-item: $e');
+      _showErrorSnackBar('Failed to delete sub-item');
+      return false;
+    }
   }
 
   // Statistics
@@ -325,7 +365,7 @@ class ExpenditureViewModel extends ChangeNotifier {
   }
 
   // Utility methods
-  Future<ExpenditureItem?> getExpenditureById(String id) async {
+  Future<domain.ExpenditureItem?> getExpenditureById(String id) async {
     try {
       return await _repository.getExpenditureById(id);
     } catch (e) {

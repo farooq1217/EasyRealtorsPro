@@ -29,7 +29,7 @@ class InventoryForm extends StatefulWidget {
 class _InventoryFormState extends State<InventoryForm> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController ownerCtl, fileNoCtl, plotNoCtl, contactCtl, cnicCtl, demandCtl, remarksCtl, sizeCtl;
-  String? selSoc, selBlk, selStatus = 'Not Sold';
+  String? selStatus = 'Not Sold'; // Only keep local status, remove selSoc and selBlk
   List<String> _imageUrls = []; // Firebase Storage URLs
   List<Uint8List> _pendingImageBytes = []; // Images waiting to be uploaded
   bool _uploadingImages = false;
@@ -56,8 +56,7 @@ class _InventoryFormState extends State<InventoryForm> {
           ? (e?.path ?? '') 
           : (e?.price?.toString() ?? '')
     );
-    selSoc = e?.societyId;
-    selBlk = e?.blockId;
+    // Initialize with ViewModel state instead of local state
     selStatus = e?.saleStatus ?? 'Not Sold';
     
     // Load existing image URLs
@@ -106,14 +105,16 @@ class _InventoryFormState extends State<InventoryForm> {
   }
 
   Widget _buildImageGallery() {
-    final allImages = [
+    // Consolidate image list creation to avoid rebuilding on every frame
+    if (_imageUrls.isEmpty && _pendingImageBytes.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Pre-compute image list for better performance
+    final allImages = <Map<String, dynamic>>[
       ..._imageUrls.map((url) => {'type': 'url', 'url': url}),
       ..._pendingImageBytes.asMap().entries.map((e) => {'type': 'bytes', 'index': e.key, 'bytes': e.value}),
     ];
-
-    if (allImages.isEmpty) {
-      return const SizedBox.shrink();
-    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -200,6 +201,26 @@ class _InventoryFormState extends State<InventoryForm> {
   Widget build(BuildContext context) {
     return Consumer<InventoryViewModel>(
       builder: (context, viewModel, child) {
+        // Force Local State Sync: Ensure block selection is properly synchronized
+        // If viewModel.selectedBlockId is null but we have a local state, sync it
+        // If viewModel.selectedBlockId has a value but doesn't exist in blocks, nullify it
+        final syncedBlockId = viewModel.selectedBlockId;
+        final validBlockId = (viewModel.blocks.any((i) => i['id'] == syncedBlockId)) ? syncedBlockId : null;
+        
+        // Debug logging for verification
+        debugPrint('InventoryForm: Block sync check - selectedSocietyId: ${viewModel.selectedSocietyId}, selectedBlockId: $syncedBlockId, validBlockId: $validBlockId, blocks count: ${viewModel.blocks.length}');
+        debugPrint('InventoryForm: Available blocks: ${viewModel.blocks.map((b) => '${b['id']}:${b['name']}').toList()}');
+        
+        // If there's a mismatch, update the ViewModel
+        if (validBlockId != viewModel.selectedBlockId) {
+          debugPrint('InventoryForm: Block ID mismatch detected, updating ViewModel with validBlockId: $validBlockId');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              viewModel.setSelectedBlock(validBlockId);
+            }
+          });
+        }
+        
         return Form(
           key: _formKey,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -211,20 +232,40 @@ class _InventoryFormState extends State<InventoryForm> {
             ),
             
             _buildSectionHeader('Location Details', Icons.map_outlined),
-            _buildDropdown('Society', viewModel.societies, selSoc, (v) {
-              if (!mounted) return;
-              setState(() { 
-                selSoc = v; 
-                selBlk = null; // Reset block selection
-                // Trigger block reload in ViewModel
+            
+            // Society Dropdown - using ViewModel state directly
+            _buildDropdown(
+              'Society', 
+              viewModel.societies, 
+              viewModel.selectedSocietyId, // Use ViewModel state
+              (v) {
+                if (!mounted) return;
+                debugPrint('InventoryForm: Society dropdown changed to: $v');
+                // No local setState - let ViewModel handle state
                 viewModel.setSelectedSociety(v);
-              });
-            }),
+                // Force a rebuild to ensure block dropdown updates
+                setState(() {});
+              },
+              isLoading: viewModel.isLoadingSocieties,
+            ),
             const SizedBox(height: 16),
-            _buildDropdown('Block', viewModel.getAvailableBlocks(), selBlk, (v) {
-              if (!mounted) return;
-              setState(() => selBlk = v);
-            }),
+            
+            // Block Dropdown - with proper ValueKey for cascading sync
+            Container(
+            key: ValueKey('sync_blk_${viewModel.selectedSocietyId}_${viewModel.blocks.length}'),
+            child: _buildDropdown(
+              'Block', 
+              viewModel.blocks, 
+              validBlockId, // Use the validated block ID
+              (v) {
+                if (!mounted) return;
+                // No local setState - let ViewModel handle state
+                viewModel.setSelectedBlock(v);
+              },
+              isLoading: viewModel.isLoadingBlocks,
+              hintText: viewModel.selectedSocietyId == null ? 'Select a Society first' : 'Select Block',
+            ),
+          ),
 
             _buildSectionHeader('Property Information', Icons.home_work_outlined),
             Row(children: [
@@ -255,7 +296,7 @@ class _InventoryFormState extends State<InventoryForm> {
               {'id':'Not Sold','name':'Not Sold'}
             ], selStatus, (v) {
               if (!mounted) return;
-              setState(() => selStatus = v);
+              selStatus = v;
             }),
 
             _buildSectionHeader('Additional Info', Icons.notes),
@@ -317,26 +358,43 @@ class _InventoryFormState extends State<InventoryForm> {
     );
   }
 
-  Widget _buildDropdown(String label, List<Map<String, String>> items, String? val, Function(String?) onChange) {
-    final hasItems = items.isNotEmpty;
+  Widget _buildDropdown(String label, List<Map<String, String>> items, String? currentValue, Function(String?) onChange, {bool isLoading = false, String? hintText}) {
+    final hasItems = items.isNotEmpty && !isLoading;
+    
+    // Niche wali line ko dhyan se dekhein:
     final displayItems = hasItems 
         ? items 
-        : [{'id': '__loading__', 'name': items.isEmpty ? 'No data found' : 'Loading...'}];
+        : [{'id': '__loading__', 'name': isLoading ? 'Loading...' : (hintText ?? 'No data found')}];
+    
+    // Dropdown Item Matching: Double-check that the value is being set correctly
+    final validValue = (items.any((i) => i['id'] == currentValue)) ? currentValue : null;
     
     return DropdownButtonFormField<String>(
-      value: hasItems ? val : null,
+      // YE LINE SAB SE ZAROORI HAI:
+      // Ye check karti hai ke jo purani 'currentValue' hai wo naye 'items' mein mojood hai ya nahi
+      value: validValue,
+      
       onChanged: hasItems ? onChange : null,
       decoration: InputDecoration(
         labelText: label, 
-        prefixIcon: const Icon(Icons.list), 
+        prefixIcon: isLoading 
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
+                ),
+              )
+            : const Icon(Icons.list), 
         border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-        hintText: hasItems ? null : (items.isEmpty ? 'No data found' : 'Loading...'),
+        hintText: hasItems ? null : (hintText ?? (isLoading ? 'Loading...' : 'No data found')),
       ),
-      items: displayItems.map((i) => DropdownMenuItem(
-        value: i['id'],
-        child: Text(i['name'] ?? ''),
-        enabled: hasItems && i['id'] != '__loading__',
-      )).toList(),
+     // _buildDropdown function ke andar ye line check karein
+    items: displayItems.map((i) => DropdownMenuItem(
+      value: i['id']?.toString(), // Ensure id is string
+      child: Text(i['name'] ?? ''),
+    )).toList(),
       validator: (v) => hasItems && v == null ? 'Required' : null,
     );
   }
@@ -374,10 +432,10 @@ class _InventoryFormState extends State<InventoryForm> {
           id: id,
           clientName: ownerCtl.text.trim(),
           referenceNo: plotNoCtl.text.trim(),
-          societyId: selSoc ?? '',
-          blockId: selBlk,
+          societyId: viewModel.selectedSocietyId ?? '',
+          blockId: viewModel.selectedBlockId,
           saleStatus: selStatus ?? 'Not Sold',
-          remarks: imageUrlsJson.isNotEmpty ? '' : remarksCtl.text.trim(),
+          remarks: remarksCtl.text.trim(), // Keep remarks regardless of images
           cnic: cnicCtl.text.trim(),
           companyId: companyId ?? '',
           updatedAt: DateTime.now(),
@@ -391,10 +449,10 @@ class _InventoryFormState extends State<InventoryForm> {
           id: id,
           clientName: ownerCtl.text.trim(),
           referenceNo: plotNoCtl.text.trim(),
-          societyId: selSoc ?? '',
-          blockId: selBlk,
+          societyId: viewModel.selectedSocietyId ?? '',
+          blockId: viewModel.selectedBlockId,
           saleStatus: selStatus ?? 'Not Sold',
-          remarks: imageUrlsJson.isNotEmpty ? '' : remarksCtl.text.trim(),
+          remarks: remarksCtl.text.trim(), // Keep remarks regardless of images
           cnic: cnicCtl.text.trim(),
           companyId: companyId ?? '',
           updatedAt: DateTime.now(),

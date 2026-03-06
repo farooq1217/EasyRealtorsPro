@@ -48,10 +48,17 @@ class _AdminAppState extends State<AdminApp> {
     _loadTheme();
     // Initialize offline sync service
     OfflineSyncService().initialize();
-    // Initialize background sync manager
-    BackgroundSyncManager().initialize().catchError((e) {
-      debugPrint('[APP] Error initializing background sync manager: $e');
-    });
+    
+    // Only initialize background sync if user is logged in
+    if (AuthService.currentUser != null) {
+      // Initialize background sync manager
+      BackgroundSyncManager().initialize().catchError((e) {
+        debugPrint('[APP] Error initializing background sync manager: $e');
+      });
+    } else {
+      debugPrint('[APP] Skipping background sync initialization - no user logged in');
+    }
+    
     // Initialize notification service
     NotificationService().initialize().catchError((e) {
       debugPrint('[APP] Error initializing notification service: $e');

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:shared/shared.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -15,6 +16,7 @@ import 'package:random_string/random_string.dart';
 import 'package:drift/drift.dart' as d;
 import 'app_storage.dart' show AppStorage;
 import '../../firestore_sync_service.dart';
+import 'background_sync_manager.dart';
 
 class AuthService {
   static Map<String, dynamic>? currentUser; // in-memory cache for immediate UI refresh
@@ -28,15 +30,21 @@ class AuthService {
   static bool showAuthLogs = false; // Set to true to enable auth-related debug prints
   static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
 
-  /// Disabled on Windows to avoid native listener threads; returns empty stream.
+  /// Stream authStateChanges with proper thread safety for Windows.
   Stream<fb.User?> authStateChanges() {
-    if (_isWindows) return const Stream<fb.User?>.empty();
+    if (_isWindows) {
+      // On Windows, use a controller-based approach to avoid native thread issues
+      return StreamController<fb.User?>.broadcast().stream;
+    }
     return fb.FirebaseAuth.instance.authStateChanges();
   }
 
-  /// Disabled on Windows to avoid native listener threads; returns empty stream.
+  /// Stream idTokenChanges with proper thread safety for Windows.
   Stream<fb.User?> idTokenChanges() {
-    if (_isWindows) return const Stream<fb.User?>.empty();
+    if (_isWindows) {
+      // On Windows, use a controller-based approach to avoid native thread issues
+      return StreamController<fb.User?>.broadcast().stream;
+    }
     return fb.FirebaseAuth.instance.idTokenChanges();
   }
 
@@ -362,6 +370,12 @@ class AuthService {
         return {};
       }
       final text = await file.readAsString();
+      if (text.trim().isEmpty) {
+        if (kDebugMode && showAuthLogs) {
+          debugPrint('AuthService: Users file is empty, returning empty map');
+        }
+        return {};
+      }
       final users = jsonDecode(text) as Map<String, dynamic>;
       if (kDebugMode && showAuthLogs) {
         debugPrint('AuthService: Successfully loaded ${users.length} users from: ${file.path}');
@@ -386,6 +400,12 @@ class AuthService {
       final file = io.File('${(await _getAppDir()).path}${io.Platform.pathSeparator}$_sessionsFile');
       if (!await file.exists()) return {};
       final text = await file.readAsString();
+      if (text.trim().isEmpty) {
+        if (kDebugMode && showAuthLogs) {
+          debugPrint('AuthService: Sessions file is empty, returning empty map');
+        }
+        return {};
+      }
       return jsonDecode(text) as Map<String, dynamic>;
     } catch (_) {
       return {};
@@ -405,6 +425,12 @@ class AuthService {
       final file = io.File('${(await _getAppDir()).path}${io.Platform.pathSeparator}$_resetCodesFile');
       if (!await file.exists()) return {};
       final text = await file.readAsString();
+      if (text.trim().isEmpty) {
+        if (kDebugMode && showAuthLogs) {
+          debugPrint('AuthService: Reset codes file is empty, returning empty map');
+        }
+        return {};
+      }
       return jsonDecode(text) as Map<String, dynamic>;
     } catch (_) {
       return {};
@@ -1597,6 +1623,10 @@ class AuthService {
     };
     // Update in-memory current user for immediate UI consumers
     AuthService.currentUser = u;
+    
+    // Initialize background sync after successful login
+    _initializeBackgroundSyncAfterLogin();
+    
     return loginResult;
   }
 
@@ -2004,6 +2034,10 @@ class AuthService {
       users[emailKey] = merged;
       await _writeUsers(users);
       AuthService.currentUser = merged;
+      
+      // Initialize background sync after user is loaded
+      _initializeBackgroundSyncAfterLogin();
+      
       return merged;
     }
 
@@ -2072,5 +2106,15 @@ class AuthService {
     }
   }
 
+  /// Initialize background sync after successful login
+  static void _initializeBackgroundSyncAfterLogin() {
+    if (currentUser != null) {
+      BackgroundSyncManager().initialize().catchError((e) {
+        debugPrint('[AUTH] Error initializing background sync after login: $e');
+      });
+      debugPrint('[AUTH] Background sync initialized after login');
+    } else {
+      debugPrint('[AUTH] Skipping background sync initialization - no user');
+    }
+  }
 }
-

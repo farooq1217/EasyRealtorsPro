@@ -6,10 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared/shared.dart';
-import '../../domain/models/expenditure_item.dart';
+import 'package:uuid/uuid.dart';
+import '../../domain/models/expenditure_item.dart' as domain;
 import '../../core/professional_pdf_generator.dart';
 import '../../core/shared_utils.dart';
 import '../../shimmer_widgets.dart';
+import '../../widgets/primary_gradient_button.dart';
 import 'expenditure_view_model.dart';
 
 class ExpenditurePage extends StatefulWidget {
@@ -25,6 +27,18 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   late ExpenditureViewModel _viewModel;
   
   final f = NumberFormat.currency(symbol: 'Rs ', decimalDigits: 2);
+  
+  // Category options for different types
+  static const List<String> officeCategories = ['Bills', 'House', 'Toiletry', 'Health', 'Communications', 'Food'];
+  static const List<String> projectCategories = ['Eating out', 'Transport', 'Taxi', 'Gifts', 'Entertainment'];
+  
+  // Form controllers
+  final _descriptionController = TextEditingController();
+  final _amountController = TextEditingController();
+  final _categoryController = TextEditingController();
+  DateTime? _selectedDate;
+  String? _selectedCategory;
+  String _currentFormType = 'office'; // 'office' or 'project'
 
   @override
   void initState() {
@@ -51,7 +65,16 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   void dispose() {
     _tabController.dispose();
     _viewModel.dispose();
+    _descriptionController.dispose();
+    _amountController.dispose();
+    _categoryController.dispose();
     super.dispose();
+  }
+
+  void _onTabChanged(int index) {
+    setState(() {
+      _tabController.animateTo(index);
+    });
   }
 
   @override
@@ -61,46 +84,278 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       child: Consumer<ExpenditureViewModel>(
         builder: (context, viewModel, child) {
           if (viewModel.loading) {
-            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            return Scaffold(
+              body: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFFFF6B35).withOpacity(0.03),
+                      const Color(0xFF4A90E2).withOpacity(0.03),
+                    ],
+                  ),
+                ),
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+            );
           }
 
           return Scaffold(
+            backgroundColor: Colors.grey.shade50,
             appBar: AppBar(
-              title: Text('Expenditures', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
-              bottom: TabBar(
-                controller: _tabController,
-                tabs: const [
-                  Tab(text: "Office Expense", icon: Icon(Icons.business_center)),
-                  Tab(text: "Projects", icon: Icon(Icons.assignment)),
+              automaticallyImplyLeading: false,
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Icon(Icons.account_balance_wallet, color: Colors.purple.shade600, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Expenditures',
+                    style: AppFonts.poppins(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 18,
+                    ),
+                  ),
                 ],
+              ),
+              backgroundColor: Colors.transparent,
+              flexibleSpace: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.purple.shade500,
+                      Colors.purple.shade400,
+                      Colors.purple.shade300,
+                    ],
+                  ),
+                ),
               ),
               actions: [
                 // Professional Receipt Generation
                 IconButton(
-                  icon: const Icon(Icons.receipt_long),
+                  icon: const Icon(Icons.receipt_long, color: Colors.white),
                   onPressed: () => _generateProfessionalReceipt(viewModel),
                   tooltip: 'Generate Professional Receipt',
                 ),
-                // Add button in AppBar
-                if (viewModel.canAdd)
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () => _showAddDialog(context, viewModel, _tabController.index == 0 ? "office" : "project"),
-                    tooltip: 'Add Expense',
-                  ),
                 // Global Search
                 TopRightSearch(
                   onChanged: (query) => viewModel.setSearchQuery(query),
-                  hintText: 'Search expenses...',
+                  hintText: 'Search...',
                 ),
               ],
             ),
-            body: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildListView(context, viewModel.filteredOfficeExpenses, "Office"),
-                _buildListView(context, viewModel.filteredProjectExpenses, "Project"),
-              ],
+            body: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFFFF6B35).withOpacity(0.03),
+                    const Color(0xFF4A90E2).withOpacity(0.03),
+                  ],
+                ),
+                border: Border.all(
+                  color: Colors.grey.shade300.withOpacity(0.5),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                children: [
+                  // Top Action Buttons
+                  Container(
+                    margin: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFF6B35).withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ElevatedButton(
+                              onPressed: () => _showExpenseDialog(context, viewModel, 'office'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.business_center, color: Colors.white, size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Add Office Expense',
+                                    style: AppFonts.poppins(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFF6B35).withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ElevatedButton(
+                              onPressed: () => _showExpenseDialog(context, viewModel, 'project'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.assignment, color: Colors.white, size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Add Project',
+                                    style: AppFonts.poppins(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  // Tab Bar (Custom Implementation like Agent Working)
+                  Container(
+                    margin: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => _onTabChanged(0),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: _tabController.index == 0 
+                                    ? const Color(0xFFFF6B35) 
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Office Expense',
+                                textAlign: TextAlign.center,
+                                style: AppFonts.poppins(
+                                  color: _tabController.index == 0 
+                                      ? Colors.white 
+                                      : Colors.grey.shade700,
+                                  fontWeight: _tabController.index == 0 
+                                      ? FontWeight.w600 
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => _onTabChanged(1),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: _tabController.index == 1 
+                                    ? const Color(0xFFFF6B35) 
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Projects',
+                                textAlign: TextAlign.center,
+                                style: AppFonts.poppins(
+                                  color: _tabController.index == 1 
+                                      ? Colors.white 
+                                      : Colors.grey.shade700,
+                                  fontWeight: _tabController.index == 1 
+                                      ? FontWeight.w600 
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  // Tab Content
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildListView(context, viewModel.filteredOfficeExpenses, "Office"),
+                        _buildListView(context, viewModel.filteredProjectExpenses, "Project"),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -108,7 +363,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     );
   }
 
-  Widget _buildListView(BuildContext context, List<ExpenditureItem> list, String type) {
+  Widget _buildListView(BuildContext context, List<domain.ExpenditureItem> list, String type) {
     if (list.isEmpty) {
       return Center(
         child: Column(
@@ -206,90 +461,68 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             itemBuilder: (context, i) {
               final item = list[i];
               
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  leading: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Center(
-                      child: Text(
-                        "${i + 1}",
-                        style: AppFonts.poppins(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
+              return InkWell(
+                onLongPress: () => _handleDelete(context, item),
+                onTap: () => _navigateToDetails(context, item),
+                child: Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  title: Text(
-                    item.description,
-                    style: AppFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today,
-                            size: 14,
-                            color: Colors.grey.shade600,
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              item.date,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            if (item.category != null && item.category!.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: type == "Office" ? Colors.orange.shade100 : Colors.blue.shade100,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  item.category!,
+                                  style: AppFonts.poppins(
+                                    fontSize: 12,
+                                    color: type == "Office" ? Colors.orange.shade700 : Colors.blue.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            const Spacer(),
+                            Text(
+                              f.format(item.amount),
                               style: AppFonts.poppins(
-                                fontSize: 13,
-                                color: Colors.grey.shade600,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Colors.red.shade600,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        f.format(item.amount),
-                        style: AppFonts.poppins(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.red.shade600,
+                          ],
                         ),
-                      ),
-                      if (item.category != null)
+                        const SizedBox(height: 8),
                         Text(
-                          item.category!,
+                          item.description,
                           style: AppFonts.poppins(
-                            fontSize: 11,
-                            color: Colors.grey.shade500,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                    ],
+                        const SizedBox(height: 4),
+                        Text(
+                          item.date,
+                          style: AppFonts.poppins(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  onLongPress: () => _handleDelete(context, item),
-                  onTap: () => _navigateToDetails(context, item),
                 ),
               );
             },
@@ -300,7 +533,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   }
 
   // Navigation to details page
-  void _navigateToDetails(BuildContext context, ExpenditureItem expense) {
+  void _navigateToDetails(BuildContext context, domain.ExpenditureItem expense) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ExpenditureDetailsPage(
@@ -312,229 +545,410 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     );
   }
 
-  // Date picker method
+  // Date picker method for local form
   Future<void> _selectDate(BuildContext context, ExpenditureViewModel viewModel) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: viewModel.selectedDate ?? DateTime.now(),
+      initialDate: _selectedDate ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked != null) {
-      viewModel.selectDate(picked);
+      setState(() {
+        _selectedDate = picked;
+      });
     }
   }
 
-  void _showAddDialog(BuildContext context, ExpenditureViewModel viewModel, String type) {
-    viewModel.clearForm();
+  // Save expense method with category validation
+  Future<bool> _saveExpense(ExpenditureViewModel viewModel) async {
+    try {
+      final description = _descriptionController.text.trim();
+      final amountText = _amountController.text.trim();
+      
+      // Validation
+      if (description.isEmpty) {
+        _showErrorSnackBar('Please enter a description');
+        return false;
+      }
+      
+      if (amountText.isEmpty) {
+        _showErrorSnackBar('Please enter an amount');
+        return false;
+      }
+      
+      final amount = double.tryParse(amountText);
+      if (amount == null || amount <= 0) {
+        _showErrorSnackBar('Please enter a valid amount');
+        return false;
+      }
+      
+      if (_selectedDate == null) {
+        _showErrorSnackBar('Please select a date');
+        return false;
+      }
+      
+      if (_selectedCategory == null || _selectedCategory!.isEmpty) {
+        _showErrorSnackBar('Please select a category');
+        return false;
+      }
+      
+      // Create expenditure with category
+      final expenditure = domain.ExpenditureItem(
+        id: const Uuid().v4(),
+        date: DateFormat('yyyy-MM-dd').format(_selectedDate!),
+        description: description,
+        amount: amount,
+        categoryType: _currentFormType, // 'office' or 'project'
+        category: _selectedCategory, // Add category field
+        companyId: RoleUtils.getUserCompanyId(viewModel.user) ?? '',
+        createdBy: viewModel.user?['id']?.toString() ?? viewModel.user?['userId']?.toString(),
+        isActive: true,
+        isSynced: true,
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
+      );
+      
+      await viewModel.repository.addExpenditure(expenditure);
+      
+      // Clear form
+      _descriptionController.clear();
+      _amountController.clear();
+      _categoryController.clear();
+      _selectedDate = null;
+      _selectedCategory = null;
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error saving expense: $e');
+      _showErrorSnackBar('Failed to save expense');
+      return false;
+    }
+  }
 
-    showModalBottomSheet(
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade600,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // Dynamic Expense Dialog with Category Selection
+  void _showExpenseDialog(BuildContext context, ExpenditureViewModel viewModel, String type) {
+    // Reset form
+    _descriptionController.clear();
+    _amountController.clear();
+    _categoryController.clear();
+    _selectedDate = DateTime.now(); // Auto-fill with current date
+    _selectedCategory = null;
+    _currentFormType = type;
+
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            left: 20,
-            right: 20,
-            top: 20,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+              // Header with gradient background
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      borderRadius: BorderRadius.circular(8),
+                      child: Icon(
+                        type == 'office' ? Icons.business_center : Icons.assignment,
+                        color: type == 'office' ? Colors.orange.shade600 : Colors.blue.shade600,
+                        size: 20,
+                      ),
                     ),
-                    child: Icon(
-                      type == "office" ? Icons.business_center : Icons.assignment,
-                      color: Colors.white,
-                      size: 20,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        "Add ${type == 'office' ? 'Office Expense' : 'Project'}",
+                        style: AppFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    "Add $type Expense",
-                    style: AppFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              
-              // Date Field
-              Text(
-                "Date",
-                style: AppFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade700,
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: () => _selectDate(context, viewModel),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
+              
+              // Form Content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.calendar_today, color: Colors.grey.shade600),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          viewModel.selectedDate != null
-                              ? DateFormat('dd MMM yyyy').format(viewModel.selectedDate!)
-                              : 'Select Date',
-                          style: AppFonts.poppins(
-                            color: viewModel.selectedDate != null
-                                ? Colors.black
-                                : Colors.grey.shade500,
+                      // Date Field (Auto-filled)
+                      Text(
+                        "Date",
+                        style: AppFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () => _selectDate(dialogContext, viewModel),
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade300),
+                            borderRadius: BorderRadius.circular(12),
+                            color: Colors.grey.shade50,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.calendar_today, color: Colors.orange.shade600),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _selectedDate != null
+                                      ? DateFormat('dd MMM yyyy').format(_selectedDate!)
+                                      : 'Select Date',
+                                  style: AppFonts.poppins(
+                                    color: _selectedDate != null
+                                        ? Colors.black87
+                                        : Colors.grey.shade500,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                            ],
                           ),
                         ),
                       ),
-                      Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                      const SizedBox(height: 16),
+                      
+                      // Category Dropdown
+                      Text(
+                        "Category",
+                        style: AppFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.white,
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedCategory,
+                            hint: Text(
+                              'Select category',
+                              style: AppFonts.poppins(color: Colors.grey.shade500),
+                            ),
+                            isExpanded: true,
+                            items: (type == 'office' ? officeCategories : projectCategories)
+                                .map((category) {
+                              return DropdownMenuItem<String>(
+                                value: category,
+                                child: Text(
+                                  category,
+                                  style: AppFonts.poppins(fontWeight: FontWeight.w500),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedCategory = value;
+                                _categoryController.text = value ?? '';
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Description Field
+                      Text(
+                        "Description",
+                        style: AppFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _descriptionController,
+                        decoration: InputDecoration(
+                          hintText: 'Enter expense description',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                        ),
+                        textCapitalization: TextCapitalization.sentences,
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Amount Field
+                      Text(
+                        "Amount",
+                        style: AppFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _amountController,
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(
+                          hintText: 'Enter amount',
+                          prefixText: 'Rs ',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              
-              // Description Field
-              Text(
-                "Description",
-                style: AppFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: viewModel.descriptionController,
-                decoration: InputDecoration(
-                  hintText: 'Enter expense description',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                  ),
-                ),
-                textCapitalization: TextCapitalization.sentences,
-              ),
-              const SizedBox(height: 16),
-              
-              // Amount Field
-              Text(
-                "Amount",
-                style: AppFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: viewModel.amountController,
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  hintText: 'Enter amount',
-                  prefixText: 'Rs ',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
               
               // Action Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: BorderSide(color: Colors.grey.shade400),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: Text(
-                        "Cancel",
-                        style: AppFonts.poppins(
-                          color: Colors.grey.shade700,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          final success = await viewModel.saveExpense(type);
-                          if (success && context.mounted) {
-                            Navigator.pop(context);
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: BorderSide(color: Colors.grey.shade400),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
                         child: Text(
-                          "Save Expense",
+                          "Cancel",
                           style: AppFonts.poppins(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFF6B35).withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final success = await _saveExpense(viewModel);
+                            if (success && dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '${type == 'office' ? 'Office Expense' : 'Project'} added successfully!',
+                                    style: AppFonts.poppins(),
+                                  ),
+                                  backgroundColor: const Color(0xFFFF6B35),
+                                ),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            "Save Expense",
+                            style: AppFonts.poppins(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -542,7 +956,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     );
   }
 
-  Future<void> _handleDelete(BuildContext context, ExpenditureItem expense) async {
+  Future<void> _handleDelete(BuildContext context, domain.ExpenditureItem expense) async {
     final confirm = await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -570,7 +984,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
         : "Project Expense Receipt";
     
     if (currentList.isEmpty) {
-      _showErrorSnackBar(context, 'No expenses to generate receipt');
+      _showErrorSnackBar('No expenses to generate receipt');
       return;
     }
     
@@ -600,23 +1014,13 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       gridRows: gridRows,
     );
   }
-
-  void _showErrorSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red.shade600,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
 }
 
 // --- Expenditure Details Page ---
 
 class ExpenditureDetailsPage extends StatefulWidget {
   final AppDatabase db;
-  final ExpenditureItem expense;
+  final domain.ExpenditureItem expense;
   final ExpenditureViewModel viewModel;
   
   const ExpenditureDetailsPage({
@@ -1101,7 +1505,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
     );
   }
   
-  Future<void> _handleDeleteSubItem(BuildContext context, ExpenditureViewModel viewModel, ExpenditureSubItem item) async {
+  Future<void> _handleDeleteSubItem(BuildContext context, ExpenditureViewModel viewModel, domain.ExpenditureSubItem item) async {
     final confirm = await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1150,7 +1554,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
       title: 'Expense Details Receipt',
       entityId: widget.expense.id,
       keyValues: keyValues,
-      gridRows: gridRows,
+      gridRows: gridRows.cast<Map<String, String>>(),
     );
   }
 }

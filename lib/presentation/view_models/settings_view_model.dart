@@ -18,6 +18,7 @@ class SettingsViewModel extends ChangeNotifier {
   String? _selectedSocietyId;
   bool _loading = true;
   bool _savingProfile = false;
+  bool _isLoadingBlocks = false;
 
   // Getters
   Map<String, dynamic>? get currentUser => _currentUser;
@@ -27,6 +28,7 @@ class SettingsViewModel extends ChangeNotifier {
   String? get selectedSocietyId => _selectedSocietyId;
   bool get loading => _loading;
   bool get savingProfile => _savingProfile;
+  bool get isLoadingBlocks => _isLoadingBlocks;
 
   // Initialize
   Future<void> initialize() async {
@@ -141,11 +143,20 @@ class SettingsViewModel extends ChangeNotifier {
   // Societies methods
   Future<void> _loadSocieties() async {
     try {
-      final societiesData = await _repository.getSocieties();
-      _societies = societiesData.map((s) => {
-        'id': s['id'],
-        'name': s['name'],
-      }).toList();
+      final rawData = await _repository.getSocieties();
+      debugPrint('SettingsViewModel: Repository returned ${rawData.length} raw societies: $rawData');
+      
+      // Fix the "Non-subtype" Error: Use type-safe mapping logic
+      _societies = List<Map<String, dynamic>>.from(
+        rawData.map((item) => {
+          'id': item['id']?.toString() ?? '',
+          'name': item['name']?.toString() ?? '',
+        })
+      );
+      
+      debugPrint('SettingsViewModel: Type-safe societies mapping completed, societies count: ${_societies.length}');
+      debugPrint('SettingsViewModel: Final societies list: $_societies');
+      
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading societies: $e');
@@ -192,42 +203,73 @@ class SettingsViewModel extends ChangeNotifier {
 
   void setSelectedSociety(String? societyId) {
     if (_selectedSocietyId != societyId) {
+      // 1. Update the selected society ID
       _selectedSocietyId = societyId;
-      _blocks = []; // Clear blocks when society changes
+      
+      // 2. Clear the current blocks list to prevent old data from showing
+      _blocks = [];
+      
+      // 3. Call notifyListeners() immediately to reset the Block dropdown state
       notifyListeners();
       
+      // 4. If societyId is not null, trigger block loading for fresh data
       if (societyId != null) {
-        _loadBlocksForSociety(societyId);
+        _loadBlocksForSociety(societyId).then((_) {
+          // Additional notification after blocks are loaded
+          notifyListeners();
+        });
       }
+    }
+  }
+
+  // Helper method to load blocks for a specific society
+  Future<void> _loadBlocksForSociety(String societyId) async {
+    try {
+      _isLoadingBlocks = true;
+      notifyListeners();
+      
+      final rawData = await _repository.getBlocksBySociety(societyId);
+      debugPrint('SettingsViewModel: Repository returned ${rawData.length} raw blocks: $rawData');
+      
+      // Fix the "Non-subtype" Error: Use type-safe mapping logic
+      _blocks = rawData.map((b) => {
+        'id': b['id']?.toString() ?? '',
+        'society_id': b['society_id']?.toString() ?? '',
+        'name': b['name']?.toString() ?? '',
+      }).toList();
+      
+      debugPrint('SettingsViewModel: Type-safe blocks mapping completed, blocks count: ${_blocks.length}');
+      debugPrint('SettingsViewModel: Final blocks list: $_blocks');
+      
+      _isLoadingBlocks = false;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading blocks for society $societyId: $e');
+      _blocks = [];
+      _isLoadingBlocks = false;
+      notifyListeners();
     }
   }
 
   // Blocks methods
   Future<void> _loadBlocks() async {
     try {
-      final blocksData = await _repository.getBlocks();
-      _blocks = blocksData.map((b) => {
-        'id': b['id'],
-        'society_id': b['society_id'],
-        'name': b['name'],
+      final rawData = await _repository.getBlocks();
+      debugPrint('SettingsViewModel: Repository returned ${rawData.length} raw blocks: $rawData');
+      
+      // Fix the "Non-subtype" Error: Use type-safe mapping logic
+      _blocks = rawData.map((b) => {
+        'id': b['id']?.toString() ?? '',
+        'society_id': b['society_id']?.toString() ?? '',
+        'name': b['name']?.toString() ?? '',
       }).toList();
+      
+      debugPrint('SettingsViewModel: Type-safe blocks mapping completed, blocks count: ${_blocks.length}');
+      debugPrint('SettingsViewModel: Final blocks list: $_blocks');
+      
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading blocks: $e');
-    }
-  }
-
-  Future<void> _loadBlocksForSociety(String societyId) async {
-    try {
-      final blocksData = await _repository.getBlocksBySociety(societyId);
-      _blocks = blocksData.map((b) => {
-        'id': b['id'],
-        'society_id': societyId,
-        'name': b['name'],
-      }).toList();
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error loading blocks for society: $e');
     }
   }
 

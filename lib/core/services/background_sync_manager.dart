@@ -12,6 +12,8 @@ class BackgroundSyncManager {
   static final BackgroundSyncManager _instance = BackgroundSyncManager._internal();
   factory BackgroundSyncManager() => _instance;
   BackgroundSyncManager._internal();
+  
+  bool _isInitialized = false;
 
   final FirestoreSyncService _firestoreSync = FirestoreSyncService();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -24,6 +26,12 @@ class BackgroundSyncManager {
 
   /// Initialize the sync manager
   Future<void> initialize() async {
+    if (_isInitialized) {
+      debugPrint('[SYNC] Background Sync Manager already initialized, skipping...');
+      return;
+    }
+    
+    _isInitialized = true;
     debugPrint('[SYNC] Initializing Background Sync Manager');
     
     // Check initial connectivity
@@ -42,6 +50,7 @@ class BackgroundSyncManager {
   Future<void> dispose() async {
     await _connectivitySubscription?.cancel();
     _syncTimer?.cancel();
+    _isInitialized = false;
     debugPrint('[SYNC] Background Sync Manager disposed');
   }
 

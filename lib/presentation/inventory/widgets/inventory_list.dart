@@ -74,25 +74,31 @@ class _InventoryListState extends State<InventoryList> {
               child: Row(
                 children: [
                   Expanded(
-                    child: SizedBox(
-                      height: 60,
-                      child: _buildDropdown(
-                        'Society',
-                        viewModel.societies,
-                        viewModel.selectedSocietyId,
-                        (value) => viewModel.setSelectedSociety(value),
+                    child: Container(
+                      key: ValueKey('dropdown_${viewModel.selectedSocietyId}_${viewModel.societies.length}'),
+                      child: SizedBox(
+                        height: 60,
+                        child: _buildDropdown(
+                          'Society',
+                          viewModel.societies,
+                          viewModel.selectedSocietyId,
+                          (value) => viewModel.setSelectedSociety(value),
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: SizedBox(
-                      height: 60,
-                      child: _buildDropdown(
-                        'Block',
-                        viewModel.getAvailableBlocks(),
-                        viewModel.selectedBlockId,
-                        (value) => viewModel.setSelectedBlock(value),
+                    child: Container(
+                      key: ValueKey('dropdown_${viewModel.selectedSocietyId}_${viewModel.blocks.length}'),
+                      child: SizedBox(
+                        height: 60,
+                        child: _buildDropdown(
+                          'Block',
+                          viewModel.getAvailableBlocks(),
+                          viewModel.selectedBlockId,
+                          (value) => viewModel.setSelectedBlock(value),
+                        ),
                       ),
                     ),
                   ),
@@ -172,8 +178,11 @@ class _InventoryListState extends State<InventoryList> {
           ]
         : [{'id': null, 'name': 'Select $label'}];
     
+    // Validate the selected value against actual items (not including "All" option)
+    final validValue = hasItems && items.any((i) => i['id'] == selectedValue) ? selectedValue : null;
+    
     return DropdownButtonFormField<String?>(
-      value: selectedValue,
+      value: validValue, // Use validated value
       onChanged: hasItems ? onChanged : null,
       decoration: InputDecoration(
         labelText: label,

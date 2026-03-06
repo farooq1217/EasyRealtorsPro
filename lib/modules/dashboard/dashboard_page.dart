@@ -408,6 +408,127 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
+
+  Widget _buildRevenueChartNew(DashboardViewModel viewModel) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Monthly Revenue vs Expenses',
+            style: AppFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF2D3748),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Last 6 months performance',
+            style: AppFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: const Color(0xFF718096),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 300,
+            child: SfCartesianChart(
+              primaryXAxis: CategoryAxis(
+                majorGridLines: const MajorGridLines(width: 0),
+                labelStyle: AppFonts.poppins(fontSize: 12),
+                labelRotation: -45,
+              ),
+              primaryYAxis: NumericAxis(
+                majorGridLines: const MajorGridLines(
+                  width: 1,
+                  color: Color(0xFFE2E8F0),
+                ),
+                labelStyle: AppFonts.poppins(fontSize: 12),
+                numberFormat: NumberFormat.compactCurrency(
+                  decimalDigits: 0,
+                  symbol: 'Rs',
+                ),
+              ),
+              tooltipBehavior: TooltipBehavior(
+                enable: true,
+                format: 'point.x: point.y',
+                textStyle: AppFonts.poppins(fontSize: 12),
+              ),
+              legend: Legend(
+                isVisible: true,
+                position: LegendPosition.bottom,
+                textStyle: AppFonts.poppins(fontSize: 12),
+              ),
+              series: <CartesianSeries<ChartData, String>>[
+                // Revenue Series
+                ColumnSeries<ChartData, String>(
+                  dataSource: _getRevenueData(),
+                  xValueMapper: (ChartData data, _) => data.month,
+                  yValueMapper: (ChartData data, _) => data.value,
+                  name: 'Revenue',
+                  color: const Color(0xFF805AD5),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(8),
+                    topRight: Radius.circular(8),
+                  ),
+                ),
+                // Expenses Series
+                ColumnSeries<ChartData, String>(
+                  dataSource: _getExpenseData(),
+                  xValueMapper: (ChartData data, _) => data.month,
+                  yValueMapper: (ChartData data, _) => data.value,
+                  name: 'Expenses',
+                  color: const Color(0xFFED8936),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(8),
+                    topRight: Radius.circular(8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<ChartData> _getRevenueData() {
+    // Sample data - in real app, this would come from repository
+    return [
+      ChartData('Oct', 450000),
+      ChartData('Nov', 520000),
+      ChartData('Dec', 480000),
+      ChartData('Jan', 590000),
+      ChartData('Feb', 620000),
+      ChartData('Mar', 680000),
+    ];
+  }
+
+  List<ChartData> _getExpenseData() {
+    // Sample data - in real app, this would come from repository
+    return [
+      ChartData('Oct', 320000),
+      ChartData('Nov', 380000),
+      ChartData('Dec', 350000),
+      ChartData('Jan', 410000),
+      ChartData('Feb', 440000),
+      ChartData('Mar', 480000),
+    ];
+  }
 }
 
 /// Custom shimmer widget for dashboard cards
@@ -480,127 +601,6 @@ class DashboardCardShimmer extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Widget _buildRevenueChartNew(DashboardViewModel viewModel) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Monthly Revenue vs Expenses',
-            style: AppFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF2D3748),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Last 6 months performance',
-            style: AppFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              color: const Color(0xFF718096),
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            height: 300,
-            child: SfCartesianChart(
-              primaryXAxis: CategoryAxis(
-                majorGridLines: const MajorGridLines(width: 0),
-                labelStyle: AppFonts.poppins(fontSize: 12),
-                labelRotation: -45,
-              ),
-              primaryYAxis: NumericAxis(
-                majorGridLines: const MajorGridLines(
-                  width: 1,
-                  color: Color(0xFFE2E8F0),
-                ),
-                labelStyle: AppFonts.poppins(fontSize: 12),
-                numberFormat: NumberFormat.compactCurrency(
-                  symbol: '₹',
-                  locale: 'en_IN',
-                ),
-              ),
-              tooltipBehavior: TooltipBehavior(
-                enable: true,
-                format: 'point.x: point.y',
-                textStyle: AppFonts.poppins(fontSize: 12),
-              ),
-              legend: Legend(
-                isVisible: true,
-                position: LegendPosition.bottom,
-                textStyle: AppFonts.poppins(fontSize: 12),
-              ),
-              series: <CartesianSeries<ChartData, String>>[
-                // Revenue Series
-                ColumnSeries<ChartData, String>(
-                  dataSource: _getRevenueData(),
-                  xValueMapper: (ChartData data, _) => data.month,
-                  yValueMapper: (ChartData data, _) => data.value,
-                  name: 'Revenue',
-                  color: const Color(0xFF805AD5),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(8),
-                    topRight: Radius.circular(8),
-                  ),
-                ),
-                // Expenses Series
-                ColumnSeries<ChartData, String>(
-                  dataSource: _getExpenseData(),
-                  xValueMapper: (ChartData data, _) => data.month,
-                  yValueMapper: (ChartData data, _) => data.value,
-                  name: 'Expenses',
-                  color: const Color(0xFFED8936),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(8),
-                    topRight: Radius.circular(8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<ChartData> _getRevenueData() {
-    // Sample data - in real app, this would come from repository
-    return [
-      ChartData('Oct', 450000),
-      ChartData('Nov', 520000),
-      ChartData('Dec', 480000),
-      ChartData('Jan', 590000),
-      ChartData('Feb', 620000),
-      ChartData('Mar', 680000),
-    ];
-  }
-
-  List<ChartData> _getExpenseData() {
-    // Sample data - in real app, this would come from repository
-    return [
-      ChartData('Oct', 320000),
-      ChartData('Nov', 380000),
-      ChartData('Dec', 350000),
-      ChartData('Jan', 410000),
-      ChartData('Feb', 440000),
-      ChartData('Mar', 480000),
-    ];
   }
 }
 

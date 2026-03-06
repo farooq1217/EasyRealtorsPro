@@ -13,25 +13,29 @@ class SocietyRepositoryImpl implements SocietyRepository {
   @override
   Future<List<Map<String, String>>> getSocieties() async {
     try {
+      final clauses = <String>['is_active = 1'];
+      final vars = <d.Variable<String>>[];
+      
+      // Filter by company if not super admin
+      if (!isSuperAdmin && companyId != null) {
+        clauses.add('company_id = ?');
+        vars.add(d.Variable.withString(companyId!));
+      }
+      
+      final where = clauses.isNotEmpty ? 'WHERE ${clauses.join(' AND ')}' : '';
+      
       final result = await db.customSelect('''
-        SELECT id, name FROM societies 
-        WHERE is_active = 1
+        SELECT id, name FROM societies $where
         ORDER BY name
-      ''').get();
+      ''', variables: vars).get();
       
       // Explicit type-safe mapping
       final List<Map<String, String>> items = [];
       for (final row in result) {
-        final Map<String, String> item = {
-          'id': row.data['id'] as String,
-          'name': row.data['name'] as String,
-        };
-        items.add(item);
-      }
-      
-      // Filter by company if not super admin
-      if (!isSuperAdmin && companyId != null) {
-        return items.where((item) => item['id'] == companyId).toList();
+        items.add({
+          'id': row.data['id']?.toString() ?? '',
+          'name': row.data['name']?.toString() ?? '',
+        });
       }
       
       return items;
@@ -44,26 +48,30 @@ class SocietyRepositoryImpl implements SocietyRepository {
   @override
   Future<List<Map<String, String>>> getBlocks() async {
     try {
+      final clauses = <String>['is_active = 1'];
+      final vars = <d.Variable<String>>[];
+      
+      // Filter by company if not super admin
+      if (!isSuperAdmin && companyId != null) {
+        clauses.add('company_id = ?');
+        vars.add(d.Variable.withString(companyId!));
+      }
+      
+      final where = clauses.isNotEmpty ? 'WHERE ${clauses.join(' AND ')}' : '';
+      
       final result = await db.customSelect('''
-        SELECT id, society_id, name FROM blocks 
-        WHERE is_active = 1
+        SELECT id, society_id, name FROM blocks $where
         ORDER BY name
-      ''').get();
+      ''', variables: vars).get();
       
       // Explicit type-safe mapping
       final List<Map<String, String>> items = [];
       for (final row in result) {
-        final Map<String, String> item = {
-          'id': row.data['id'] as String,
-          'society_id': row.data['society_id'] as String,
-          'name': row.data['name'] as String,
-        };
-        items.add(item);
-      }
-      
-      // Filter by company if not super admin
-      if (!isSuperAdmin && companyId != null) {
-        return items.where((item) => item['society_id'] == companyId).toList();
+        items.add({
+          'id': row.data['id']?.toString() ?? '',
+          'society_id': row.data['society_id']?.toString() ?? '',
+          'name': row.data['name']?.toString() ?? '',
+        });
       }
       
       return items;
@@ -75,30 +83,30 @@ class SocietyRepositoryImpl implements SocietyRepository {
 
   @override
   Future<List<Map<String, String>>> getBlocksBySociety(String societyId) async {
+    debugPrint('SocietyRepositoryImpl: getBlocksBySociety called with societyId: $societyId');
     try {
       final result = await db.customSelect(
         'SELECT id, name FROM blocks WHERE society_id = ? AND is_active = 1 ORDER BY name',
         variables: [d.Variable.withString(societyId)],
       ).get();
       
+      debugPrint('SocietyRepositoryImpl: Query returned ${result.length} raw results');
+      
       // Explicit type-safe mapping
       final List<Map<String, String>> items = [];
       for (final row in result) {
-        final Map<String, String> item = {
-          'id': row.data['id'] as String,
-          'name': row.data['name'] as String,
+        final item = {
+          'id': row.data['id']?.toString() ?? '',
+          'name': row.data['name']?.toString() ?? '',
         };
         items.add(item);
+        debugPrint('SocietyRepositoryImpl: Added block: $item');
       }
       
-      // Filter by company if not super admin
-      if (!isSuperAdmin && companyId != null) {
-        return items.where((item) => item['id'] == companyId).toList();
-      }
-      
+      debugPrint('SocietyRepositoryImpl: Returning ${items.length} blocks: $items');
       return items;
     } catch (e) {
-      debugPrint('Error loading blocks by society: $e');
+      debugPrint('SocietyRepositoryImpl: Error loading blocks by society: $e');
       return [];
     }
   }

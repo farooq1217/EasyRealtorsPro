@@ -1,12 +1,14 @@
 // presentation/inventory/inventory_view_model.dart
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import '../../domain/models/inventory_item.dart';
 import '../../domain/repositories/inventory_repository.dart';
 import '../../domain/repositories/society_repository.dart';
+import '../../domain/repositories/settings_repository.dart';
 
 class InventoryViewModel extends ChangeNotifier {
   final InventoryRepository _inventoryRepository;
-  final SocietyRepository _societyRepository;
+  final SettingsRepository _settingsRepository;
   
   List<InventoryItem> _allItems = [];
   List<InventoryItem> _filteredItems = [];
@@ -17,6 +19,10 @@ class InventoryViewModel extends ChangeNotifier {
   bool _isLoadingBlocks = false;
   bool _initialized = false;
   
+  // Stream subscriptions
+  StreamSubscription<List<Map<String, String>>>? _societiesSubscription;
+  StreamSubscription<List<Map<String, String>>>? _blocksSubscription;
+  
   // Filter state
   InventoryType _selectedType = InventoryType.file;
   String _searchQuery = '';
@@ -24,7 +30,7 @@ class InventoryViewModel extends ChangeNotifier {
   String? _selectedBlockId;
   String? _selectedStatusFilter;
 
-  InventoryViewModel(this._inventoryRepository, this._societyRepository) {
+  InventoryViewModel(this._inventoryRepository, this._settingsRepository) {
     _initialized = true;
   }
 
@@ -44,11 +50,11 @@ class InventoryViewModel extends ChangeNotifier {
   String? get selectedStatusFilter => _selectedStatusFilter;
   InventoryRepository get repository => _inventoryRepository;
 
-  // Load all data
-  Future<void> loadAllData() async {
+  // Load all data with proper parameters
+  Future<void> loadAllData({String? companyId, bool? isSuper}) async {
     await Future.wait([
       loadItems(),
-      loadSocieties(),
+      loadSocieties(companyId: companyId, isSuper: isSuper),
     ]);
   }
 
@@ -76,37 +82,72 @@ class InventoryViewModel extends ChangeNotifier {
     }
   }
 
-  // Load societies
-  Future<void> loadSocieties() async {
+  // Load societies using Future-based approach for now
+  Future<void> loadSocieties({String? companyId, bool? isSuper}) async {
     _isLoadingSocieties = true;
     notifyListeners();
     
     try {
-      _societies = await _societyRepository.getSocieties();
+      // Cancel existing subscription if any
+      await _societiesSubscription?.cancel();
+      _societiesSubscription = null;
+      
+      // Use Future-based approach for now to avoid stream type issues
+      final rawData = await _settingsRepository.getSocieties();
+      debugPrint('InventoryViewModel: Repository returned ${rawData.length} raw societies: $rawData');
+      
+      // Fix the "Non-subtype" Error: Use type-safe mapping logic
+      _societies = List<Map<String, String>>.from(rawData.map((item) => {
+        'id': item['id']?.toString() ?? '',
+        'name': item['name']?.toString() ?? '',
+      }));
+      
+      debugPrint('InventoryViewModel: Type-safe societies mapping completed, societies count: ${_societies.length}');
+      debugPrint('InventoryViewModel: Final societies list: ${_societies.map((s) => '${s['id']}:${s['name']}').toList()}');
+      
+      _isLoadingSocieties = false;
+      notifyListeners();
     } catch (e) {
       debugPrint('Error loading societies: $e');
       _societies = [];
-    } finally {
       _isLoadingSocieties = false;
       notifyListeners();
     }
   }
 
-  // Load blocks (all or by society)
+  // Load blocks using Future-based approach for now
   Future<void> loadBlocks({String? societyId}) async {
     _isLoadingBlocks = true;
     notifyListeners();
     
     try {
-      if (societyId != null) {
-        _blocks = await _societyRepository.getBlocksBySociety(societyId);
-      } else {
-        _blocks = await _societyRepository.getBlocks();
-      }
+      // Cancel existing subscription if any
+      await _blocksSubscription?.cancel();
+      _blocksSubscription = null;
+      
+      // Use Future-based approach for now to avoid stream type issues
+      final rawData = societyId != null 
+          ? await _settingsRepository.getBlocksBySociety(societyId)
+          : await _settingsRepository.getBlocks();
+      
+      debugPrint('InventoryViewModel: Repository returned ${rawData.length} raw blocks: $rawData');
+      
+      // Fix the "Non-subtype" Error: Use type-safe mapping logic
+      _blocks = List<Map<String, String>>.from(rawData.map((item) => {
+        'id': item['id']?.toString() ?? '',
+        'name': item['name']?.toString() ?? '',
+        if (item.containsKey('society_id')) 
+          'society_id': item['society_id']?.toString() ?? '',
+      }));
+      
+      debugPrint('InventoryViewModel: Type-safe blocks mapping completed, blocks count: ${_blocks.length}');
+      debugPrint('InventoryViewModel: Final blocks list: $_blocks');
+      
+      _isLoadingBlocks = false;
+      notifyListeners();
     } catch (e) {
       debugPrint('Error loading blocks: $e');
       _blocks = [];
-    } finally {
       _isLoadingBlocks = false;
       notifyListeners();
     }
@@ -129,26 +170,86 @@ class InventoryViewModel extends ChangeNotifier {
   }
 
   void setSelectedSociety(String? societyId) {
+    debugPrint('InventoryViewModel: setSelectedSociety called with societyId: $societyId');
     if (_selectedSocietyId != societyId) {
+      // 1. Update the selected society ID
       _selectedSocietyId = societyId;
-      _selectedBlockId = null; // Reset block when society changes
-      notifyListeners(); // Immediate UI update for society change
+      debugPrint('InventoryViewModel: Updated _selectedSocietyId to: $_selectedSocietyId');
       
-      // Load blocks asynchronously and notify when complete
-      loadBlocks(societyId: societyId).then((_) {
-        notifyListeners(); // Second notification after blocks are loaded
-      });
+      // 2. Clear the existing blocks list and immediately call notifyListeners() 
+      // so the UI shows the "Loading..." state in the Block dropdown
+      _blocks = [];
+      _selectedBlockId = null; // Reset block selection when society changes
+      debugPrint('InventoryViewModel: Cleared blocks list and block selection');
+      
+      // 3. Immediately call notifyListeners() to show loading state
+      notifyListeners();
+      debugPrint('InventoryViewModel: Notified listeners after clearing blocks');
+      
+      // 4. If societyId is not null, await fresh blocks from repository and notify again
+      if (societyId != null) {
+        debugPrint('InventoryViewModel: SocietyId is not null, calling _loadBlocksForSociety');
+        _loadBlocksForSociety(societyId).then((_) {
+          // Additional notification after blocks are loaded
+          notifyListeners();
+          debugPrint('InventoryViewModel: Additional notification after blocks loaded');
+        });
+      } else {
+        debugPrint('InventoryViewModel: SocietyId is null, not loading blocks');
+      }
       
       // Load items with new filters
       loadItems();
+    } else {
+      debugPrint('InventoryViewModel: SocietyId is the same, no action taken');
+    }
+  }
+
+  // Helper method to load blocks for a specific society
+  Future<void> _loadBlocksForSociety(String societyId) async {
+    debugPrint('InventoryViewModel: _loadBlocksForSociety called with societyId: $societyId');
+    try {
+      _isLoadingBlocks = true;
+      notifyListeners();
+      
+      debugPrint('InventoryViewModel: Calling getBlocksBySociety from repository');
+      // Use repository to get blocks for the specific society
+      final rawData = await _settingsRepository.getBlocksBySociety(societyId);
+      debugPrint('InventoryViewModel: Repository returned ${rawData.length} raw blocks: $rawData');
+      
+      // Fix the "Non-subtype" Error: Use type-safe mapping logic
+      _blocks = List<Map<String, String>>.from(rawData.map((item) => {
+        'id': item['id']?.toString() ?? '',
+        'name': item['name']?.toString() ?? '',
+        if (item.containsKey('society_id')) 
+          'society_id': item['society_id']?.toString() ?? '',
+      }));
+      
+      debugPrint('InventoryViewModel: Type-safe mapping completed, blocks count: ${_blocks.length}');
+      debugPrint('InventoryViewModel: Final blocks list: $_blocks');
+      
+      _isLoadingBlocks = false;
+      notifyListeners();
+      debugPrint('InventoryViewModel: Blocks updated, notified listeners');
+    } catch (e) {
+      debugPrint('Error loading blocks for society $societyId: $e');
+      _blocks = [];
+      _isLoadingBlocks = false;
+      notifyListeners();
     }
   }
 
   void setSelectedBlock(String? blockId) {
+    debugPrint('InventoryViewModel: setSelectedBlock called with blockId: $blockId');
+    debugPrint('InventoryViewModel: Current _selectedBlockId: $_selectedBlockId');
+    
     if (_selectedBlockId != blockId) {
       _selectedBlockId = blockId;
+      debugPrint('InventoryViewModel: Updated _selectedBlockId to: $_selectedBlockId');
       notifyListeners(); // Immediate UI update for block change
       loadItems();
+    } else {
+      debugPrint('InventoryViewModel: BlockId is the same, no action taken');
     }
   }
 
@@ -211,8 +312,16 @@ class InventoryViewModel extends ChangeNotifier {
 
   // Get available blocks for selected society
   List<Map<String, String>> getAvailableBlocks() {
-    if (_selectedSocietyId == null) return _blocks;
-    return _blocks.where((block) => block['society_id'] == _selectedSocietyId).toList();
+    final availableBlocks = _selectedSocietyId == null 
+        ? _blocks 
+        : _blocks.where((block) {
+            // Extract society_id from block ID: blk_soc_[society_id]_[block_name]_[timestamp]
+            final blockId = block['id'] ?? '';
+            return blockId.contains('$_selectedSocietyId\_');
+          }).toList();
+    debugPrint('InventoryViewModel: getAvailableBlocks - selectedSocietyId: $_selectedSocietyId, total blocks: ${_blocks.length}, available blocks: ${availableBlocks.length}');
+    debugPrint('InventoryViewModel: Available blocks: ${availableBlocks.map((b) => '${b['id']}:${b['name']}').toList()}');
+    return availableBlocks;
   }
 
   // Check if any filters are active
@@ -225,6 +334,9 @@ class InventoryViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    // Cancel stream subscriptions to prevent memory leaks
+    _societiesSubscription?.cancel();
+    _blocksSubscription?.cancel();
     super.dispose();
   }
 }

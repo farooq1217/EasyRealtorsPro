@@ -686,7 +686,32 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  if (viewModel.blocks.isEmpty)
+                  if (viewModel.isLoadingBlocks)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Loading blocks...',
+                            style: AppFonts.poppins(color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (viewModel.blocks.isEmpty)
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(

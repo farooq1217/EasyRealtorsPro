@@ -9918,6 +9918,522 @@ class ExpendituresCompanion extends UpdateCompanion<Expenditure> {
   }
 }
 
+class $ExpenditureSubItemsTable extends ExpenditureSubItems
+    with TableInfo<$ExpenditureSubItemsTable, ExpenditureSubItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExpenditureSubItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _parentIdMeta =
+      const VerificationMeta('parentId');
+  @override
+  late final GeneratedColumn<String> parentId = GeneratedColumn<String>(
+      'parent_id', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('REFERENCES expenditures (id)'));
+  static const VerificationMeta _descriptionMeta =
+      const VerificationMeta('description');
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+      'description', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+      'amount', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _companyIdMeta =
+      const VerificationMeta('companyId');
+  @override
+  late final GeneratedColumn<String> companyId = GeneratedColumn<String>(
+      'company_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createdByMeta =
+      const VerificationMeta('createdBy');
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+      'created_by', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
+      'created_at', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
+  static const VerificationMeta _isSyncedMeta =
+      const VerificationMeta('isSynced');
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+      'is_synced', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_synced" IN (0, 1))'),
+      defaultValue: const Constant(true));
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        parentId,
+        description,
+        amount,
+        companyId,
+        createdBy,
+        createdAt,
+        updatedAt,
+        isActive,
+        isSynced
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'expenditure_sub_items';
+  @override
+  VerificationContext validateIntegrity(Insertable<ExpenditureSubItem> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('parent_id')) {
+      context.handle(_parentIdMeta,
+          parentId.isAcceptableOrUnknown(data['parent_id']!, _parentIdMeta));
+    } else if (isInserting) {
+      context.missing(_parentIdMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+          _descriptionMeta,
+          description.isAcceptableOrUnknown(
+              data['description']!, _descriptionMeta));
+    } else if (isInserting) {
+      context.missing(_descriptionMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(_amountMeta,
+          amount.isAcceptableOrUnknown(data['amount']!, _amountMeta));
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('company_id')) {
+      context.handle(_companyIdMeta,
+          companyId.isAcceptableOrUnknown(data['company_id']!, _companyIdMeta));
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(_createdByMeta,
+          createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
+    if (data.containsKey('is_synced')) {
+      context.handle(_isSyncedMeta,
+          isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExpenditureSubItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExpenditureSubItem(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      parentId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}parent_id'])!,
+      description: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}description'])!,
+      amount: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}amount'])!,
+      companyId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}company_id']),
+      createdBy: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}created_by']),
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}created_at']),
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}updated_at'])!,
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
+      isSynced: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_synced'])!,
+    );
+  }
+
+  @override
+  $ExpenditureSubItemsTable createAlias(String alias) {
+    return $ExpenditureSubItemsTable(attachedDatabase, alias);
+  }
+}
+
+class ExpenditureSubItem extends DataClass
+    implements Insertable<ExpenditureSubItem> {
+  final String id;
+  final String parentId;
+  final String description;
+  final double amount;
+  final String? companyId;
+  final String? createdBy;
+  final String? createdAt;
+  final String updatedAt;
+  final bool isActive;
+  final bool isSynced;
+  const ExpenditureSubItem(
+      {required this.id,
+      required this.parentId,
+      required this.description,
+      required this.amount,
+      this.companyId,
+      this.createdBy,
+      this.createdAt,
+      required this.updatedAt,
+      required this.isActive,
+      required this.isSynced});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['parent_id'] = Variable<String>(parentId);
+    map['description'] = Variable<String>(description);
+    map['amount'] = Variable<double>(amount);
+    if (!nullToAbsent || companyId != null) {
+      map['company_id'] = Variable<String>(companyId);
+    }
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<String>(createdAt);
+    }
+    map['updated_at'] = Variable<String>(updatedAt);
+    map['is_active'] = Variable<bool>(isActive);
+    map['is_synced'] = Variable<bool>(isSynced);
+    return map;
+  }
+
+  ExpenditureSubItemsCompanion toCompanion(bool nullToAbsent) {
+    return ExpenditureSubItemsCompanion(
+      id: Value(id),
+      parentId: Value(parentId),
+      description: Value(description),
+      amount: Value(amount),
+      companyId: companyId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(companyId),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
+      updatedAt: Value(updatedAt),
+      isActive: Value(isActive),
+      isSynced: Value(isSynced),
+    );
+  }
+
+  factory ExpenditureSubItem.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExpenditureSubItem(
+      id: serializer.fromJson<String>(json['id']),
+      parentId: serializer.fromJson<String>(json['parentId']),
+      description: serializer.fromJson<String>(json['description']),
+      amount: serializer.fromJson<double>(json['amount']),
+      companyId: serializer.fromJson<String?>(json['companyId']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
+      createdAt: serializer.fromJson<String?>(json['createdAt']),
+      updatedAt: serializer.fromJson<String>(json['updatedAt']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'parentId': serializer.toJson<String>(parentId),
+      'description': serializer.toJson<String>(description),
+      'amount': serializer.toJson<double>(amount),
+      'companyId': serializer.toJson<String?>(companyId),
+      'createdBy': serializer.toJson<String?>(createdBy),
+      'createdAt': serializer.toJson<String?>(createdAt),
+      'updatedAt': serializer.toJson<String>(updatedAt),
+      'isActive': serializer.toJson<bool>(isActive),
+      'isSynced': serializer.toJson<bool>(isSynced),
+    };
+  }
+
+  ExpenditureSubItem copyWith(
+          {String? id,
+          String? parentId,
+          String? description,
+          double? amount,
+          Value<String?> companyId = const Value.absent(),
+          Value<String?> createdBy = const Value.absent(),
+          Value<String?> createdAt = const Value.absent(),
+          String? updatedAt,
+          bool? isActive,
+          bool? isSynced}) =>
+      ExpenditureSubItem(
+        id: id ?? this.id,
+        parentId: parentId ?? this.parentId,
+        description: description ?? this.description,
+        amount: amount ?? this.amount,
+        companyId: companyId.present ? companyId.value : this.companyId,
+        createdBy: createdBy.present ? createdBy.value : this.createdBy,
+        createdAt: createdAt.present ? createdAt.value : this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        isActive: isActive ?? this.isActive,
+        isSynced: isSynced ?? this.isSynced,
+      );
+  ExpenditureSubItem copyWithCompanion(ExpenditureSubItemsCompanion data) {
+    return ExpenditureSubItem(
+      id: data.id.present ? data.id.value : this.id,
+      parentId: data.parentId.present ? data.parentId.value : this.parentId,
+      description:
+          data.description.present ? data.description.value : this.description,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      companyId: data.companyId.present ? data.companyId.value : this.companyId,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpenditureSubItem(')
+          ..write('id: $id, ')
+          ..write('parentId: $parentId, ')
+          ..write('description: $description, ')
+          ..write('amount: $amount, ')
+          ..write('companyId: $companyId, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isActive: $isActive, ')
+          ..write('isSynced: $isSynced')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, parentId, description, amount, companyId,
+      createdBy, createdAt, updatedAt, isActive, isSynced);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExpenditureSubItem &&
+          other.id == this.id &&
+          other.parentId == this.parentId &&
+          other.description == this.description &&
+          other.amount == this.amount &&
+          other.companyId == this.companyId &&
+          other.createdBy == this.createdBy &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.isActive == this.isActive &&
+          other.isSynced == this.isSynced);
+}
+
+class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
+  final Value<String> id;
+  final Value<String> parentId;
+  final Value<String> description;
+  final Value<double> amount;
+  final Value<String?> companyId;
+  final Value<String?> createdBy;
+  final Value<String?> createdAt;
+  final Value<String> updatedAt;
+  final Value<bool> isActive;
+  final Value<bool> isSynced;
+  final Value<int> rowid;
+  const ExpenditureSubItemsCompanion({
+    this.id = const Value.absent(),
+    this.parentId = const Value.absent(),
+    this.description = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.companyId = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ExpenditureSubItemsCompanion.insert({
+    required String id,
+    required String parentId,
+    required String description,
+    required double amount,
+    this.companyId = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    required String updatedAt,
+    this.isActive = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        parentId = Value(parentId),
+        description = Value(description),
+        amount = Value(amount),
+        updatedAt = Value(updatedAt);
+  static Insertable<ExpenditureSubItem> custom({
+    Expression<String>? id,
+    Expression<String>? parentId,
+    Expression<String>? description,
+    Expression<double>? amount,
+    Expression<String>? companyId,
+    Expression<String>? createdBy,
+    Expression<String>? createdAt,
+    Expression<String>? updatedAt,
+    Expression<bool>? isActive,
+    Expression<bool>? isSynced,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (parentId != null) 'parent_id': parentId,
+      if (description != null) 'description': description,
+      if (amount != null) 'amount': amount,
+      if (companyId != null) 'company_id': companyId,
+      if (createdBy != null) 'created_by': createdBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (isActive != null) 'is_active': isActive,
+      if (isSynced != null) 'is_synced': isSynced,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ExpenditureSubItemsCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? parentId,
+      Value<String>? description,
+      Value<double>? amount,
+      Value<String?>? companyId,
+      Value<String?>? createdBy,
+      Value<String?>? createdAt,
+      Value<String>? updatedAt,
+      Value<bool>? isActive,
+      Value<bool>? isSynced,
+      Value<int>? rowid}) {
+    return ExpenditureSubItemsCompanion(
+      id: id ?? this.id,
+      parentId: parentId ?? this.parentId,
+      description: description ?? this.description,
+      amount: amount ?? this.amount,
+      companyId: companyId ?? this.companyId,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isActive: isActive ?? this.isActive,
+      isSynced: isSynced ?? this.isSynced,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (parentId.present) {
+      map['parent_id'] = Variable<String>(parentId.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (companyId.present) {
+      map['company_id'] = Variable<String>(companyId.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<String>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<String>(updatedAt.value);
+    }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpenditureSubItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('parentId: $parentId, ')
+          ..write('description: $description, ')
+          ..write('amount: $amount, ')
+          ..write('companyId: $companyId, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isActive: $isActive, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -9942,6 +10458,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SyncLogsTable syncLogs = $SyncLogsTable(this);
   late final $ClientsTable clients = $ClientsTable(this);
   late final $ExpendituresTable expenditures = $ExpendituresTable(this);
+  late final $ExpenditureSubItemsTable expenditureSubItems =
+      $ExpenditureSubItemsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -9964,7 +10482,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         deletions,
         syncLogs,
         clients,
-        expenditures
+        expenditures,
+        expenditureSubItems
       ];
 }
 
@@ -16231,6 +16750,29 @@ typedef $$ExpendituresTableUpdateCompanionBuilder = ExpendituresCompanion
   Value<int> rowid,
 });
 
+final class $$ExpendituresTableReferences
+    extends BaseReferences<_$AppDatabase, $ExpendituresTable, Expenditure> {
+  $$ExpendituresTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$ExpenditureSubItemsTable,
+      List<ExpenditureSubItem>> _expenditureSubItemsRefsTable(
+          _$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(db.expenditureSubItems,
+          aliasName: $_aliasNameGenerator(
+              db.expenditures.id, db.expenditureSubItems.parentId));
+
+  $$ExpenditureSubItemsTableProcessedTableManager get expenditureSubItemsRefs {
+    final manager = $$ExpenditureSubItemsTableTableManager(
+            $_db, $_db.expenditureSubItems)
+        .filter((f) => f.parentId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache =
+        $_typedResult.readTableOrNull(_expenditureSubItemsRefsTable($_db));
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: cache));
+  }
+}
+
 class $$ExpendituresTableFilterComposer
     extends Composer<_$AppDatabase, $ExpendituresTable> {
   $$ExpendituresTableFilterComposer({
@@ -16287,6 +16829,27 @@ class $$ExpendituresTableFilterComposer
 
   ColumnFilters<bool> get isSynced => $composableBuilder(
       column: $table.isSynced, builder: (column) => ColumnFilters(column));
+
+  Expression<bool> expenditureSubItemsRefs(
+      Expression<bool> Function($$ExpenditureSubItemsTableFilterComposer f) f) {
+    final $$ExpenditureSubItemsTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.expenditureSubItems,
+        getReferencedColumn: (t) => t.parentId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ExpenditureSubItemsTableFilterComposer(
+              $db: $db,
+              $table: $db.expenditureSubItems,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
 }
 
 class $$ExpendituresTableOrderingComposer
@@ -16404,6 +16967,29 @@ class $$ExpendituresTableAnnotationComposer
 
   GeneratedColumn<bool> get isSynced =>
       $composableBuilder(column: $table.isSynced, builder: (column) => column);
+
+  Expression<T> expenditureSubItemsRefs<T extends Object>(
+      Expression<T> Function($$ExpenditureSubItemsTableAnnotationComposer a)
+          f) {
+    final $$ExpenditureSubItemsTableAnnotationComposer composer =
+        $composerBuilder(
+            composer: this,
+            getCurrentColumn: (t) => t.id,
+            referencedTable: $db.expenditureSubItems,
+            getReferencedColumn: (t) => t.parentId,
+            builder: (joinBuilder,
+                    {$addJoinBuilderToRootComposer,
+                    $removeJoinBuilderFromRootComposer}) =>
+                $$ExpenditureSubItemsTableAnnotationComposer(
+                  $db: $db,
+                  $table: $db.expenditureSubItems,
+                  $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                  joinBuilder: joinBuilder,
+                  $removeJoinBuilderFromRootComposer:
+                      $removeJoinBuilderFromRootComposer,
+                ));
+    return f(composer);
+  }
 }
 
 class $$ExpendituresTableTableManager extends RootTableManager<
@@ -16415,12 +17001,9 @@ class $$ExpendituresTableTableManager extends RootTableManager<
     $$ExpendituresTableAnnotationComposer,
     $$ExpendituresTableCreateCompanionBuilder,
     $$ExpendituresTableUpdateCompanionBuilder,
-    (
-      Expenditure,
-      BaseReferences<_$AppDatabase, $ExpendituresTable, Expenditure>
-    ),
+    (Expenditure, $$ExpendituresTableReferences),
     Expenditure,
-    PrefetchHooks Function()> {
+    PrefetchHooks Function({bool expenditureSubItemsRefs})> {
   $$ExpendituresTableTableManager(_$AppDatabase db, $ExpendituresTable table)
       : super(TableManagerState(
           db: db,
@@ -16508,9 +17091,37 @@ class $$ExpendituresTableTableManager extends RootTableManager<
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable(table),
+                    $$ExpendituresTableReferences(db, table, e)
+                  ))
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({expenditureSubItemsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (expenditureSubItemsRefs) db.expenditureSubItems
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (expenditureSubItemsRefs)
+                    await $_getPrefetchedData<Expenditure, $ExpendituresTable,
+                            ExpenditureSubItem>(
+                        currentTable: table,
+                        referencedTable: $$ExpendituresTableReferences
+                            ._expenditureSubItemsRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$ExpendituresTableReferences(db, table, p0)
+                                .expenditureSubItemsRefs,
+                        referencedItemsForCurrentItem: (item,
+                                referencedItems) =>
+                            referencedItems.where((e) => e.parentId == item.id),
+                        typedResults: items)
+                ];
+              },
+            );
+          },
         ));
 }
 
@@ -16523,12 +17134,364 @@ typedef $$ExpendituresTableProcessedTableManager = ProcessedTableManager<
     $$ExpendituresTableAnnotationComposer,
     $$ExpendituresTableCreateCompanionBuilder,
     $$ExpendituresTableUpdateCompanionBuilder,
-    (
-      Expenditure,
-      BaseReferences<_$AppDatabase, $ExpendituresTable, Expenditure>
-    ),
+    (Expenditure, $$ExpendituresTableReferences),
     Expenditure,
-    PrefetchHooks Function()>;
+    PrefetchHooks Function({bool expenditureSubItemsRefs})>;
+typedef $$ExpenditureSubItemsTableCreateCompanionBuilder
+    = ExpenditureSubItemsCompanion Function({
+  required String id,
+  required String parentId,
+  required String description,
+  required double amount,
+  Value<String?> companyId,
+  Value<String?> createdBy,
+  Value<String?> createdAt,
+  required String updatedAt,
+  Value<bool> isActive,
+  Value<bool> isSynced,
+  Value<int> rowid,
+});
+typedef $$ExpenditureSubItemsTableUpdateCompanionBuilder
+    = ExpenditureSubItemsCompanion Function({
+  Value<String> id,
+  Value<String> parentId,
+  Value<String> description,
+  Value<double> amount,
+  Value<String?> companyId,
+  Value<String?> createdBy,
+  Value<String?> createdAt,
+  Value<String> updatedAt,
+  Value<bool> isActive,
+  Value<bool> isSynced,
+  Value<int> rowid,
+});
+
+final class $$ExpenditureSubItemsTableReferences extends BaseReferences<
+    _$AppDatabase, $ExpenditureSubItemsTable, ExpenditureSubItem> {
+  $$ExpenditureSubItemsTableReferences(
+      super.$_db, super.$_table, super.$_typedResult);
+
+  static $ExpendituresTable _parentIdTable(_$AppDatabase db) =>
+      db.expenditures.createAlias($_aliasNameGenerator(
+          db.expenditureSubItems.parentId, db.expenditures.id));
+
+  $$ExpendituresTableProcessedTableManager get parentId {
+    final $_column = $_itemColumn<String>('parent_id')!;
+
+    final manager = $$ExpendituresTableTableManager($_db, $_db.expenditures)
+        .filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_parentIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: [item]));
+  }
+}
+
+class $$ExpenditureSubItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $ExpenditureSubItemsTable> {
+  $$ExpenditureSubItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get amount => $composableBuilder(
+      column: $table.amount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get companyId => $composableBuilder(
+      column: $table.companyId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+      column: $table.createdBy, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+      column: $table.isSynced, builder: (column) => ColumnFilters(column));
+
+  $$ExpendituresTableFilterComposer get parentId {
+    final $$ExpendituresTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.parentId,
+        referencedTable: $db.expenditures,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ExpendituresTableFilterComposer(
+              $db: $db,
+              $table: $db.expenditures,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$ExpenditureSubItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ExpenditureSubItemsTable> {
+  $$ExpenditureSubItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+      column: $table.amount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get companyId => $composableBuilder(
+      column: $table.companyId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+      column: $table.createdBy, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+      column: $table.isSynced, builder: (column) => ColumnOrderings(column));
+
+  $$ExpendituresTableOrderingComposer get parentId {
+    final $$ExpendituresTableOrderingComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.parentId,
+        referencedTable: $db.expenditures,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ExpendituresTableOrderingComposer(
+              $db: $db,
+              $table: $db.expenditures,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$ExpenditureSubItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ExpenditureSubItemsTable> {
+  $$ExpenditureSubItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get companyId =>
+      $composableBuilder(column: $table.companyId, builder: (column) => column);
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<String> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+
+  $$ExpendituresTableAnnotationComposer get parentId {
+    final $$ExpendituresTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.parentId,
+        referencedTable: $db.expenditures,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ExpendituresTableAnnotationComposer(
+              $db: $db,
+              $table: $db.expenditures,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$ExpenditureSubItemsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $ExpenditureSubItemsTable,
+    ExpenditureSubItem,
+    $$ExpenditureSubItemsTableFilterComposer,
+    $$ExpenditureSubItemsTableOrderingComposer,
+    $$ExpenditureSubItemsTableAnnotationComposer,
+    $$ExpenditureSubItemsTableCreateCompanionBuilder,
+    $$ExpenditureSubItemsTableUpdateCompanionBuilder,
+    (ExpenditureSubItem, $$ExpenditureSubItemsTableReferences),
+    ExpenditureSubItem,
+    PrefetchHooks Function({bool parentId})> {
+  $$ExpenditureSubItemsTableTableManager(
+      _$AppDatabase db, $ExpenditureSubItemsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExpenditureSubItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ExpenditureSubItemsTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ExpenditureSubItemsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> parentId = const Value.absent(),
+            Value<String> description = const Value.absent(),
+            Value<double> amount = const Value.absent(),
+            Value<String?> companyId = const Value.absent(),
+            Value<String?> createdBy = const Value.absent(),
+            Value<String?> createdAt = const Value.absent(),
+            Value<String> updatedAt = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
+            Value<bool> isSynced = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ExpenditureSubItemsCompanion(
+            id: id,
+            parentId: parentId,
+            description: description,
+            amount: amount,
+            companyId: companyId,
+            createdBy: createdBy,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            isActive: isActive,
+            isSynced: isSynced,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String parentId,
+            required String description,
+            required double amount,
+            Value<String?> companyId = const Value.absent(),
+            Value<String?> createdBy = const Value.absent(),
+            Value<String?> createdAt = const Value.absent(),
+            required String updatedAt,
+            Value<bool> isActive = const Value.absent(),
+            Value<bool> isSynced = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              ExpenditureSubItemsCompanion.insert(
+            id: id,
+            parentId: parentId,
+            description: description,
+            amount: amount,
+            companyId: companyId,
+            createdBy: createdBy,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            isActive: isActive,
+            isSynced: isSynced,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable(table),
+                    $$ExpenditureSubItemsTableReferences(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: ({parentId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                  T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic>>(state) {
+                if (parentId) {
+                  state = state.withJoin(
+                    currentTable: table,
+                    currentColumn: table.parentId,
+                    referencedTable:
+                        $$ExpenditureSubItemsTableReferences._parentIdTable(db),
+                    referencedColumn: $$ExpenditureSubItemsTableReferences
+                        ._parentIdTable(db)
+                        .id,
+                  ) as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$ExpenditureSubItemsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $ExpenditureSubItemsTable,
+    ExpenditureSubItem,
+    $$ExpenditureSubItemsTableFilterComposer,
+    $$ExpenditureSubItemsTableOrderingComposer,
+    $$ExpenditureSubItemsTableAnnotationComposer,
+    $$ExpenditureSubItemsTableCreateCompanionBuilder,
+    $$ExpenditureSubItemsTableUpdateCompanionBuilder,
+    (ExpenditureSubItem, $$ExpenditureSubItemsTableReferences),
+    ExpenditureSubItem,
+    PrefetchHooks Function({bool parentId})>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -16569,4 +17532,6 @@ class $AppDatabaseManager {
       $$ClientsTableTableManager(_db, _db.clients);
   $$ExpendituresTableTableManager get expenditures =>
       $$ExpendituresTableTableManager(_db, _db.expenditures);
+  $$ExpenditureSubItemsTableTableManager get expenditureSubItems =>
+      $$ExpenditureSubItemsTableTableManager(_db, _db.expenditureSubItems);
 }
