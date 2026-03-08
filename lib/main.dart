@@ -20,7 +20,7 @@ void main() async {
 
   final isWindows = !kIsWeb && io.Platform.isWindows;
 
-  // Enhanced error handling for platform channel threading issues
+  // Enhanced error handling for platform channel threading issues and Windows accessibility
   await runZonedGuarded(() async {
     // 1. Database Configuration (Theek hai)
     AppDatabase.configureOpener(() async {
@@ -65,11 +65,15 @@ void main() async {
       });
     });
   }, (error, stack) {
-    // Global error handler for platform channel issues
+    // Global error handler for platform channel issues and Windows accessibility errors
+    // CRITICAL: Comprehensive filtering of platform-specific warnings
     if (error.toString().contains('channel sent a message') || 
         error.toString().contains('non-platform thread') ||
         error.toString().contains('Announce message') ||
-        error.toString().contains('viewId')) {
+        error.toString().contains('viewId') ||
+        error.toString().contains('FlutterViewId') ||
+        error.toString().contains('accessibility') ||
+        error.toString().contains('semantics')) {
       debugPrint('Platform warning silenced: ${error.runtimeType}');
     } else {
       debugPrint('Global error: $error');

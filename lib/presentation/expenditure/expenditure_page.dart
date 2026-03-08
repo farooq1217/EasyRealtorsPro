@@ -33,7 +33,6 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   static const List<String> projectCategories = ['Eating out', 'Transport', 'Taxi', 'Gifts', 'Entertainment'];
   
   // Form controllers
-  final _descriptionController = TextEditingController();
   final _amountController = TextEditingController();
   final _categoryController = TextEditingController();
   DateTime? _selectedDate;
@@ -65,7 +64,6 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   void dispose() {
     _tabController.dispose();
     _viewModel.dispose();
-    _descriptionController.dispose();
     _amountController.dispose();
     _categoryController.dispose();
     super.dispose();
@@ -344,13 +342,53 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                     ),
                   ),
                   
-                  // Tab Content
+                  // Tab Content with StreamBuilder for real-time updates
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,
                       children: [
-                        _buildListView(context, viewModel.filteredOfficeExpenses, "Office"),
-                        _buildListView(context, viewModel.filteredProjectExpenses, "Project"),
+                        // Office Expenses Tab with StreamBuilder
+                        StreamBuilder<List<domain.ExpenditureItem>>(
+                          stream: _viewModel.repository.watchOfficeExpenses(
+                            RoleUtils.getUserCompanyId(_viewModel.user) ?? ''
+                          ),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            if (snapshot.hasError) {
+                              return Center(
+                                child: Text(
+                                  'Error loading office expenses',
+                                  style: AppFonts.poppins(color: Colors.red),
+                                ),
+                              );
+                            }
+                            final officeExpenses = snapshot.data ?? [];
+                            return _buildListView(context, officeExpenses, "Office");
+                          },
+                        ),
+                        // Project Expenses Tab with StreamBuilder
+                        StreamBuilder<List<domain.ExpenditureItem>>(
+                          stream: _viewModel.repository.watchProjectExpenses(
+                            RoleUtils.getUserCompanyId(_viewModel.user) ?? ''
+                          ),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            if (snapshot.hasError) {
+                              return Center(
+                                child: Text(
+                                  'Error loading project expenses',
+                                  style: AppFonts.poppins(color: Colors.red),
+                                ),
+                              );
+                            }
+                            final projectExpenses = snapshot.data ?? [];
+                            return _buildListView(context, projectExpenses, "Project");
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -359,6 +397,27 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             ),
           );
         },
+      ),
+    );
+  }
+
+  // Helper method to build category title with proper fallback logic
+  Widget _buildCategoryTitle(domain.ExpenditureItem item, String type) {
+    String displayTitle;
+    
+    // Logic: If category is 'Other' or empty, show description. Otherwise show category.
+    if (item.category != null && item.category!.isNotEmpty && item.category != 'Other') {
+      displayTitle = item.category!;
+    } else {
+      displayTitle = item.description.isNotEmpty ? item.description : 'No Category';
+    }
+    
+    return Text(
+      displayTitle,
+      style: AppFonts.poppins(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: Colors.black87,
       ),
     );
   }
@@ -505,13 +564,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                           ],
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          item.description,
-                          style: AppFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        // CRITICAL: Category Name as main title with enhanced styling
+                        _buildCategoryTitle(item, type),
                         const SizedBox(height: 4),
                         Text(
                           item.date,
@@ -560,18 +614,12 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     }
   }
 
-  // Save expense method with category validation
+  // Save expense method with enhanced real-time refresh
   Future<bool> _saveExpense(ExpenditureViewModel viewModel) async {
     try {
-      final description = _descriptionController.text.trim();
       final amountText = _amountController.text.trim();
       
-      // Validation
-      if (description.isEmpty) {
-        _showErrorSnackBar('Please enter a description');
-        return false;
-      }
-      
+      // Validation - Description removed
       if (amountText.isEmpty) {
         _showErrorSnackBar('Please enter an amount');
         return false;
@@ -593,32 +641,34 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
         return false;
       }
       
-      // Create expenditure with category
-      final expenditure = domain.ExpenditureItem(
-        id: const Uuid().v4(),
-        date: DateFormat('yyyy-MM-dd').format(_selectedDate!),
-        description: description,
+      // Use ViewModel's saveExpenseWithCategory method with validated data
+      final success = await viewModel.saveExpenseWithCategory(
+        _currentFormType,
+        _selectedCategory,
+        description: _selectedCategory!, // Use category as description
         amount: amount,
-        categoryType: _currentFormType, // 'office' or 'project'
-        category: _selectedCategory, // Add category field
-        companyId: RoleUtils.getUserCompanyId(viewModel.user) ?? '',
-        createdBy: viewModel.user?['id']?.toString() ?? viewModel.user?['userId']?.toString(),
-        isActive: true,
-        isSynced: true,
-        createdAt: DateTime.now().toIso8601String(),
-        updatedAt: DateTime.now().toIso8601String(),
+        selectedDate: _selectedDate!,
       );
       
-      await viewModel.repository.addExpenditure(expenditure);
+      if (success) {
+        // CRITICAL: Immediate UI refresh through multiple mechanisms
+        
+        // 1. Force immediate page refresh (backup mechanism)
+        if (mounted) {
+          setState(() {});
+        }
+        
+        // 2. Trigger ViewModel data refresh (primary mechanism)
+        viewModel.refreshData();
+        
+        // 3. Clear form
+        _amountController.clear();
+        _categoryController.clear();
+        _selectedDate = null;
+        _selectedCategory = null;
+      }
       
-      // Clear form
-      _descriptionController.clear();
-      _amountController.clear();
-      _categoryController.clear();
-      _selectedDate = null;
-      _selectedCategory = null;
-      
-      return true;
+      return success;
     } catch (e) {
       debugPrint('Error saving expense: $e');
       _showErrorSnackBar('Failed to save expense');
@@ -639,7 +689,6 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   // Dynamic Expense Dialog with Category Selection
   void _showExpenseDialog(BuildContext context, ExpenditureViewModel viewModel, String type) {
     // Reset form
-    _descriptionController.clear();
     _amountController.clear();
     _categoryController.clear();
     _selectedDate = DateTime.now(); // Auto-fill with current date
@@ -656,300 +705,300 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
             maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header with gradient background
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    topRight: Radius.circular(16),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
+          child: StatefulBuilder(
+            builder: (dialogContext, setDialogState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header with gradient background
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      child: Icon(
-                        type == 'office' ? Icons.business_center : Icons.assignment,
-                        color: type == 'office' ? Colors.orange.shade600 : Colors.blue.shade600,
-                        size: 20,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        "Add ${type == 'office' ? 'Office Expense' : 'Project'}",
-                        style: AppFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Form Content
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Date Field (Auto-filled)
-                      Text(
-                        "Date",
-                        style: AppFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      InkWell(
-                        onTap: () => _selectDate(dialogContext, viewModel),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey.shade300),
-                            borderRadius: BorderRadius.circular(12),
-                            color: Colors.grey.shade50,
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.calendar_today, color: Colors.orange.shade600),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  _selectedDate != null
-                                      ? DateFormat('dd MMM yyyy').format(_selectedDate!)
-                                      : 'Select Date',
-                                  style: AppFonts.poppins(
-                                    color: _selectedDate != null
-                                        ? Colors.black87
-                                        : Colors.grey.shade500,
-                                    fontWeight: FontWeight.w500,
+                          child: Icon(
+                            type == 'office' ? Icons.business_center : Icons.assignment,
+                            color: type == 'office' ? Colors.orange.shade600 : Colors.blue.shade600,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            "Add ${type == 'office' ? 'Office Expense' : 'Project'}",
+                            style: AppFonts.poppins(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  // Form Content
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Date Field (Auto-filled)
+                          Text(
+                            "Date",
+                            style: AppFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          InkWell(
+                            onTap: () => _selectDate(dialogContext, viewModel),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade300),
+                                borderRadius: BorderRadius.circular(12),
+                                color: Colors.grey.shade50,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.calendar_today, color: Colors.orange.shade600),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      _selectedDate != null
+                                          ? DateFormat('dd MMM yyyy').format(_selectedDate!)
+                                          : 'Select Date',
+                                      style: AppFonts.poppins(
+                                        color: _selectedDate != null
+                                            ? Colors.black87
+                                            : Colors.grey.shade500,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
                                   ),
+                                  Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Category Dropdown
+                          Text(
+                            "Category",
+                            style: AppFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade300),
+                              borderRadius: BorderRadius.circular(12),
+                              color: Colors.white,
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedCategory,
+                                hint: Text(
+                                  'Select category',
+                                  style: AppFonts.poppins(color: Colors.grey.shade500),
+                                ),
+                                isExpanded: true,
+                                items: (type == 'office' ? officeCategories : projectCategories)
+                                    .map((category) {
+                                  return DropdownMenuItem<String>(
+                                    value: category,
+                                    child: Text(
+                                      category,
+                                      style: AppFonts.poppins(fontWeight: FontWeight.w500),
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (value) {
+                                  setDialogState(() {
+                                    _selectedCategory = value;
+                                    _categoryController.text = value ?? '';
+                                  });
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Amount Field
+                          Text(
+                            "Amount",
+                            style: AppFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _amountController,
+                            keyboardType: TextInputType.numberWithOptions(decimal: true),
+                            decoration: InputDecoration(
+                              hintText: 'Enter amount',
+                              prefixText: 'Rs ',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: Colors.grey.shade300),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                              ),
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  // Action Buttons
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(16),
+                        bottomRight: Radius.circular(16),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              side: BorderSide(color: Colors.grey.shade400),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              "Cancel",
+                              style: AppFonts.poppins(
+                                color: Colors.grey.shade700,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFF6B35).withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                // Show loading state
+                                setDialogState(() {});
+                                
+                                final success = await _saveExpense(viewModel);
+                                
+                                if (success && dialogContext.mounted) {
+                                  // CRITICAL: Wait for stream updates to propagate
+                                  await Future.delayed(const Duration(milliseconds: 500));
+                                  
+                                  // Ensure the dialog context is still valid before closing
+                                  if (dialogContext.mounted) {
+                                    Navigator.of(dialogContext).pop();
+                                    
+                                    // CRITICAL: Force immediate UI refresh after dialog close
+                                    if (mounted) {
+                                      setState(() {});
+                                    }
+                                    
+                                    // Show success message with Windows compatibility
+                                    if (context.mounted) {
+                                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                '${type == 'office' ? 'Office Expense' : 'Project'} added successfully!',
+                                                style: AppFonts.poppins(),
+                                              ),
+                                              backgroundColor: const Color(0xFFFF6B35),
+                                              duration: const Duration(seconds: 2),
+                                              behavior: SnackBarBehavior.floating,
+                                            ),
+                                          );
+                                        }
+                                      });
+                                    }
+                                  }
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
-                              Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // Category Dropdown
-                      Text(
-                        "Category",
-                        style: AppFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade300),
-                          borderRadius: BorderRadius.circular(12),
-                          color: Colors.white,
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedCategory,
-                            hint: Text(
-                              'Select category',
-                              style: AppFonts.poppins(color: Colors.grey.shade500),
-                            ),
-                            isExpanded: true,
-                            items: (type == 'office' ? officeCategories : projectCategories)
-                                .map((category) {
-                              return DropdownMenuItem<String>(
-                                value: category,
-                                child: Text(
-                                  category,
-                                  style: AppFonts.poppins(fontWeight: FontWeight.w500),
+                              child: Text(
+                                "Save Expense",
+                                style: AppFonts.poppins(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
                                 ),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedCategory = value;
-                                _categoryController.text = value ?? '';
-                              });
-                            },
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // Description Field
-                      Text(
-                        "Description",
-                        style: AppFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _descriptionController,
-                        decoration: InputDecoration(
-                          hintText: 'Enter expense description',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                        ),
-                        textCapitalization: TextCapitalization.sentences,
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // Amount Field
-                      Text(
-                        "Amount",
-                        style: AppFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _amountController,
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        decoration: InputDecoration(
-                          hintText: 'Enter amount',
-                          prefixText: 'Rs ',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
-                ),
-              ),
-              
-              // Action Buttons
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(16),
-                    bottomRight: Radius.circular(16),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          side: BorderSide(color: Colors.grey.shade400),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          "Cancel",
-                          style: AppFonts.poppins(
-                            color: Colors.grey.shade700,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFFF6B35).withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            final success = await _saveExpense(viewModel);
-                            if (success && dialogContext.mounted) {
-                              Navigator.of(dialogContext).pop();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    '${type == 'office' ? 'Office Expense' : 'Project'} added successfully!',
-                                    style: AppFonts.poppins(),
-                                  ),
-                                  backgroundColor: const Color(0xFFFF6B35),
-                                ),
-                              );
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            "Save Expense",
-                            style: AppFonts.poppins(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -999,7 +1048,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     // Build grid rows for expense items
     final gridRows = currentList.map((expense) => {
       'Date': expense.date,
-      'Description': expense.description,
+      'Category': expense.category ?? expense.description,
       'Amount': f.format(expense.amount),
       'Type': expense.categoryType ?? 'N/A',
     }).toList();
@@ -1113,7 +1162,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.expense.description,
+                      widget.expense.category ?? widget.expense.description,
                       style: AppFonts.poppins(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -1530,7 +1579,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
     // Build key values for receipt header
     final keyValues = <MapEntry<String, String>>[
       MapEntry('Expense ID', widget.expense.id),
-      MapEntry('Description', widget.expense.description),
+      MapEntry('Category', widget.expense.category ?? widget.expense.description),
       MapEntry('Date', widget.expense.date),
       MapEntry('Type', widget.expense.categoryType ?? 'N/A'),
       MapEntry('Main Amount', f.format(widget.expense.amount)),

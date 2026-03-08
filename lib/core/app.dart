@@ -50,11 +50,17 @@ class _AdminAppState extends State<AdminApp> {
     OfflineSyncService().initialize();
     
     // Only initialize background sync if user is logged in
+    // Enhanced with redundant call prevention
     if (AuthService.currentUser != null) {
-      // Initialize background sync manager
-      BackgroundSyncManager().initialize().catchError((e) {
-        debugPrint('[APP] Error initializing background sync manager: $e');
-      });
+      // CRITICAL: Check if Background Sync Manager is already initialized to prevent redundant calls
+      if (!BackgroundSyncManager().hasBeenInitializedInSession) {
+        BackgroundSyncManager().initialize().catchError((e) {
+          debugPrint('[APP] Error initializing background sync manager: $e');
+        });
+        debugPrint('[APP] Background sync manager initialized');
+      } else {
+        debugPrint('[APP] Background sync manager already initialized in this session, skipping...');
+      }
     } else {
       debugPrint('[APP] Skipping background sync initialization - no user logged in');
     }

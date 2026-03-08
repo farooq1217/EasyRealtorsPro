@@ -1,14 +1,48 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:async';
+import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 
 /// Service that centralizes user management authorization and actions.
 class TeamService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  bool get _isWindows => !kIsWeb && io.Platform.isWindows;
 
   /// Returns true if the current user is allowed to manage [targetUserEmail].
   /// All Firestore user documents are keyed by the user's lowercase email.
+  /// Enhanced with platform thread safety for Firebase Auth operations.
   Future<bool> canManageUser(String targetUserEmail) async {
-    final currentUserEmail = FirebaseAuth.instance.currentUser?.email?.toLowerCase();
+    String? currentUserEmail;
+    
+    // CRITICAL: Safe Firebase Auth user access with platform thread handling
+    if (_isWindows) {
+      try {
+        currentUserEmail = FirebaseAuth.instance.currentUser?.email?.toLowerCase();
+        debugPrint('TeamService: Windows - Firebase Auth user access successful');
+      } catch (e) {
+        debugPrint('TeamService: Windows - Firebase Auth user access error: $e');
+        return false;
+      }
+    } else {
+      try {
+        // Non-Windows: Wrap in platform thread safety
+        await runZonedGuarded(() async {
+          currentUserEmail = FirebaseAuth.instance.currentUser?.email?.toLowerCase();
+        }, (error, stack) {
+          if (error.toString().contains('channel sent a message') || 
+              error.toString().contains('non-platform thread')) {
+            debugPrint('TeamService: Platform thread warning silenced during user access: ${error.runtimeType}');
+          } else {
+            debugPrint('TeamService: Firebase Auth user access error: $error');
+          }
+        });
+      } catch (e) {
+        debugPrint('TeamService: Firebase Auth user access wrapper error: $e');
+        return false;
+      }
+    }
+    
     if (currentUserEmail == null) return false;
 
     final DocumentSnapshot<Map<String, dynamic>> currentUserDoc =

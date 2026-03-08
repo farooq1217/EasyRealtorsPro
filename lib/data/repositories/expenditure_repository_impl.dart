@@ -79,13 +79,14 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       
       await db.customStatement(
         '''INSERT INTO Expenditures 
-           (id, date, description, amount, category_type, company_id, created_by, created_at, updated_at, is_active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+           (id, date, description, amount, category, category_type, company_id, created_by, created_at, updated_at, is_active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         [
           expenditureWithTimestamp.id,
           expenditureWithTimestamp.date,
           expenditureWithTimestamp.description,
           expenditureWithTimestamp.amount,
+          expenditureWithTimestamp.category,
           expenditureWithTimestamp.categoryType ?? 'office',
           expenditureWithTimestamp.companyId,
           expenditureWithTimestamp.createdBy,
@@ -107,13 +108,14 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       
       await db.customStatement(
         '''UPDATE Expenditures SET 
-           date = ?, description = ?, amount = ?, category_type = ?, 
+           date = ?, description = ?, amount = ?, category = ?, category_type = ?, 
            updated_at = ?, is_active = ? 
            WHERE id = ?''',
         [
           updatedExpenditure.date,
           updatedExpenditure.description,
           updatedExpenditure.amount,
+          updatedExpenditure.category,
           updatedExpenditure.categoryType,
           updatedExpenditure.updatedAt,
           updatedExpenditure.isActive ? 1 : 0,
@@ -293,8 +295,8 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       if (!columnNames.contains('project_id')) {
         await db.customStatement('ALTER TABLE Expenditures ADD COLUMN project_id TEXT');
       }
-      if (!columnNames.contains('category_id')) {
-        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN category_id TEXT');
+      if (!columnNames.contains('category')) {
+        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN category TEXT');
       }
       if (!columnNames.contains('office_month')) {
         await db.customStatement('ALTER TABLE Expenditures ADD COLUMN office_month TEXT');

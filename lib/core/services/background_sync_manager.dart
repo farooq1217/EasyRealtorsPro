@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared/shared.dart';
 import '../../firestore_sync_service.dart';
 import '../database/app_database_singleton.dart';
+import 'firebase_threading_handler.dart';
 
 /// Background sync manager for incremental local-to-cloud sync
 /// Handles offline data synchronization when internet is restored
@@ -14,6 +15,11 @@ class BackgroundSyncManager {
   BackgroundSyncManager._internal();
   
   bool _isInitialized = false;
+  bool _isInitializing = false; // CRITICAL: Prevent concurrent initialization attempts
+  static bool _hasBeenInitializedInSession = false; // CRITICAL: Session-wide flag
+  
+  // CRITICAL: Public getter to access session flag from external classes
+  bool get hasBeenInitializedInSession => _hasBeenInitializedInSession;
 
   final FirestoreSyncService _firestoreSync = FirestoreSyncService();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -25,33 +31,64 @@ class BackgroundSyncManager {
   final Map<String, SyncStatus> _tableSyncStatus = {};
 
   /// Initialize the sync manager
+  /// Enhanced with comprehensive re-initialization prevention
   Future<void> initialize() async {
+    // CRITICAL: Multiple layers of protection against re-initialization
     if (_isInitialized) {
-      debugPrint('[SYNC] Background Sync Manager already initialized, skipping...');
       return;
     }
     
-    _isInitialized = true;
-    debugPrint('[SYNC] Initializing Background Sync Manager');
+    if (_isInitializing) {
+      while (_isInitializing) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      return;
+    }
     
-    // Check initial connectivity
-    await _checkConnectivity();
+    if (_hasBeenInitializedInSession) {
+      return;
+    }
     
-    // Start connectivity monitoring
-    _startConnectivityMonitoring();
+    _isInitializing = true;
+    // ENHANCED: Only log initialization start for first-time session initialization
+    if (!_hasBeenInitializedInSession) {
+      debugPrint('[SYNC] Starting Background Sync Manager initialization...');
+    }
     
-    // Start periodic sync check (every 5 minutes)
-    _startPeriodicSyncCheck();
-    
-    debugPrint('[SYNC] Background Sync Manager initialized');
+    try {
+      _isInitialized = true;
+      _hasBeenInitializedInSession = true;
+      
+      // Check initial connectivity
+      await _checkConnectivity();
+      
+      // Start connectivity monitoring
+      _startConnectivityMonitoring();
+      
+      // Start periodic sync check (every 5 minutes)
+      _startPeriodicSyncCheck();
+      
+      debugPrint('[SYNC] Background Sync Manager initialized successfully');
+    } catch (e) {
+      debugPrint('[SYNC] Error initializing Background Sync Manager: $e');
+      _isInitialized = false;
+      _hasBeenInitializedInSession = false;
+      rethrow;
+    } finally {
+      _isInitializing = false;
+    }
   }
 
   /// Dispose resources
+  /// Enhanced with session flag reset for proper re-initialization control
   Future<void> dispose() async {
     await _connectivitySubscription?.cancel();
     _syncTimer?.cancel();
     _isInitialized = false;
-    debugPrint('[SYNC] Background Sync Manager disposed');
+    _isInitializing = false;
+    // CRITICAL: Reset session flag to allow re-initialization in next session
+    _hasBeenInitializedInSession = false;
+    debugPrint('[SYNC] Background Sync Manager disposed and session flag reset');
   }
 
   /// Start monitoring internet connectivity
@@ -132,114 +169,138 @@ class BackgroundSyncManager {
   }
 
   /// Sync a specific table's unsynced records
+  /// Enhanced with FirebaseThreadingHandler for Windows compatibility
   Future<void> _syncTable(AppDatabase db, String tableName, String collectionName) async {
     try {
-      final status = _getSyncStatus(tableName);
-      status.startSync();
-      
-      // Get unsynced records
-      final unsyncedRecords = await db.customSelect(
-        'SELECT * FROM $tableName WHERE is_synced = 0 AND is_active = 1'
-      ).get();
-      
-      if (unsyncedRecords.isEmpty) {
-        status.completeSync(success: true);
-        return;
-      }
-      
-      debugPrint('[SYNC] Syncing ${unsyncedRecords.length} records from $tableName');
-      
-      // Convert records to Firestore format
-      final documents = unsyncedRecords.map((row) {
-        final data = Map<String, dynamic>.from(row.data);
-        // Remove internal fields
-        data.remove('is_synced');
-        return data;
-      }).toList();
-      
-      // Batch sync to Firestore
-      final success = await _firestoreSync.batchSync(
-        collection: collectionName,
-        documents: documents,
+      // Enhanced with threading handler for Windows compatibility
+      await FirebaseThreadingHandler.executeWithThreadSafety(
+        () async {
+          await _performSyncTableOperation(db, tableName, collectionName);
+        },
+        operationName: 'Background sync - $tableName',
       );
-      
-      if (success) {
-        // Mark records as synced
-        for (final record in unsyncedRecords) {
-          final id = record.data['id']?.toString();
-          if (id != null) {
-            await db.customStatement(
-              'UPDATE $tableName SET is_synced = 1 WHERE id = ?',
-              [id],
-            );
-          }
-        }
-        status.completeSync(success: true);
-        debugPrint('[SYNC] Successfully synced ${unsyncedRecords.length} records from $tableName');
-      } else {
-        status.completeSync(success: false, error: 'Firestore batch sync failed');
-        debugPrint('[SYNC] Failed to sync records from $tableName');
-      }
     } catch (e) {
       final status = _getSyncStatus(tableName);
-      status.completeSync(success: false, error: e.toString());
-      debugPrint('[SYNC] Error syncing table $tableName: $e');
+      status.completeSync(success: false, error: 'Sync operation failed: $e');
+      debugPrint('[SYNC] Error syncing $tableName: $e');
+    }
+  }
+
+  /// Perform the actual sync table operation
+  Future<void> _performSyncTableOperation(AppDatabase db, String tableName, String collectionName) async {
+    final status = _getSyncStatus(tableName);
+    status.startSync();
+    
+    // Get unsynced records
+    final unsyncedRecords = await db.customSelect(
+      'SELECT * FROM $tableName WHERE is_synced = 0 AND is_active = 1'
+    ).get();
+    
+    if (unsyncedRecords.isEmpty) {
+      status.completeSync(success: true);
+      return;
+    }
+    
+    debugPrint('[SYNC] Syncing ${unsyncedRecords.length} records from $tableName');
+    
+    // Convert records to Firestore format
+    final documents = unsyncedRecords.map((row) {
+      final data = Map<String, dynamic>.from(row.data);
+      // Remove internal fields
+      data.remove('is_synced');
+      return data;
+    }).toList();
+    
+    // Batch sync to Firestore
+    final success = await _firestoreSync.batchSync(
+      collection: collectionName,
+      documents: documents,
+    );
+    
+    if (success) {
+      // Mark records as synced
+      for (final record in unsyncedRecords) {
+        final id = record.data['id']?.toString();
+        if (id != null) {
+          await db.customStatement(
+            'UPDATE $tableName SET is_synced = 1 WHERE id = ?',
+            [id],
+          );
+        }
+      }
+      status.completeSync(success: true);
+      debugPrint('[SYNC] Successfully synced ${unsyncedRecords.length} records from $tableName');
+    } else {
+      status.completeSync(success: false, error: 'Firestore batch sync failed');
+      debugPrint('[SYNC] Failed to sync records from $tableName');
     }
   }
 
   /// Sync business tables (trading, expenditure)
+  /// Enhanced with FirebaseThreadingHandler for Windows compatibility
   Future<void> _syncBusinessTable(AppDatabase db, String tableName, String collectionName) async {
     try {
-      final status = _getSyncStatus(tableName);
-      status.startSync();
-      
-      // Get unsynced records
-      final unsyncedRecords = await db.customSelect(
-        'SELECT * FROM $tableName WHERE is_synced = 0 AND is_active = 1'
-      ).get();
-      
-      if (unsyncedRecords.isEmpty) {
-        status.completeSync(success: true);
-        return;
-      }
-      
-      debugPrint('[SYNC] Syncing ${unsyncedRecords.length} records from $tableName');
-      
-      // Convert records to Firestore format
-      final documents = unsyncedRecords.map((row) {
-        final data = Map<String, dynamic>.from(row.data);
-        // Remove internal fields
-        data.remove('is_synced');
-        return data;
-      }).toList();
-      
-      // Batch sync to Firestore
-      final success = await _firestoreSync.batchSync(
-        collection: collectionName,
-        documents: documents,
+      // Enhanced with threading handler for Windows compatibility
+      await FirebaseThreadingHandler.executeWithThreadSafety(
+        () async {
+          await _performSyncBusinessTableOperation(db, tableName, collectionName);
+        },
+        operationName: 'Background business sync - $tableName',
       );
-      
-      if (success) {
-        // Mark records as synced
-        for (final record in unsyncedRecords) {
-          final id = record.data['id']?.toString();
-          if (id != null) {
-            await db.customStatement(
-              'UPDATE $tableName SET is_synced = 1 WHERE id = ?',
-              [id],
-            );
-          }
-        }
-        status.completeSync(success: true);
-        debugPrint('[SYNC] Successfully synced ${unsyncedRecords.length} records from $tableName');
-      } else {
-        status.completeSync(success: false, error: 'Firestore batch sync failed');
-        debugPrint('[SYNC] Failed to sync records from $tableName');
-      }
     } catch (e) {
       final status = _getSyncStatus(tableName);
-      status.completeSync(success: false, error: e.toString());
+      status.completeSync(success: false, error: 'Business sync operation failed: $e');
       debugPrint('[SYNC] Error syncing business table $tableName: $e');
+    }
+  }
+
+  /// Perform the actual business sync table operation
+  Future<void> _performSyncBusinessTableOperation(AppDatabase db, String tableName, String collectionName) async {
+    final status = _getSyncStatus(tableName);
+    status.startSync();
+    
+    // Get unsynced records
+    final unsyncedRecords = await db.customSelect(
+      'SELECT * FROM $tableName WHERE is_synced = 0 AND is_active = 1'
+    ).get();
+    
+    if (unsyncedRecords.isEmpty) {
+      status.completeSync(success: true);
+      return;
+    }
+    
+    debugPrint('[SYNC] Syncing ${unsyncedRecords.length} records from $tableName');
+    
+    // Convert records to Firestore format
+    final documents = unsyncedRecords.map((row) {
+      final data = Map<String, dynamic>.from(row.data);
+      // Remove internal fields
+      data.remove('is_synced');
+      return data;
+    }).toList();
+    
+    // Batch sync to Firestore
+    final success = await _firestoreSync.batchSync(
+      collection: collectionName,
+      documents: documents,
+    );
+    
+    if (success) {
+      // Mark records as synced
+      for (final record in unsyncedRecords) {
+        final id = record.data['id']?.toString();
+        if (id != null) {
+          await db.customStatement(
+            'UPDATE $tableName SET is_synced = 1 WHERE id = ?',
+            [id],
+          );
+        }
+      }
+      status.completeSync(success: true);
+      debugPrint('[SYNC] Successfully synced ${unsyncedRecords.length} records from $tableName');
+    } else {
+      status.completeSync(success: false, error: 'Firestore batch sync failed');
+      debugPrint('[SYNC] Failed to sync records from $tableName');
     }
   }
 

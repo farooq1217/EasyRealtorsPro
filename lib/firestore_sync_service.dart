@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
+import 'core/services/firebase_threading_handler.dart';
 
 /// Comprehensive Firestore sync service with pagination support
 /// Designed for scaling to 10,000+ users
@@ -67,7 +68,12 @@ class FirestoreSyncService {
       query.orderBy(orderBy, descending: descending);
     }
 
-    return query.snapshots().map((snapshot) {
+    // Enhanced with FirebaseThreadingHandler for Windows compatibility
+    final stream = query.snapshots();
+    return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+      stream,
+      streamName: 'listenWithPagination-$collection',
+    ).map((snapshot) {
       return snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
         data['id'] = doc.id; // Ensure ID is always present
@@ -111,7 +117,11 @@ class FirestoreSyncService {
           query = query.startAfterDocument(startAfter);
         }
 
-        final snapshot = await query.get();
+        // Enhanced with FirebaseThreadingHandler for Windows compatibility
+        final snapshot = await FirebaseThreadingHandler.executeWithThreadSafety(
+          () => query.get(),
+          operationName: 'loadPaginated-$collection',
+        );
         final data = snapshot.docs.map((doc) {
           final docData = doc.data() as Map<String, dynamic>;
           docData['id'] = doc.id;
@@ -284,7 +294,14 @@ class FirestoreSyncService {
     if (FirebaseAuth.instance.currentUser != null) return;
     final completer = Completer<void>();
     late StreamSubscription sub;
-    sub = FirebaseAuth.instance.authStateChanges().listen((user) {
+    // Enhanced with FirebaseThreadingHandler for Windows compatibility
+    final authStream = FirebaseAuth.instance.authStateChanges();
+    final wrappedStream = FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+      authStream,
+      streamName: 'waitForAuth',
+    );
+    
+    sub = wrappedStream.listen((user) {
       if (user != null && !completer.isCompleted) {
         completer.complete();
         sub.cancel();
@@ -302,26 +319,34 @@ class FirestoreSyncService {
   }
 
   /// Wait for a valid Firebase Auth user and refresh the ID token before Firestore ops.
-  /// Includes a short delay on Windows to let native auth state propagate.
+  /// Enhanced with comprehensive platform thread safety.
   Future<void> _ensureAuthenticatedWithFreshToken({Duration delay = const Duration(seconds: 2)}) async {
     if (_isWindows) {
       await Future.delayed(delay);
+      debugPrint('FirestoreSyncService: Windows - Skipping ID token refresh to avoid platform thread errors');
+      return;
     }
+    
     if (FirebaseAuth.instance.currentUser == null) {
       await waitForAuth();
     }
+    
     try {
-      // On Windows, avoid getIdToken() calls that can cause platform thread errors
-      if (io.Platform.isWindows) {
-        // Just ensure Firebase is initialized without refreshing token
-        if (FirebaseAuth.instance.currentUser != null) {
-          debugPrint('Windows: Skipping ID token refresh to avoid platform thread errors');
-        }
-      } else {
+      // CRITICAL: Wrap token refresh in platform thread safety
+      await runZonedGuarded(() async {
         await FirebaseAuth.instance.currentUser?.getIdToken(true);
-      }
+        debugPrint('FirestoreSyncService: ID token refreshed successfully');
+      }, (error, stack) {
+        // Filter platform thread warnings
+        if (error.toString().contains('channel sent a message') || 
+            error.toString().contains('non-platform thread')) {
+          debugPrint('FirestoreSyncService: Platform thread warning silenced: ${error.runtimeType}');
+        } else {
+          debugPrint('FirestoreSyncService: Failed to refresh ID token: $error');
+        }
+      });
     } catch (e) {
-      debugPrint('Failed to refresh ID token before Firestore operation: $e');
+      debugPrint('FirestoreSyncService: Token refresh wrapper error: $e');
     }
   }
 }

@@ -3,6 +3,7 @@ import '../core/font_utils.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
@@ -96,34 +97,59 @@ class _LoginPageState extends State<LoginPage> {
             return;
           }
 
-          // Kick off background sync after login (delay to let UI settle)
+          // Kick off background sync after login (enhanced platform thread safety)
           Future.delayed(const Duration(seconds: 2), () async {
-            if (isWindows) return;
+            if (isWindows) {
+              debugPrint('LoginPage: Windows - Skipping background sync to avoid platform thread errors');
+              return;
+            }
             if (Firebase.apps.isEmpty) return;
             if (FirebaseAuth.instance.currentUser == null) return;
+            
             try {
-              await FirebaseAuth.instance.currentUser?.getIdToken(true);
+              // CRITICAL: Wrap token refresh in platform thread safety
+              await runZonedGuarded(() async {
+                await FirebaseAuth.instance.currentUser?.getIdToken(true);
+                debugPrint('LoginPage: Token refreshed successfully for background sync');
+              }, (error, stack) {
+                // Filter platform thread warnings
+                if (error.toString().contains('channel sent a message') || 
+                    error.toString().contains('non-platform thread')) {
+                  debugPrint('LoginPage: Platform thread warning silenced during token refresh: ${error.runtimeType}');
+                } else {
+                  debugPrint('LoginPage: Token refresh error: $error');
+                }
+              });
             } catch (e) {
-              debugPrint('Token refresh skipped: $e');
+              debugPrint('LoginPage: Token refresh wrapper error: $e');
             }
+            
             try {
-              debugPrint('Background sync started after login...');
+              debugPrint('LoginPage: Background sync started after login...');
               await AuthService().syncUsersFromFirestore();
             } catch (e) {
-              debugPrint('Background sync (users) skipped: $e');
+              debugPrint('LoginPage: Background sync (users) skipped: $e');
             }
             try {
               await FirestoreSyncService().batchSync(collection: 'companies', documents: const []);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('LoginPage: Background sync (companies) skipped: $e');
+            }
             try {
               await FirestoreSyncService().batchSync(collection: 'inventory', documents: const []);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('LoginPage: Background sync (inventory) skipped: $e');
+            }
             try {
               await FirestoreSyncService().batchSync(collection: 'trading_entries', documents: const []);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('LoginPage: Background sync (trading_entries) skipped: $e');
+            }
             try {
               await FirestoreSyncService().batchSync(collection: 'expenditures', documents: const []);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('LoginPage: Background sync (expenditures) skipped: $e');
+            }
           });
 
           // FORCE PASSWORD CHANGE LOGIC REMOVED

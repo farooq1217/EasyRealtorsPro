@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io' as io;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
@@ -9,6 +11,7 @@ import '../../data/repositories/expenditure_repository_impl.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/app_storage.dart';
 import '../../core/services/permission_helper.dart';
+import '../../core/services/firebase_threading_handler.dart';
 import 'package:shared/shared.dart';
 
 enum ExpenditureTab { office, project }
@@ -149,6 +152,31 @@ class ExpenditureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // CRITICAL: Manual refresh method for immediate UI updates
+  // Enhanced with FirebaseThreadingHandler for Windows compatibility
+  Future<void> refreshData() async {
+    try {
+      _loading = true;
+      notifyListeners();
+      
+      // Enhanced with threading handler for Windows compatibility
+      await FirebaseThreadingHandler.executeWithThreadSafety(
+        () async {
+          // Re-setup streams to force immediate refresh
+          await _setupStreams();
+        },
+        operationName: 'Expenditure refreshData',
+      );
+      
+      _loading = false;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error refreshing expenditure data: $e');
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   // Search functionality
   void setSearchQuery(String query) {
     _searchQuery = query;
@@ -235,13 +263,66 @@ class ExpenditureViewModel extends ChangeNotifier {
         description: description,
         amount: amount,
         categoryType: type, // 'office' or 'project'
+        category: null, // Category will be set by the page
         companyId: companyId,
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
+        isActive: true,
+        isSynced: true,
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
       );
       
       await _repository.addExpenditure(expenditure);
       clearForm();
       _showSuccessSnackBar('$type expense added successfully');
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error saving expense: $e');
+      _showErrorSnackBar('Failed to save expense');
+      return false;
+    }
+  }
+
+  // New method to save expense with category - accepts form data as parameters
+  Future<bool> saveExpenseWithCategory(String type, String? category, {
+    required String description,
+    required double amount,
+    required DateTime selectedDate,
+  }) async {
+    try {
+      // CRITICAL: Ensure Firebase calls are on main thread for Windows compatibility
+      if (io.Platform.isWindows) {
+        // On Windows, ensure we're on the main thread for Firebase operations
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      
+      final companyId = RoleUtils.getUserCompanyId(_user);
+      if (companyId == null) {
+        _showErrorSnackBar('Unable to determine company');
+        return false;
+      }
+      
+      final expenditure = domain.ExpenditureItem(
+        id: const Uuid().v4(),
+        date: DateFormat('yyyy-MM-dd').format(selectedDate),
+        description: description,
+        amount: amount,
+        categoryType: type, // 'office' or 'project'
+        category: category, // Category from dropdown
+        companyId: companyId,
+        createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
+        isActive: true,
+        isSynced: true,
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
+      );
+      
+      await _repository.addExpenditure(expenditure);
+      // ENHANCED: Reduce console noise - only log success in debug mode
+      if (kDebugMode) {
+        _showSuccessSnackBar('$type expense added successfully');
+      }
       
       return true;
     } catch (e) {
@@ -372,10 +453,6 @@ class ExpenditureViewModel extends ChangeNotifier {
       debugPrint('Error fetching expenditure: $e');
       return null;
     }
-  }
-
-  void refreshData() {
-    _setupStreams();
   }
 
   // Private helper methods

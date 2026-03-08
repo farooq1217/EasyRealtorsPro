@@ -28,6 +28,8 @@ import 'package:firebase_core/firebase_core.dart';
 
 import 'package:intl/intl.dart';
 
+import '../../../core/services/firebase_threading_handler.dart';
+
 import 'package:pdf/pdf.dart';
 
 import 'package:pdf/widgets.dart' as pw;
@@ -4632,7 +4634,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       debugPrint('DEBUG HOME: syncCompaniesFromFirestore started...');
 
-      final snap = await FirebaseFirestore.instance.collection('companies').get();
+      // Enhanced with FirebaseThreadingHandler for Windows compatibility
+      final snap = await FirebaseThreadingHandler.executeWithThreadSafety(
+        () => FirebaseFirestore.instance.collection('companies').get(),
+        operationName: 'Home syncCompaniesFromFirestore',
+      );
 
       debugPrint('Firestore docs found (home): ${snap.docs.length}');
 
@@ -17050,7 +17056,11 @@ class _UsersPageState extends State<UsersPage> {
 
           try {
 
-          final doc = await FirebaseFirestore.instance.collection('companies').doc(companyIdStr).get();
+          // Enhanced with FirebaseThreadingHandler for Windows compatibility
+          final doc = await FirebaseThreadingHandler.executeWithThreadSafety(
+            () => FirebaseFirestore.instance.collection('companies').doc(companyIdStr).get(),
+            operationName: 'Home getCompanyDetails',
+          );
 
             if (!doc.exists) {
 
@@ -17082,11 +17092,19 @@ class _UsersPageState extends State<UsersPage> {
 
             QuerySnapshot<Map<String, dynamic>> snap;
 
-          snap = await FirebaseFirestore.instance.collection('users').where('company_id', isEqualTo: companyIdStr).get();
+          // Enhanced with FirebaseThreadingHandler for Windows compatibility
+          snap = await FirebaseThreadingHandler.executeWithThreadSafety(
+            () => FirebaseFirestore.instance.collection('users').where('company_id', isEqualTo: companyIdStr).get(),
+            operationName: 'Home syncUsers-company_id',
+          );
 
             if (snap.docs.isEmpty) {
 
-            snap = await FirebaseFirestore.instance.collection('users').where('companyId', isEqualTo: companyIdStr).get();
+            // Enhanced with FirebaseThreadingHandler for Windows compatibility
+            snap = await FirebaseThreadingHandler.executeWithThreadSafety(
+              () => FirebaseFirestore.instance.collection('users').where('companyId', isEqualTo: companyIdStr).get(),
+              operationName: 'Home syncUsers-companyId',
+            );
 
             }
 
@@ -18140,7 +18158,11 @@ class _UsersPageState extends State<UsersPage> {
 
                                   try {
 
-                                    final doc = await FirebaseFirestore.instance.collection('companies').doc(effectiveCompanyId.toString()).get();
+                                    // Enhanced with FirebaseThreadingHandler for Windows compatibility
+                                    final doc = await FirebaseThreadingHandler.executeWithThreadSafety(
+                                      () => FirebaseFirestore.instance.collection('companies').doc(effectiveCompanyId.toString()).get(),
+                                      operationName: 'Home getCompany-effectiveCompanyId',
+                                    );
 
                                     final data = doc.data();
 
@@ -18166,11 +18188,19 @@ class _UsersPageState extends State<UsersPage> {
 
                                     QuerySnapshot<Map<String, dynamic>> snap;
 
-                                    snap = await FirebaseFirestore.instance.collection('users').where('company_id', isEqualTo: effectiveCompanyId).get();
+                                    // Enhanced with FirebaseThreadingHandler for Windows compatibility
+                                    snap = await FirebaseThreadingHandler.executeWithThreadSafety(
+                                      () => FirebaseFirestore.instance.collection('users').where('company_id', isEqualTo: effectiveCompanyId).get(),
+                                      operationName: 'Home syncUsers-effectiveCompanyId',
+                                    );
 
                                     if (snap.docs.isEmpty) {
 
-                                      snap = await FirebaseFirestore.instance.collection('users').where('companyId', isEqualTo: effectiveCompanyId).get();
+                                      // Enhanced with FirebaseThreadingHandler for Windows compatibility
+                                      snap = await FirebaseThreadingHandler.executeWithThreadSafety(
+                                        () => FirebaseFirestore.instance.collection('users').where('companyId', isEqualTo: effectiveCompanyId).get(),
+                                        operationName: 'Home syncUsers-effectiveCompanyId',
+                                      );
 
                                     }
 
@@ -20172,7 +20202,11 @@ class _CompaniesPageState extends State<CompaniesPage> {
 
         try {
 
-          final snap = await FirebaseFirestore.instance.collection('companies').get();
+          // Enhanced with FirebaseThreadingHandler for Windows compatibility
+          final snap = await FirebaseThreadingHandler.executeWithThreadSafety(
+            () => FirebaseFirestore.instance.collection('companies').get(),
+            operationName: 'Home syncAllCompanies',
+          );
 
           if (snap.docs.isNotEmpty) {
 

@@ -17,6 +17,7 @@ import 'package:drift/drift.dart' as d;
 import 'app_storage.dart' show AppStorage;
 import '../../firestore_sync_service.dart';
 import 'background_sync_manager.dart';
+import 'firebase_threading_handler.dart';
 
 class AuthService {
   static Map<String, dynamic>? currentUser; // in-memory cache for immediate UI refresh
@@ -31,21 +32,33 @@ class AuthService {
   static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
 
   /// Stream authStateChanges with proper thread safety for Windows.
+  /// Enhanced with comprehensive FirebaseThreadingHandler integration
   Stream<fb.User?> authStateChanges() {
-    if (_isWindows) {
-      // On Windows, use a controller-based approach to avoid native thread issues
+    try {
+      final stream = fb.FirebaseAuth.instance.authStateChanges();
+      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+        stream,
+        streamName: 'authStateChanges',
+      );
+    } catch (e) {
+      debugPrint('AuthService: authStateChanges wrapper error: $e');
       return StreamController<fb.User?>.broadcast().stream;
     }
-    return fb.FirebaseAuth.instance.authStateChanges();
   }
 
   /// Stream idTokenChanges with proper thread safety for Windows.
+  /// Enhanced with comprehensive FirebaseThreadingHandler integration
   Stream<fb.User?> idTokenChanges() {
-    if (_isWindows) {
-      // On Windows, use a controller-based approach to avoid native thread issues
+    try {
+      final stream = fb.FirebaseAuth.instance.idTokenChanges();
+      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+        stream,
+        streamName: 'idTokenChanges',
+      );
+    } catch (e) {
+      debugPrint('AuthService: idTokenChanges wrapper error: $e');
       return StreamController<fb.User?>.broadcast().stream;
     }
-    return fb.FirebaseAuth.instance.idTokenChanges();
   }
 
   /// Ensure Firebase Auth persists sessions on web/desktop so users stay signed in.
@@ -195,20 +208,43 @@ class AuthService {
   }
 
   /// Helper method to ensure Firebase Auth is ready before Firestore operations
+  /// Enhanced with comprehensive platform thread safety
   Future<bool> _ensureFirebaseAuthReady() async {
     if (!_firebaseReady) return false;
     if (FirebaseAuth.instance.currentUser == null) {
       debugPrint('AuthService: Firebase Auth user is null, skipping Firestore operation');
       return false;
     }
-    try {
-      // On Windows, avoid getIdToken() calls that can cause platform thread errors
-      if (_isWindows) {
+    
+    // CRITICAL: Ensure all Firebase Auth operations happen on platform thread
+    if (_isWindows) {
+      try {
+        // On Windows, avoid getIdToken() calls that can cause platform thread errors
         // Just check if user exists without refreshing token
-        return FirebaseAuth.instance.currentUser != null;
-      } else {
-        await FirebaseAuth.instance.currentUser?.getIdToken(true);
+        if (FirebaseAuth.instance.currentUser != null) {
+          debugPrint('AuthService: Windows - Firebase Auth ready, skipping token refresh');
+          return true;
+        }
+        return false;
+      } catch (e) {
+        debugPrint('AuthService: Windows Firebase Auth check failed: $e');
+        return false;
       }
+    }
+    
+    // On non-Windows platforms, safely refresh token with platform thread handling
+    try {
+      await runZonedGuarded(() async {
+        await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      }, (error, stack) {
+        // Silence platform thread warnings but log other errors
+        if (error.toString().contains('channel sent a message') || 
+            error.toString().contains('non-platform thread')) {
+          debugPrint('AuthService: Platform thread warning silenced: ${error.runtimeType}');
+        } else {
+          debugPrint('AuthService: ID token refresh error: $error');
+        }
+      });
       return true;
     } catch (e) {
       debugPrint('AuthService: Failed to refresh ID token: $e');
@@ -547,18 +583,30 @@ class AuthService {
     await _writeUsers(users);
 
     // Create Firebase Auth account when online
+    // Enhanced with platform thread safety
     if (Firebase.apps.isNotEmpty && !_isWindows) {
       try {
         await ensureFirebasePersistence();
-        await fb.FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: email.toLowerCase(),
-          password: password,
-        );
-        debugPrint('fb.FirebaseAuth: created user $email');
+        
+        // Wrap in platform thread safety
+        await runZonedGuarded(() async {
+          await fb.FirebaseAuth.instance.createUserWithEmailAndPassword(
+            email: email.toLowerCase(),
+            password: password,
+          );
+          debugPrint('AuthService: Firebase Auth user created successfully for $email');
+        }, (error, stack) {
+          if (error.toString().contains('channel sent a message') || 
+              error.toString().contains('non-platform thread')) {
+            debugPrint('AuthService: Platform thread warning silenced during user creation: ${error.runtimeType}');
+          } else {
+            debugPrint('AuthService: Firebase Auth user creation error: $error');
+          }
+        });
       } on fb.FirebaseAuthException catch (e) {
-        debugPrint('fb.FirebaseAuth: createUser failed for $email: ${e.code}');
+        debugPrint('AuthService: createUser failed for $email: ${e.code}');
       } catch (e) {
-        debugPrint('fb.FirebaseAuth: createUser error for $email: $e');
+        debugPrint('AuthService: createUser error for $email: $e');
       }
     }
     
@@ -1416,30 +1464,132 @@ class AuthService {
     }
     
     // Ensure Firebase Auth sign-in (or create on-demand) so Firestore writes are authenticated
+    // CRITICAL: Enhanced platform thread safety for all Firebase Auth operations
     if (Firebase.apps.isNotEmpty) {
       Object? zonedError;
-      await runZonedGuarded(() async {
-        await ensureFirebasePersistence();
-        await Future.delayed(const Duration(seconds: 1)); // pre-delay to avoid native races
-        final cred = await fb.FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password);
-        await Future.delayed(const Duration(seconds: 3)); // post-delay to let native threads settle (increased to 3s)
-        await cred.user?.getIdToken(true); // refresh to pull latest custom claims
-        debugPrint('fb.FirebaseAuth: sign-in success for $emailKey');
-      }, (error, stack) {
-        zonedError = error;
-        debugPrint('fb.FirebaseAuth: sign-in error for $emailKey: $error');
-      });
+      
+      // Platform-specific authentication handling
+      if (_isWindows) {
+        // Windows: Use simplified approach to avoid platform thread errors
+        try {
+          await ensureFirebasePersistence();
+          debugPrint('AuthService: Windows - Attempting Firebase Auth sign-in...');
+          
+          // Wrap in runZonedGuarded to catch platform thread warnings
+          await runZonedGuarded(() async {
+            await Future.delayed(const Duration(seconds: 1)); // Pre-delay to avoid native races
+            final cred = await fb.FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password);
+            await Future.delayed(const Duration(seconds: 2)); // Reduced post-delay for Windows
+            debugPrint('AuthService: Windows - Firebase Auth sign-in success for $emailKey');
+            
+            // Skip token refresh on Windows to avoid platform thread issues
+            debugPrint('AuthService: Windows - Skipping ID token refresh to avoid platform thread errors');
+          }, (error, stack) {
+            zonedError = error;
+            // Filter platform thread warnings
+            if (error.toString().contains('channel sent a message') || 
+                error.toString().contains('non-platform thread')) {
+              debugPrint('AuthService: Windows - Platform thread warning silenced: ${error.runtimeType}');
+              zonedError = null; // Don't treat as error
+            } else {
+              debugPrint('AuthService: Windows - Firebase Auth sign-in error for $emailKey: $error');
+            }
+          });
+        } catch (e) {
+          debugPrint('AuthService: Windows - Firebase Auth wrapper error: $e');
+          zonedError = e;
+        }
+      } else {
+        // Non-Windows: Full Firebase Auth functionality with platform thread safety
+        try {
+          await ensureFirebasePersistence();
+          
+          await runZonedGuarded(() async {
+            await Future.delayed(const Duration(seconds: 1)); // pre-delay to avoid native races
+            
+            // Enhanced with FirebaseThreadingHandler for Windows compatibility
+            final cred = await FirebaseThreadingHandler.executeWithThreadSafety(
+              () => fb.FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password),
+              operationName: 'AuthService signInWithEmailAndPassword',
+            );
+            
+            await Future.delayed(const Duration(seconds: 3)); // post-delay to let native threads settle
+            
+            // Enhanced with FirebaseThreadingHandler for Windows compatibility
+            await FirebaseThreadingHandler.executeWithThreadSafety(
+              () async {
+                if (cred.user != null) {
+                  return await cred.user!.getIdToken(true);
+                }
+                return null;
+              },
+              operationName: 'AuthService getIdToken after sign-in',
+            );
+            debugPrint('AuthService: Firebase Auth sign-in success for $emailKey');
+          }, (error, stack) {
+            zonedError = error;
+            debugPrint('AuthService: Firebase Auth sign-in error for $emailKey: $error');
+          });
+        } catch (e) {
+          debugPrint('AuthService: Firebase Auth wrapper error: $e');
+          zonedError = e;
+        }
+      }
 
+      // Handle user-not-found error with create-on-demand (platform-safe)
       final err = zonedError;
       if (err is fb.FirebaseAuthException && err.code == 'user-not-found') {
-        try {
-          await Future.delayed(const Duration(seconds: 1)); // pre-delay before create
-          final created = await fb.FirebaseAuth.instance.createUserWithEmailAndPassword(email: emailKey, password: password);
-          await Future.delayed(const Duration(seconds: 1)); // post-delay after create
-          await created.user?.getIdToken(true); // refresh token to include claims
-          debugPrint('fb.FirebaseAuth: created user on-demand $emailKey');
-        } catch (e2) {
-          debugPrint('fb.FirebaseAuth: create-on-demand failed for $emailKey: $e2');
+        debugPrint('AuthService: User not found, attempting create-on-demand...');
+        
+        if (_isWindows) {
+          // Windows: Safe user creation
+          try {
+            await runZonedGuarded(() async {
+              await Future.delayed(const Duration(seconds: 1)); // pre-delay before create
+              final created = await fb.FirebaseAuth.instance.createUserWithEmailAndPassword(email: emailKey, password: password);
+              await Future.delayed(const Duration(seconds: 1)); // post-delay after create
+              debugPrint('AuthService: Windows - Created user on-demand $emailKey');
+              
+              // Skip token refresh on Windows
+              debugPrint('AuthService: Windows - Skipping token refresh for new user');
+            }, (error, stack) {
+              if (error.toString().contains('channel sent a message') || 
+                  error.toString().contains('non-platform thread')) {
+                debugPrint('AuthService: Windows - Create user platform thread warning silenced');
+              } else {
+                debugPrint('AuthService: Windows - Create-on-demand failed for $emailKey: $error');
+              }
+            });
+          } catch (e2) {
+            debugPrint('AuthService: Windows - Create-on-demand wrapper error: $e2');
+          }
+        } else {
+          // Non-Windows: Full user creation
+          try {
+            await Future.delayed(const Duration(seconds: 1)); // pre-delay before create
+            
+            // Enhanced with FirebaseThreadingHandler for Windows compatibility
+            final created = await FirebaseThreadingHandler.executeWithThreadSafety(
+              () => fb.FirebaseAuth.instance.createUserWithEmailAndPassword(email: emailKey, password: password),
+              operationName: 'AuthService createUserWithEmailAndPassword',
+            );
+            
+            await Future.delayed(const Duration(seconds: 1)); // post-delay after create
+            
+            // Enhanced with FirebaseThreadingHandler for Windows compatibility
+            await FirebaseThreadingHandler.executeWithThreadSafety(
+              () async {
+                if (created.user != null) {
+                  return await created.user!.getIdToken(true);
+                }
+                return null;
+              },
+              operationName: 'AuthService getIdToken after create',
+            );
+            debugPrint('AuthService: Created user on-demand $emailKey');
+          } catch (e2) {
+            debugPrint('AuthService: Create-on-demand failed for $emailKey: $e2');
+          }
         }
       }
     }
@@ -1644,7 +1794,7 @@ class AuthService {
       ).get();
       for (final row in rows) {
         final data = row.data;
-        final email = (data['email'] ?? data['username'] ?? '').toString().toLowerCase();
+        final email = (data['email'] ?? data['username'] ?? '').toString().trim().toLowerCase();
         if (email.isEmpty) continue;
         // Try creating in Firebase; if it already exists, skip.
         final cacheUser = usersCache[email] as Map<String, dynamic>?;
@@ -1656,8 +1806,18 @@ class AuthService {
         plainPassword ??= 'Temp#${randomAlphaNumeric(10)}';
 
         try {
-          await auth.createUserWithEmailAndPassword(email: email, password: plainPassword);
-          debugPrint('fb.FirebaseAuth: created offline user $email');
+          // Enhanced with platform thread safety
+          await runZonedGuarded(() async {
+            await auth.createUserWithEmailAndPassword(email: email, password: plainPassword!);
+            debugPrint('AuthService: Firebase Auth created offline user $email');
+          }, (error, stack) {
+            if (error.toString().contains('channel sent a message') || 
+                error.toString().contains('non-platform thread')) {
+              debugPrint('AuthService: Platform thread warning silenced during offline user sync: ${error.runtimeType}');
+            } else {
+              debugPrint('AuthService: Firebase Auth offline user sync error: $error');
+            }
+          });
         } on fb.FirebaseAuthException catch (e) {
           if (e.code == 'email-already-in-use') {
             continue; // already present
@@ -1999,11 +2159,19 @@ class AuthService {
         String? uid = auth.currentUser?.uid;
         Map<String, dynamic>? fsUser;
         if (uid != null && uid.isNotEmpty) {
-          final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+          // Enhanced with FirebaseThreadingHandler for Windows compatibility
+          final doc = await FirebaseThreadingHandler.executeWithThreadSafety(
+            () => FirebaseFirestore.instance.collection('users').doc(uid).get(),
+            operationName: 'AuthService getCurrentUser',
+          );
           if (doc.exists) fsUser = doc.data();
         }
         if (fsUser == null) {
-          final snap = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: emailKey).limit(1).get();
+          // Enhanced with FirebaseThreadingHandler for Windows compatibility
+          final snap = await FirebaseThreadingHandler.executeWithThreadSafety(
+            () => FirebaseFirestore.instance.collection('users').where('email', isEqualTo: emailKey).limit(1).get(),
+            operationName: 'AuthService getCurrentUser email query',
+          );
           if (snap.docs.isNotEmpty) {
             fsUser = snap.docs.first.data();
             uid = snap.docs.first.id;
@@ -2074,14 +2242,37 @@ class AuthService {
     } catch (_) {}
 
     // Hard-stop Firebase threads before switching users (Windows abort() guard)
+    // Enhanced with platform thread safety
     if (Firebase.apps.isNotEmpty && !_isWindows) {
       try {
-        await fb.FirebaseAuth.instance.signOut();
-      } catch (_) {}
+        // Wrap sign-out in platform thread safety
+        await runZonedGuarded(() async {
+          await fb.FirebaseAuth.instance.signOut();
+        }, (error, stack) {
+          if (error.toString().contains('channel sent a message') || 
+              error.toString().contains('non-platform thread')) {
+            debugPrint('AuthService: Logout - Platform thread warning silenced: ${error.runtimeType}');
+          } else {
+            debugPrint('AuthService: Logout - Firebase Auth sign-out error: $error');
+          }
+        });
+      } catch (e) {
+        debugPrint('AuthService: Logout - Sign-out wrapper error: $e');
+      }
+      
       try {
         await FirebaseFirestore.instance.terminate();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('AuthService: Logout - Firestore terminate error: $e');
+      }
       await Future.delayed(const Duration(seconds: 2));
+    } else if (_isWindows) {
+      // Windows: Simplified logout to avoid platform thread issues
+      try {
+        debugPrint('AuthService: Windows - Skipping Firebase Auth sign-out to avoid platform thread errors');
+      } catch (e) {
+        debugPrint('AuthService: Windows - Logout error: $e');
+      }
     }
 
     // Clear Firestore local cache to avoid stale data after manual deletes
@@ -2107,14 +2298,20 @@ class AuthService {
   }
 
   /// Initialize background sync after successful login
+  /// Enhanced with redundant call prevention
   static void _initializeBackgroundSyncAfterLogin() {
-    if (currentUser != null) {
-      BackgroundSyncManager().initialize().catchError((e) {
-        debugPrint('[AUTH] Error initializing background sync after login: $e');
-      });
-      debugPrint('[AUTH] Background sync initialized after login');
+    if (AuthService.currentUser != null) {
+      // CRITICAL: Check if Background Sync Manager is already initialized to prevent redundant calls
+      if (!BackgroundSyncManager().hasBeenInitializedInSession) {
+        BackgroundSyncManager().initialize().catchError((e) {
+          debugPrint('[AUTH] Error initializing background sync after login: $e');
+        });
+        debugPrint('[AUTH] Background sync initialized after login');
+      } else {
+        debugPrint('[AUTH] Background sync already initialized in this session, skipping...');
+      }
     } else {
-      debugPrint('[AUTH] Skipping background sync initialization - no user');
+      debugPrint('[AUTH] No current user, skipping background sync initialization');
     }
   }
 }
