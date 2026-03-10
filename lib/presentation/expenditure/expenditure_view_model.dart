@@ -268,8 +268,8 @@ class ExpenditureViewModel extends ChangeNotifier {
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
         isSynced: true,
-        createdAt: DateTime.now().toIso8601String(),
-        updatedAt: DateTime.now().toIso8601String(),
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
       
       await _repository.addExpenditure(expenditure);
@@ -314,8 +314,8 @@ class ExpenditureViewModel extends ChangeNotifier {
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
         isSynced: true,
-        createdAt: DateTime.now().toIso8601String(),
-        updatedAt: DateTime.now().toIso8601String(),
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
       
       await _repository.addExpenditure(expenditure);

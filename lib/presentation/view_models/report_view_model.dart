@@ -8,7 +8,7 @@ import '../../data/repositories/report_repository_impl.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../core/services/app_storage.dart' show AppStorage;
-import 'package:shared/shared.dart' show WorkingProgressData, Expenditure, RoleUtils;
+import 'package:shared/shared.dart' show WorkingProgressData, Expenditure, RoleUtils, RentalItem, TradingEntry, Reminder;
 
 class ReportViewModel extends ChangeNotifier {
   final ReportRepository _repository;
@@ -21,6 +21,9 @@ class ReportViewModel extends ChangeNotifier {
   List<WorkingProgressData> _agentWorkingData = [];
   List<Map<String, dynamic>> _inventoryData = [];
   List<Expenditure> _expenditureData = [];
+  List<RentalItem> _rentalData = [];
+  List<Reminder> _todoData = [];
+  List<TradingEntry> _tradingData = [];
   Map<String, dynamic> _summary = {};
   
   // Filter state
@@ -39,7 +42,7 @@ class ReportViewModel extends ChangeNotifier {
   bool _exportingPdf = false;
   bool _exportingCsv = false;
   String? _error;
-  String _selectedReportType = 'agent_working'; // 'agent_working', 'inventory', 'expenditure'
+  String _selectedReportType = 'inventory'; // Default to first dropdown option
 
   // Getters
   Map<String, dynamic>? get currentUser => _currentUser;
@@ -47,6 +50,9 @@ class ReportViewModel extends ChangeNotifier {
   List<WorkingProgressData> get agentWorkingData => _agentWorkingData;
   List<Map<String, dynamic>> get inventoryData => _inventoryData;
   List<Expenditure> get expenditureData => _expenditureData;
+  List<RentalItem> get rentalData => _rentalData;
+  List<Reminder> get todoData => _todoData;
+  List<TradingEntry> get tradingData => _tradingData;
   Map<String, dynamic> get summary => _summary;
   
   DateTime? get startDate => _startDate;
@@ -143,6 +149,30 @@ class ReportViewModel extends ChangeNotifier {
             kind: _selectedKind,
           );
           break;
+        case 'rental':
+          _rentalData = await _repository.getRentalReport(
+            companyId: companyId,
+            isSuperAdmin: isSuper,
+            startDate: _startDate != null ? DateFormat('yyyy-MM-dd').format(_startDate!) : null,
+            endDate: _endDate != null ? DateFormat('yyyy-MM-dd').format(_endDate!) : null,
+          );
+          break;
+        case 'todo':
+          _todoData = await _repository.getTodoReport(
+            companyId: companyId,
+            isSuperAdmin: isSuper,
+            startDate: _startDate != null ? DateFormat('yyyy-MM-dd').format(_startDate!) : null,
+            endDate: _endDate != null ? DateFormat('yyyy-MM-dd').format(_endDate!) : null,
+          );
+          break;
+        case 'trading':
+          _tradingData = await _repository.getTradingReport(
+            companyId: companyId,
+            isSuperAdmin: isSuper,
+            startDate: _startDate != null ? DateFormat('yyyy-MM-dd').format(_startDate!) : null,
+            endDate: _endDate != null ? DateFormat('yyyy-MM-dd').format(_endDate!) : null,
+          );
+          break;
       }
       
       await _loadSummary();
@@ -155,6 +185,9 @@ class ReportViewModel extends ChangeNotifier {
       _agentWorkingData.clear();
       _inventoryData.clear();
       _expenditureData.clear();
+      _rentalData.clear();
+      _todoData.clear();
+      _tradingData.clear();
       _summary.clear();
     } finally {
       _loading = false;
@@ -348,6 +381,38 @@ class ReportViewModel extends ChangeNotifier {
             'kind': expenditure.kind ?? '',
           }).toList();
           break;
+        case 'rental':
+          data = _rentalData.map((item) => {
+            'id': item.id,
+            'itemName': item.itemName,
+            'ownerName': item.ownerName,
+            'rentAmount': item.rentAmount?.toString() ?? '0',
+            'status': item.status,
+            'startDate': item.startDate,
+            'endDate': item.endDate,
+          }).toList();
+          break;
+        case 'todo':
+          data = _todoData.map((item) => {
+            'id': item.id,
+            'reminderTitle': item.reminderTitle,
+            'clientName': item.clientName,
+            'reminderDate': item.reminderDate,
+            'reminderTime': item.reminderTime,
+            'notificationStatus': item.notificationStatus,
+          }).toList();
+          break;
+        case 'trading':
+          data = _tradingData.map((item) => {
+            'id': item.id,
+            'entryType': item.entryType,
+            'itemName': item.itemName,
+            'clientName': item.clientName,
+            'amount': item.amount?.toString() ?? '0',
+            'date': item.date,
+            'status': item.status,
+          }).toList();
+          break;
         default:
           data = [];
       }
@@ -408,6 +473,38 @@ class ReportViewModel extends ChangeNotifier {
             'kind': e.kind,
           }).toList();
           break;
+        case 'rental':
+          data = _rentalData.map((e) => {
+            'id': e.id,
+            'itemName': e.itemName,
+            'ownerName': e.ownerName,
+            'rentAmount': e.rentAmount,
+            'status': e.status,
+            'startDate': e.startDate,
+            'endDate': e.endDate,
+          }).toList();
+          break;
+        case 'todo':
+          data = _todoData.map((e) => {
+            'id': e.id,
+            'reminderTitle': e.reminderTitle,
+            'clientName': e.clientName,
+            'reminderDate': e.reminderDate,
+            'reminderTime': e.reminderTime,
+            'notificationStatus': e.notificationStatus,
+          }).toList();
+          break;
+        case 'trading':
+          data = _tradingData.map((e) => {
+            'id': e.id,
+            'entryType': e.entryType,
+            'itemName': e.itemName,
+            'clientName': e.clientName,
+            'amount': e.amount,
+            'date': e.date,
+            'status': e.status,
+          }).toList();
+          break;
         default:
           data = [];
       }
@@ -442,6 +539,12 @@ class ReportViewModel extends ChangeNotifier {
         return _inventoryData;
       case 'expenditure':
         return _expenditureData;
+      case 'rental':
+        return _rentalData;
+      case 'todo':
+        return _todoData;
+      case 'trading':
+        return _tradingData;
       default:
         return [];
     }
@@ -493,6 +596,16 @@ class ReportViewModel extends ChangeNotifier {
     switch (key) {
       case 'totalExpenditure':
         return 'PKR ${value.toStringAsFixed(2)}';
+      case 'totalRentalIncome':
+        return 'PKR ${value.toStringAsFixed(2)}';
+      case 'totalTradingValue':
+        return 'PKR ${value.toStringAsFixed(2)}';
+      case 'activeRentals':
+        return '${value.toString()} Active';
+      case 'completedTodos':
+        return '${value.toString()} Done';
+      case 'pendingTodos':
+        return '${value.toString()} Pending';
       default:
         return value.toString();
     }

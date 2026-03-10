@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, kDebugMode;
 import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
 import 'package:shared/shared.dart';
@@ -59,7 +59,10 @@ class _AdminAppState extends State<AdminApp> {
         });
         debugPrint('[APP] Background sync manager initialized');
       } else {
-        debugPrint('[APP] Background sync manager already initialized in this session, skipping...');
+        // Reduced verbosity - only log in debug mode
+        if (kDebugMode) {
+          debugPrint('[APP] Background sync manager already initialized in this session, skipping...');
+        }
       }
     } else {
       debugPrint('[APP] Skipping background sync initialization - no user logged in');

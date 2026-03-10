@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../domain/models/inventory_item.dart';
 import '../inventory_view_model.dart';
 import 'inventory_detail_page.dart';
+import 'inventory_details_modal.dart';
 import '../../../core/phone_actions.dart' show showPhoneActionSheet;
 
 class InventoryList extends StatefulWidget {
@@ -226,8 +227,11 @@ class _InventoryListState extends State<InventoryList> {
     
     final sizeValue = size.trim();
     
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+    return InkWell(
+      onTap: () => _showInventoryDetailsModal(context, item, viewModel),
+      borderRadius: BorderRadius.circular(12),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -242,60 +246,6 @@ class _InventoryListState extends State<InventoryList> {
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                     overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                FilledButton.icon(
-                  icon: const Icon(Icons.visibility, size: 16),
-                  label: const Text('Action'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    textStyle: const TextStyle(fontSize: 12),
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => InventoryDetailPage(
-                          item: item,
-                          viewModel: viewModel,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(width: 8),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  itemBuilder: (context) => <PopupMenuEntry<String>>[
-                    PopupMenuItem<String>(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.edit, size: 18, color: Colors.blue.shade700),
-                          const SizedBox(width: 8),
-                          const Flexible(child: Text('Edit')),
-                        ],
-                      ),
-                      onTap: () => Future.delayed(
-                        const Duration(milliseconds: 100),
-                        () => _showEditForm(item, viewModel),
-                      ),
-                    ),
-                    const PopupMenuDivider(),
-                    PopupMenuItem<String>(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.delete, size: 18, color: Colors.red.shade700),
-                          const SizedBox(width: 8),
-                          const Flexible(child: Text('Delete')),
-                        ],
-                      ),
-                      onTap: () => Future.delayed(
-                        const Duration(milliseconds: 100),
-                        () => _deleteItem(item.id, viewModel),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
@@ -351,52 +301,60 @@ class _InventoryListState extends State<InventoryList> {
           ],
         ),
       ),
-    );
-  }
-
-  void _showEditForm(InventoryItem item, InventoryViewModel viewModel) {
-    // This will be handled by the parent page
-    // For now, we'll use a navigation approach
-    Navigator.of(context).pop(); // Close popup menu
-    // The parent page will need to handle this
-  }
-
-  Future<void> _deleteItem(String id, InventoryViewModel viewModel) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Item'),
-        content: const Text('Are you sure you want to delete this item?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
       ),
     );
+  }
 
-    if (confirm == true) {
-      try {
-        await viewModel.deleteItem(id);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Item deleted successfully')),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete item: $e')),
-          );
-        }
-      }
-    }
+  // Helper methods inside the class
+  void _showInventoryDetailsModal(BuildContext context, InventoryItem item, InventoryViewModel viewModel) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => InventoryDetailsModal(
+        inventoryItem: item,
+        onRefresh: () {
+          if (mounted) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              viewModel.loadItems();
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildResponsiveInfoRow(BuildContext context, List<_InfoEntry> entries) {
+    return Row(
+      children: entries.map((entry) {
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  entry.label ?? '',
+                  style: entry.style ?? AppFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  entry.value ?? '',
+                  style: entry.style ?? AppFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
   }
 
   // Helper function to get color for Size field based on Marla value
@@ -424,40 +382,6 @@ class _InventoryListState extends State<InventoryList> {
       fontSize: 14,
       fontWeight: FontWeight.w600,
       color: sizeColor,
-    );
-  }
-
-  Widget _buildResponsiveInfoRow(BuildContext context, List<_InfoEntry> entries) {
-    return Row(
-      children: entries.map((entry) {
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.label,
-                  style: AppFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  entry.value,
-                  style: entry.style ?? AppFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.black87,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
     );
   }
 }

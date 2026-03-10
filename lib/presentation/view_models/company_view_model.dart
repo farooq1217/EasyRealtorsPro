@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -10,10 +12,11 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/app_storage.dart';
 import '../../core/services/permission_helper.dart';
 import '../../core/app_utils.dart';
-import 'package:shared/shared.dart';
+import 'package:shared/src/auth/role_utils.dart';
 
 class CompanyViewModel extends ChangeNotifier {
   final CompanyRepository _repository;
+  bool _mounted = false;
   
   CompanyViewModel(this._repository);
 
@@ -57,6 +60,7 @@ class CompanyViewModel extends ChangeNotifier {
   String? get selectedSubscriptionTier => _selectedSubscriptionTier;
   String? get selectedStatus => _selectedStatus;
   Map<String, dynamic> get metadata => _metadata;
+  bool get mounted => _mounted;
 
   // Setters
   set selectedSubscriptionTier(String? value) {
@@ -128,12 +132,18 @@ class CompanyViewModel extends ChangeNotifier {
     // Setup new stream
     _companiesSubscription = _repository.watchCompanies().listen(
       (data) {
-        _companies = data;
-        _applySearchFilter();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _companies = data;
+          _applySearchFilter();
+        });
       },
       onError: (e) {
-        _error = 'Error loading companies: $e';
-        notifyListeners();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _error = 'Error loading companies: $e';
+          notifyListeners();
+        });
       },
     );
   }
@@ -407,6 +417,7 @@ class CompanyViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _mounted = false;
     _companiesSubscription?.cancel();
     
     _nameController.dispose();

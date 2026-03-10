@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/widgets.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:shared/shared.dart';
@@ -379,7 +379,10 @@ class AuthService {
       if (!await app.exists()) {
         await app.create(recursive: true);
       }
-      debugPrint('AuthService: Using app dir: ${app.path}');
+      // Reduced verbosity - only log in debug mode
+      if (kDebugMode) {
+        debugPrint('AuthService: Using app dir: ${app.path}');
+      }
       return app;
     } catch (e) {
       debugPrint('AuthService: Failed to get app dir, using temp dir. Error: $e');
@@ -2406,7 +2409,10 @@ class AuthService {
         });
         debugPrint('[AUTH] Background sync initialized after login');
       } else {
-        debugPrint('[AUTH] Background sync already initialized in this session, skipping...');
+        // Reduced verbosity - only log in debug mode
+        if (kDebugMode) {
+          debugPrint('[AUTH] Background sync already initialized in this session, skipping...');
+        }
       }
     } else {
       debugPrint('[AUTH] No current user, skipping background sync initialization');

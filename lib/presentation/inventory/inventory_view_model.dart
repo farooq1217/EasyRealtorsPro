@@ -1,5 +1,6 @@
 // presentation/inventory/inventory_view_model.dart
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'dart:async';
 import '../../domain/models/inventory_item.dart';
 import '../../domain/repositories/inventory_repository.dart';
@@ -18,6 +19,17 @@ class InventoryViewModel extends ChangeNotifier {
   bool _isLoadingSocieties = false;
   bool _isLoadingBlocks = false;
   bool _initialized = false;
+  bool _mounted = false;
+  
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      notifyListeners();
+    });
+  }
+
+  bool get mounted => _mounted;
   
   // Stream subscriptions
   StreamSubscription<List<Map<String, String>>>? _societiesSubscription;
@@ -32,6 +44,7 @@ class InventoryViewModel extends ChangeNotifier {
 
   InventoryViewModel(this._inventoryRepository, this._settingsRepository) {
     _initialized = true;
+    _mounted = true;
   }
 
   // Getters
@@ -61,7 +74,10 @@ class InventoryViewModel extends ChangeNotifier {
   // Load items based on current filters
   Future<void> loadItems() async {
     _isLoading = true;
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      notifyListeners();
+    });
     
     try {
       _allItems = await _inventoryRepository.getFilteredItems(
@@ -78,14 +94,20 @@ class InventoryViewModel extends ChangeNotifier {
       _filteredItems = [];
     } finally {
       _isLoading = false;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
     }
   }
 
   // Load societies using Future-based approach for now
   Future<void> loadSocieties({String? companyId, bool? isSuper}) async {
     _isLoadingSocieties = true;
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      notifyListeners();
+    });
     
     try {
       // Cancel existing subscription if any
@@ -105,20 +127,36 @@ class InventoryViewModel extends ChangeNotifier {
       debugPrint('InventoryViewModel: Type-safe societies mapping completed, societies count: ${_societies.length}');
       debugPrint('InventoryViewModel: Final societies list: ${_societies.map((s) => '${s['id']}:${s['name']}').toList()}');
       
+      // AUTO-SELECTION: If there is only one society and no society is currently selected, auto-select it
+      if (_societies.length == 1 && _selectedSocietyId == null) {
+        final singleSociety = _societies.first;
+        debugPrint('InventoryViewModel: Auto-selecting single society: ${singleSociety['name']} (${singleSociety['id']})');
+        setSelectedSociety(singleSociety['id']);
+      }
+      
       _isLoadingSocieties = false;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
     } catch (e) {
       debugPrint('Error loading societies: $e');
       _societies = [];
       _isLoadingSocieties = false;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
     }
   }
 
   // Load blocks using Future-based approach for now
   Future<void> loadBlocks({String? societyId}) async {
     _isLoadingBlocks = true;
-    notifyListeners();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      notifyListeners();
+    });
     
     try {
       // Cancel existing subscription if any
@@ -144,12 +182,18 @@ class InventoryViewModel extends ChangeNotifier {
       debugPrint('InventoryViewModel: Final blocks list: $_blocks');
       
       _isLoadingBlocks = false;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
     } catch (e) {
       debugPrint('Error loading blocks: $e');
       _blocks = [];
       _isLoadingBlocks = false;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
     }
   }
 
@@ -183,7 +227,10 @@ class InventoryViewModel extends ChangeNotifier {
       debugPrint('InventoryViewModel: Cleared blocks list and block selection');
       
       // 3. Immediately call notifyListeners() to show loading state
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
       debugPrint('InventoryViewModel: Notified listeners after clearing blocks');
       
       // 4. If societyId is not null, await fresh blocks from repository and notify again
@@ -191,7 +238,10 @@ class InventoryViewModel extends ChangeNotifier {
         debugPrint('InventoryViewModel: SocietyId is not null, calling _loadBlocksForSociety');
         _loadBlocksForSociety(societyId).then((_) {
           // Additional notification after blocks are loaded
-          notifyListeners();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            notifyListeners();
+          });
           debugPrint('InventoryViewModel: Additional notification after blocks loaded');
         });
       } else {
@@ -210,7 +260,10 @@ class InventoryViewModel extends ChangeNotifier {
     debugPrint('InventoryViewModel: _loadBlocksForSociety called with societyId: $societyId');
     try {
       _isLoadingBlocks = true;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
       
       debugPrint('InventoryViewModel: Calling getBlocksBySociety from repository');
       // Use repository to get blocks for the specific society
@@ -229,13 +282,19 @@ class InventoryViewModel extends ChangeNotifier {
       debugPrint('InventoryViewModel: Final blocks list: $_blocks');
       
       _isLoadingBlocks = false;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
       debugPrint('InventoryViewModel: Blocks updated, notified listeners');
     } catch (e) {
       debugPrint('Error loading blocks for society $societyId: $e');
       _blocks = [];
       _isLoadingBlocks = false;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
     }
   }
 
@@ -246,7 +305,10 @@ class InventoryViewModel extends ChangeNotifier {
     if (_selectedBlockId != blockId) {
       _selectedBlockId = blockId;
       debugPrint('InventoryViewModel: Updated _selectedBlockId to: $_selectedBlockId');
-      notifyListeners(); // Immediate UI update for block change
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners(); // Immediate UI update for block change
+      });
       loadItems();
     } else {
       debugPrint('InventoryViewModel: BlockId is the same, no action taken');
@@ -334,6 +396,7 @@ class InventoryViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _mounted = false;
     // Cancel stream subscriptions to prevent memory leaks
     _societiesSubscription?.cancel();
     _blocksSubscription?.cancel();

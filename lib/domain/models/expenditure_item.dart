@@ -13,10 +13,12 @@ class ExpenditureItem extends Equatable {
   final String? categoryId;
   final String? officeMonth; // yyyy-MM
   final String? categoryType; // 'office' | 'project'
+  final String? paymentMethod;
+  final String? referenceNumber;
   final bool isActive;
   final bool isSynced;
-  final String? createdAt;
-  final String? updatedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   const ExpenditureItem({
     required this.id,
@@ -31,10 +33,12 @@ class ExpenditureItem extends Equatable {
     this.categoryId,
     this.officeMonth,
     this.categoryType,
+    this.paymentMethod,
+    this.referenceNumber,
     this.isActive = true,
     this.isSynced = true,
-    this.createdAt,
-    this.updatedAt,
+    required this.createdAt,
+    required this.updatedAt,
   });
 
   ExpenditureItem copyWith({
@@ -50,10 +54,12 @@ class ExpenditureItem extends Equatable {
     String? categoryId,
     String? officeMonth,
     String? categoryType,
+    String? paymentMethod,
+    String? referenceNumber,
     bool? isActive,
     bool? isSynced,
-    String? createdAt,
-    String? updatedAt,
+    DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return ExpenditureItem(
       id: id ?? this.id,
@@ -68,6 +74,8 @@ class ExpenditureItem extends Equatable {
       categoryId: categoryId ?? this.categoryId,
       officeMonth: officeMonth ?? this.officeMonth,
       categoryType: categoryType ?? this.categoryType,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      referenceNumber: referenceNumber ?? this.referenceNumber,
       isActive: isActive ?? this.isActive,
       isSynced: isSynced ?? this.isSynced,
       createdAt: createdAt ?? this.createdAt,
@@ -89,10 +97,12 @@ class ExpenditureItem extends Equatable {
       'category_id': categoryId,
       'office_month': officeMonth,
       'category_type': categoryType,
+      'payment_method': paymentMethod,
+      'reference_number': referenceNumber,
       'is_active': isActive ? 1 : 0,
       'is_synced': isSynced ? 1 : 0,
-      'created_at': createdAt,
-      'updated_at': updatedAt,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
     };
   }
 
@@ -118,10 +128,12 @@ class ExpenditureItem extends Equatable {
       categoryId: (map['categoryId'] ?? map['category_id'])?.toString(),
       officeMonth: (map['officeMonth'] ?? map['office_month'])?.toString(),
       categoryType: (map['categoryType'] ?? map['category_type'])?.toString(),
+      paymentMethod: (map['paymentMethod'] ?? map['payment_method'])?.toString(),
+      referenceNumber: (map['referenceNumber'] ?? map['reference_number'])?.toString(),
       isActive: (map['is_active'] is int ? map['is_active'] == 1 : map['is_active'] == true) ?? true,
       isSynced: (map['is_synced'] is int ? map['is_synced'] == 1 : map['is_synced'] == true) ?? true,
-      createdAt: map['created_at']?.toString(),
-      updatedAt: map['updated_at']?.toString(),
+      createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse(map['updated_at']?.toString() ?? '') ?? DateTime.now(),
     );
   }
 
@@ -139,6 +151,8 @@ class ExpenditureItem extends Equatable {
         categoryId,
         officeMonth,
         categoryType,
+        paymentMethod,
+        referenceNumber,
         isActive,
         isSynced,
         createdAt,

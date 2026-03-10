@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared/shared.dart' show RoleUtils;
 import '../../core/services/auth_service.dart';
 import '../../core/services/permission_helper.dart';
@@ -11,6 +13,7 @@ import '../../data/repositories/rental_repository_impl.dart';
 /// ViewModel for rental items with real-time updates and state management
 class RentalViewModel extends ChangeNotifier {
   late final RentalRepository _repository;
+  bool _mounted = false;
   
   // State
   List<Map<String, dynamic>> _rentalItems = [];
@@ -54,6 +57,9 @@ class RentalViewModel extends ChangeNotifier {
   Map<String, dynamic>? get currentUser => _currentUser;
   bool get isSuperAdmin => _isSuperAdmin;
   bool get isAgent => _isAgent;
+  String? get companyId => _companyId;
+  String? get userId => _userId;
+  bool get mounted => _mounted;
 
   // Permission getters
   bool get canAddRental => PermissionHelper.canAddModule(_currentUser, 'rental_items');
@@ -117,10 +123,13 @@ class RentalViewModel extends ChangeNotifier {
         statusFilter: _statusFilter,
       ).listen(
         (items) {
-          _rentalItems = items;
-          _loading = false;
-          _errorMessage = null;
-          notifyListeners();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _rentalItems = items;
+            _loading = false;
+            _errorMessage = null;
+            notifyListeners();
+          });
         },
         onError: (error) {
           debugPrint('Error loading rental items: $error');
@@ -340,6 +349,11 @@ class RentalViewModel extends ChangeNotifier {
     await _loadRentalItems();
   }
 
+  /// Public method to load rental items (for modal refresh)
+  Future<void> loadRentalItems() async {
+    await _loadRentalItems();
+  }
+
   /// Clear error message
   void clearError() {
     _errorMessage = null;
@@ -348,6 +362,7 @@ class RentalViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _mounted = false;
     _rentalItemsSubscription?.cancel();
     super.dispose();
   }

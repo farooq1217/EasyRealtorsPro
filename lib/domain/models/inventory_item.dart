@@ -17,11 +17,16 @@ class InventoryItem {
   final String? cnic;
   final String companyId;
   final DateTime updatedAt;
+  final DateTime createdAt;
   
   // File-specific fields
   final String? fileNo;
   final String? mobileNo;
   final String? path; // Size for files
+  final String? contactNumber;
+  final String? description;
+  final String? commission;
+  final String? netAmount;
   
   // Property-specific fields  
   final String? propertyName;
@@ -43,9 +48,14 @@ class InventoryItem {
     this.cnic,
     required this.companyId,
     required this.updatedAt,
+    required this.createdAt,
     this.fileNo,
     this.mobileNo,
     this.path,
+    this.contactNumber,
+    this.description,
+    this.commission,
+    this.netAmount,
     this.propertyName,
     this.demand,
     this.price,
@@ -64,9 +74,14 @@ class InventoryItem {
     String? cnic,
     required String companyId,
     required DateTime updatedAt,
+    required DateTime createdAt,
     String? fileNo,
     String? mobileNo,
     String? path,
+    String? contactNumber,
+    String? description,
+    String? commission,
+    String? netAmount,
     List<String> imageUrls = const [],
   }) {
     return InventoryItem(
@@ -81,9 +96,14 @@ class InventoryItem {
       cnic: cnic,
       companyId: companyId,
       updatedAt: updatedAt,
+      createdAt: createdAt,
       fileNo: fileNo,
       mobileNo: mobileNo,
       path: path,
+      contactNumber: contactNumber,
+      description: description,
+      commission: commission,
+      netAmount: netAmount,
       imageUrls: imageUrls,
     );
   }
@@ -100,9 +120,14 @@ class InventoryItem {
     String? cnic,
     required String companyId,
     required DateTime updatedAt,
+    required DateTime createdAt,
     String? propertyName,
     int? demand,
     int? price,
+    String? contactNumber,
+    String? description,
+    String? commission,
+    String? netAmount,
     List<String> imageUrls = const [],
   }) {
     return InventoryItem(
@@ -117,9 +142,14 @@ class InventoryItem {
       cnic: cnic,
       companyId: companyId,
       updatedAt: updatedAt,
+      createdAt: createdAt,
       propertyName: propertyName,
       demand: demand,
       price: price,
+      contactNumber: contactNumber,
+      description: description,
+      commission: commission,
+      netAmount: netAmount,
       imageUrls: imageUrls,
     );
   }
@@ -141,8 +171,9 @@ class InventoryItem {
     }
 
     if (type == InventoryType.file) {
-      return InventoryItem.file(
+      return InventoryItem(
         id: map['id']?.toString() ?? '',
+        type: InventoryType.file,
         clientName: map['client_name']?.toString() ?? '',
         referenceNo: map['reference_no']?.toString() ?? '',
         societyId: map['society_id']?.toString() ?? '',
@@ -152,9 +183,14 @@ class InventoryItem {
         cnic: map['cnic']?.toString(),
         companyId: map['company_id']?.toString() ?? '',
         updatedAt: DateTime.parse(map['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
+        createdAt: DateTime.parse(map['created_at']?.toString() ?? map['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
         fileNo: map['file_no']?.toString(),
         mobileNo: map['mobile_no']?.toString(),
         path: map['path']?.toString(),
+        contactNumber: map['contact_number']?.toString(),
+        description: map['description']?.toString(),
+        commission: map['commission']?.toString(),
+        netAmount: map['net_amount']?.toString(),
         imageUrls: extractedImageUrls,
       );
     } else {
@@ -169,9 +205,14 @@ class InventoryItem {
         cnic: map['cnic']?.toString(),
         companyId: map['company_id']?.toString() ?? '',
         updatedAt: DateTime.parse(map['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
+        createdAt: DateTime.parse(map['created_at']?.toString() ?? map['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
         propertyName: map['property_name']?.toString(),
         demand: int.tryParse(map['demand']?.toString() ?? '0'),
         price: int.tryParse(map['price']?.toString() ?? '0'),
+        contactNumber: map['contact_number']?.toString(),
+        description: map['description']?.toString(),
+        commission: map['commission']?.toString(),
+        netAmount: map['net_amount']?.toString(),
         imageUrls: extractedImageUrls,
       );
     }
@@ -189,6 +230,7 @@ class InventoryItem {
       'cnic': cnic,
       'company_id': companyId,
       'updated_at': updatedAt.toUtc().toIso8601String(),
+      'created_at': createdAt.toUtc().toIso8601String(),
     };
 
     // Handle remarks vs image URLs
@@ -199,21 +241,28 @@ class InventoryItem {
     }
 
     if (type == InventoryType.file) {
-      return {
-        ...baseMap,
+      baseMap.addAll({
         'file_no': fileNo,
         'mobile_no': mobileNo,
         'path': path,
-        'name': clientName, // Required field for files_table
-      };
+        'contact_number': contactNumber,
+        'description': description,
+        'commission': commission,
+        'net_amount': netAmount,
+      });
     } else {
-      return {
-        ...baseMap,
+      baseMap.addAll({
         'property_name': propertyName,
-        'demand': demand,
-        'price': price,
-      };
+        'demand': demand?.toString(),
+        'price': price?.toString(),
+        'contact_number': contactNumber,
+        'description': description,
+        'commission': commission,
+        'net_amount': netAmount,
+      });
     }
+    
+    return baseMap;
   }
 
   // Copy with method for updates
@@ -229,6 +278,7 @@ class InventoryItem {
     String? cnic,
     String? companyId,
     DateTime? updatedAt,
+    DateTime? createdAt,
     String? fileNo,
     String? mobileNo,
     String? path,
@@ -249,9 +299,14 @@ class InventoryItem {
       cnic: cnic ?? this.cnic,
       companyId: companyId ?? this.companyId,
       updatedAt: updatedAt ?? this.updatedAt,
+      createdAt: createdAt ?? this.createdAt,
       fileNo: fileNo ?? this.fileNo,
       mobileNo: mobileNo ?? this.mobileNo,
       path: path ?? this.path,
+      contactNumber: contactNumber ?? this.contactNumber,
+      description: description ?? this.description,
+      commission: commission ?? this.commission,
+      netAmount: netAmount ?? this.netAmount,
       propertyName: propertyName ?? this.propertyName,
       demand: demand ?? this.demand,
       price: price ?? this.price,

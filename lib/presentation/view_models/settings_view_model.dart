@@ -157,6 +157,13 @@ class SettingsViewModel extends ChangeNotifier {
       debugPrint('SettingsViewModel: Type-safe societies mapping completed, societies count: ${_societies.length}');
       debugPrint('SettingsViewModel: Final societies list: $_societies');
       
+      // AUTO-SELECTION: If there is only one society and no society is currently selected, auto-select it
+      if (_societies.length == 1 && _selectedSocietyId == null) {
+        final singleSociety = _societies.first;
+        debugPrint('SettingsViewModel: Auto-selecting single society: ${singleSociety['name']} (${singleSociety['id']})');
+        setSelectedSociety(singleSociety['id'].toString());
+      }
+      
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading societies: $e');

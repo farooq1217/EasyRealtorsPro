@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:shared/src/auth/role_utils.dart';
 import '../../domain/models/user_model.dart';
 import '../../domain/repositories/user_repository.dart';
 import '../../data/repositories/user_repository_impl.dart';
@@ -15,6 +18,7 @@ import 'package:drift/drift.dart' as d;
 
 class UserViewModel extends ChangeNotifier {
   final UserRepository _repository;
+  bool _mounted = false;
   
   UserViewModel(this._repository);
 
@@ -70,6 +74,7 @@ class UserViewModel extends ChangeNotifier {
   String? get selectedCompanyId => _selectedCompanyId;
   String? get selectedStatus => _selectedStatus;
   Map<String, dynamic> get permissions => _permissions;
+  bool get mounted => _mounted;
 
   // Setters
   set selectedCompanyId(String? value) {
@@ -169,12 +174,18 @@ class UserViewModel extends ChangeNotifier {
     // Setup new stream
     _usersSubscription = _repository.watchUsers(companyId).listen(
       (data) {
-        _users = data;
-        _applySearchFilter();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _users = data;
+          _applySearchFilter();
+        });
       },
       onError: (e) {
-        _error = 'Error loading users: $e';
-        notifyListeners();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _error = 'Error loading users: $e';
+          notifyListeners();
+        });
       },
     );
   }
@@ -482,6 +493,7 @@ class UserViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _mounted = false;
     _usersSubscription?.cancel();
     
     _nameController.dispose();

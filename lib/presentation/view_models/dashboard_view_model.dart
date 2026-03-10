@@ -227,10 +227,8 @@ class DashboardViewModel extends ChangeNotifier {
           _monthlyExpenditure = expenditures
               .where((exp) => 
                 exp.isActive &&
-                exp.createdAt != null &&
-                DateTime.tryParse(exp.createdAt!) != null &&
-                DateTime.parse(exp.createdAt!).isAfter(currentMonth) &&
-                DateTime.parse(exp.createdAt!).isBefore(nextMonth)
+                exp.createdAt.isAfter(currentMonth) &&
+                exp.createdAt.isBefore(nextMonth)
               )
               .fold(0.0, (sum, exp) => sum + exp.amount);
           

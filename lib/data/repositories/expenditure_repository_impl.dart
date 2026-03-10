@@ -70,7 +70,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<void> addExpenditure(domain.ExpenditureItem expenditure) async {
     try {
-      final now = DateTime.now().toIso8601String();
+      final now = DateTime.now();
       final expenditureWithTimestamp = expenditure.copyWith(
         id: expenditure.id.isEmpty ? const Uuid().v4() : expenditure.id,
         createdAt: now,
@@ -103,7 +103,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<void> updateExpenditure(domain.ExpenditureItem expenditure) async {
     try {
-      final now = DateTime.now().toIso8601String();
+      final now = DateTime.now();
       final updatedExpenditure = expenditure.copyWith(updatedAt: now);
       
       await db.customStatement(
