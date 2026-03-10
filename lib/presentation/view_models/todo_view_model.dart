@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart'; // Add missing widgets import
 import 'dart:async';
 import 'package:shared/shared.dart';
 import '../../domain/repositories/todo_repository.dart';
@@ -22,7 +23,9 @@ class TodoViewModel extends ChangeNotifier {
   
   TodoViewModel({TodoRepository? repository, NotificationService? notificationService}) 
       : _repository = repository ?? TodoRepositoryImpl(AppDatabase.instanceIfInitialized!),
-        _notificationService = notificationService ?? NotificationService();
+        _notificationService = notificationService ?? NotificationService() {
+    _mounted = true;
+  }
 
   // State
   List<Reminder> _reminders = [];
@@ -32,6 +35,7 @@ class TodoViewModel extends ChangeNotifier {
   DateTime _selectedDate = DateTime.now();
   TaskSortOption _sortOption = TaskSortOption.latestFirst;
   String _searchQuery = '';
+  bool _mounted = false; // Add missing mounted field
   
   // Getters
   List<Reminder> get reminders => _reminders;
@@ -158,21 +162,31 @@ class TodoViewModel extends ChangeNotifier {
     await _remindersSubscription?.cancel();
     
     try {
-      // Set up stream for reminders
+      // Set up stream for reminders with thread-safe UI updates
       _remindersSubscription = _repository.getRemindersForDate(userId, companyId, _selectedDate).listen(
         (reminders) {
-          debugPrint('TodoViewModel: Stream update received - ${reminders.length} reminders');
-          for (final reminder in reminders) {
-            debugPrint('TodoViewModel: Reminder - ${reminder.reminderTitle} at ${reminder.reminderDate}');
-          }
-          _reminders = reminders;
-          notifyListeners();
-          debugPrint('TodoViewModel: UI notified of update');
+          // THREAD SAFETY: Wrap UI updates in postFrameCallback
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_mounted) return;
+            
+            debugPrint('TodoViewModel: Stream update received - ${reminders.length} reminders');
+            for (final reminder in reminders) {
+              debugPrint('TodoViewModel: Reminder - ${reminder.reminderTitle} at ${reminder.reminderDate}');
+            }
+            _reminders = reminders;
+            notifyListeners();
+            debugPrint('TodoViewModel: UI notified of update');
+          });
         },
         onError: (e) {
-          debugPrint('TodoViewModel: Stream error: $e');
-          _error = e.toString();
-          notifyListeners();
+          // THREAD SAFETY: Wrap error handling in postFrameCallback
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_mounted) return;
+            
+            debugPrint('TodoViewModel: Stream error: $e');
+            _error = e.toString();
+            notifyListeners();
+          });
         },
       );
       
@@ -322,6 +336,7 @@ class TodoViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _mounted = false;
     _remindersSubscription?.cancel();
     super.dispose();
   }

@@ -35,9 +35,18 @@ class PerformanceChartCard extends StatelessWidget {
       );
     }
     
-    final maxValue = data.map((e) => e['value'] as int).reduce((a, b) => a > b ? a : b);
+    // FIX: Handle both int and double values to prevent type-cast errors
+    final maxValue = data.map((e) {
+      final value = e['value'];
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      return 0.0;
+    }).reduce((a, b) => a > b ? a : b);
+    
     final spots = data.asMap().entries.map((entry) {
-      return FlSpot(entry.key.toDouble(), (entry.value['value'] as int).toDouble());
+      final value = entry.value['value'];
+      final doubleValue = value is double ? value : (value is int ? value.toDouble() : 0.0);
+      return FlSpot(entry.key.toDouble(), doubleValue);
     }).toList();
     
     return Container(

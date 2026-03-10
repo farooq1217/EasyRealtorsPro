@@ -97,118 +97,14 @@ class _LoginPageState extends State<LoginPage> {
             return;
           }
 
-          // Kick off background sync after login (enhanced platform thread safety)
-          Future.delayed(const Duration(seconds: 2), () async {
-            if (isWindows) {
-              debugPrint('LoginPage: Windows - Skipping background sync to avoid platform thread errors');
-              return;
-            }
-            if (Firebase.apps.isEmpty) return;
-            if (FirebaseAuth.instance.currentUser == null) return;
-            
-            try {
-              // CRITICAL: Wrap token refresh in platform thread safety
-              await runZonedGuarded(() async {
-                await FirebaseAuth.instance.currentUser?.getIdToken(true);
-                debugPrint('LoginPage: Token refreshed successfully for background sync');
-              }, (error, stack) {
-                // Filter platform thread warnings
-                if (error.toString().contains('channel sent a message') || 
-                    error.toString().contains('non-platform thread')) {
-                  debugPrint('LoginPage: Platform thread warning silenced during token refresh: ${error.runtimeType}');
-                } else {
-                  debugPrint('LoginPage: Token refresh error: $error');
-                }
-              });
-            } catch (e) {
-              debugPrint('LoginPage: Token refresh wrapper error: $e');
-            }
-            
-            try {
-              debugPrint('LoginPage: Background sync started after login...');
-              await AuthService().syncUsersFromFirestore();
-            } catch (e) {
-              debugPrint('LoginPage: Background sync (users) skipped: $e');
-            }
-            try {
-              await FirestoreSyncService().batchSync(collection: 'companies', documents: const []);
-            } catch (e) {
-              debugPrint('LoginPage: Background sync (companies) skipped: $e');
-            }
-            try {
-              await FirestoreSyncService().batchSync(collection: 'inventory', documents: const []);
-            } catch (e) {
-              debugPrint('LoginPage: Background sync (inventory) skipped: $e');
-            }
-            try {
-              await FirestoreSyncService().batchSync(collection: 'trading_entries', documents: const []);
-            } catch (e) {
-              debugPrint('LoginPage: Background sync (trading_entries) skipped: $e');
-            }
-            try {
-              await FirestoreSyncService().batchSync(collection: 'expenditures', documents: const []);
-            } catch (e) {
-              debugPrint('LoginPage: Background sync (expenditures) skipped: $e');
-            }
-          });
-
-          // FORCE PASSWORD CHANGE LOGIC REMOVED
-          // Previously checked is_first_login flag and redirected to ForcePasswordChangePage
-          // Now allowing direct access to dashboard regardless of password change status
-          /*
-          final email = _emailController.text.trim().toLowerCase();
-          final userId = result['userId'] as String?;
-          
-          if (userId != null && mounted && !kIsWeb) {
-            try {
-              final db = await AppDatabase.instance();
-
-              // Check is_first_login for this user
-              final userResult = await db.customSelect(
-                'SELECT is_first_login FROM users WHERE id = ?',
-                variables: [d.Variable.withString(userId)],
-                readsFrom: {db.users},
-              ).get();
-              
-              if (userResult.isNotEmpty) {
-                final userData = userResult.first.data;
-                final isFirstLogin = userData['is_first_login'] as int? ?? 0;
-                
-                if (isFirstLogin == 1) {
-                  // User must change password - redirect to password change page
-                  if (mounted) {
-                    await Future.delayed(const Duration(seconds: 3));
-                    if (!mounted) return;
-                    SchedulerBinding.instance.addPostFrameCallback((_) {
-                      if (!mounted) return;
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(
-                          builder: (_) => ForcePasswordChangePage(
-                            db: db,
-                            userId: userId,
-                            email: email,
-                            isForced: true,
-                            closeDbOnFinish: false,
-                          ),
-                        ),
-                      );
-                    });
-                    return;
-                  }
-                }
-              }
-            } catch (e) {
-              debugPrint('Error checking is_first_login: $e');
-              // Continue to home if check fails
-            }
-          }
-          */
-
+          // OPTIMIZATION: Navigate to dashboard immediately, trigger background sync after navigation
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Login successful'), backgroundColor: Colors.green, duration: Duration(seconds: 2)),
             );
-            await Future.delayed(const Duration(seconds: 3));
+            
+            // Navigate immediately without waiting for sync
+            await Future.delayed(const Duration(seconds: 1)); // Minimal delay for success message
             if (mounted) {
               final navArgs = result['requiresProfileCompletion'] == true
                   ? {
@@ -217,9 +113,19 @@ class _LoginPageState extends State<LoginPage> {
                           'Please complete your profile to continue',
                     }
                   : null;
+              // THREAD SAFETY: Wrap navigation and background sync in proper UI thread callbacks
               SchedulerBinding.instance.addPostFrameCallback((_) {
                 if (!mounted) return;
                 Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
+                
+                // TRIGGER BACKGROUND SYNC AFTER NAVIGATION - Thread Safe
+                SchedulerBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  Future.delayed(const Duration(seconds: 3), () async {
+                    debugPrint('LoginPage: Triggering background sync after navigation...');
+                    await _authService.triggerBackgroundSyncAfterLogin();
+                  });
+                });
               });
             }
           }

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../domain/models/trading_entry.dart';
 import '../../domain/repositories/trading_repository.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/firebase_threading_handler.dart';
 import 'package:shared/shared.dart' show RoleUtils;
 
 class TradingViewModel extends ChangeNotifier {
@@ -93,60 +94,65 @@ class TradingViewModel extends ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      // Cancel existing subscriptions
-      await _entriesSubscription?.cancel();
-      await _fileEntriesSubscription?.cancel();
-      await _formEntriesSubscription?.cancel();
+      await FirebaseThreadingHandler.executeWithThreadSafety(
+        () async {
+          // Cancel existing subscriptions
+          await _entriesSubscription?.cancel();
+          await _fileEntriesSubscription?.cancel();
+          await _formEntriesSubscription?.cancel();
 
-      // Set up stream for all entries
-      _entriesSubscription = _repository.watchEntries(companyId: _userCompanyId).listen(
-        (entries) {
-          if (!mounted) return;
-          _entries = entries;
-          notifyListeners();
-        },
-        onError: (e) {
-          if (!mounted) return;
-          _error = 'Failed to load entries: $e';
+          // Set up stream for all entries
+          _entriesSubscription = _repository.watchEntries(companyId: _userCompanyId).listen(
+            (entries) {
+              if (!mounted) return;
+              _entries = entries;
+              notifyListeners();
+            },
+            onError: (e) {
+              if (!mounted) return;
+              _error = 'Failed to load entries: $e';
+              _isLoading = false;
+              notifyListeners();
+            },
+          );
+
+          // Set up stream for file entries
+          _fileEntriesSubscription = _repository.watchEntriesByType(
+            TradingEntryType.file, 
+            companyId: _userCompanyId
+          ).listen(
+            (entries) {
+              if (!mounted) return;
+              _fileEntries = entries;
+              notifyListeners();
+            },
+            onError: (e) {
+              if (!mounted) return;
+              debugPrint('Error loading file entries: $e');
+            },
+          );
+
+          // Set up stream for form entries
+          _formEntriesSubscription = _repository.watchEntriesByType(
+            TradingEntryType.form, 
+            companyId: _userCompanyId
+          ).listen(
+            (entries) {
+              if (!mounted) return;
+              _formEntries = entries;
+              notifyListeners();
+            },
+            onError: (e) {
+              if (!mounted) return;
+              debugPrint('Error loading form entries: $e');
+            },
+          );
+
           _isLoading = false;
           notifyListeners();
         },
+        operationName: 'loadEntries',
       );
-
-      // Set up stream for file entries
-      _fileEntriesSubscription = _repository.watchEntriesByType(
-        TradingEntryType.file, 
-        companyId: _userCompanyId
-      ).listen(
-        (entries) {
-          if (!mounted) return;
-          _fileEntries = entries;
-          notifyListeners();
-        },
-        onError: (e) {
-          if (!mounted) return;
-          debugPrint('Error loading file entries: $e');
-        },
-      );
-
-      // Set up stream for form entries
-      _formEntriesSubscription = _repository.watchEntriesByType(
-        TradingEntryType.form, 
-        companyId: _userCompanyId
-      ).listen(
-        (entries) {
-          if (!mounted) return;
-          _formEntries = entries;
-          notifyListeners();
-        },
-        onError: (e) {
-          if (!mounted) return;
-          debugPrint('Error loading form entries: $e');
-        },
-      );
-
-      _isLoading = false;
-      notifyListeners();
     } catch (e) {
       _error = 'Failed to load entries: $e';
       _isLoading = false;
@@ -161,7 +167,12 @@ class TradingViewModel extends ChangeNotifier {
       _statsError = null;
       notifyListeners();
 
-      _statistics = await _repository.getTradingStatistics(companyId: _userCompanyId);
+      await FirebaseThreadingHandler.executeWithThreadSafety(
+        () async {
+          _statistics = await _repository.getTradingStatistics(companyId: _userCompanyId);
+        },
+        operationName: 'loadStatistics',
+      );
       
       _isLoadingStats = false;
       notifyListeners();
@@ -172,35 +183,40 @@ class TradingViewModel extends ChangeNotifier {
     }
   }
 
-  // Save entry with proper user context
+  // Save entry with proper user context and Firebase thread safety
   Future<void> saveEntry(TradingEntry entry) async {
     try {
-      // Add user context to entry
-      final entryWithContext = TradingEntry(
-        id: entry.id,
-        type: entry.type,
-        entryType: entry.entryType,
-        date: entry.date,
-        personName: entry.personName,
-        mobile: entry.mobile,
-        estateName: entry.estateName,
-        plotNo: entry.plotNo,
-        block: entry.block,
-        quantity: entry.quantity,
-        rate: entry.rate,
-        totalAmount: entry.totalAmount,
-        commission: entry.commission,
-        tax: entry.tax,
-        netAmount: entry.netAmount,
-        status: entry.status,
-        comments: entry.comments,
-        companyId: _userCompanyId,
-        createdBy: _currentUser?['id'],
-      );
+      await FirebaseThreadingHandler.executeWithThreadSafety(
+        () async {
+          // Add user context to entry
+          final entryWithContext = TradingEntry(
+            id: entry.id,
+            type: entry.type,
+            entryType: entry.entryType,
+            date: entry.date,
+            personName: entry.personName,
+            mobile: entry.mobile,
+            estateName: entry.estateName,
+            plotNo: entry.plotNo,
+            block: entry.block,
+            quantity: entry.quantity,
+            rate: entry.rate,
+            totalAmount: entry.totalAmount,
+            commission: entry.commission,
+            tax: entry.tax,
+            netAmount: entry.netAmount,
+            status: entry.status,
+            comments: entry.comments,
+            companyId: _userCompanyId,
+            createdBy: _currentUser?['id'],
+          );
 
-      await _repository.addEntry(entryWithContext);
-      
-      // Statistics will update automatically via stream
+          await _repository.addEntry(entryWithContext);
+          
+          // Statistics will update automatically via stream
+        },
+        operationName: 'saveEntry',
+      );
     } catch (e) {
       debugPrint('Error saving trading entry: $e');
       rethrow;
@@ -210,13 +226,18 @@ class TradingViewModel extends ChangeNotifier {
   // Update entry
   Future<void> updateEntry(TradingEntry entry) async {
     try {
-      // Check if user can access this entry
-      if (_currentUser != null && 
-          !await _repository.canUserAccessEntry(_currentUser!['id'], entry.id)) {
-        throw Exception('You do not have permission to update this entry');
-      }
+      await FirebaseThreadingHandler.executeWithThreadSafety(
+        () async {
+          // Check if user can access this entry
+          if (_currentUser != null && 
+              !await _repository.canUserAccessEntry(_currentUser!['id'], entry.id)) {
+            throw Exception('You do not have permission to update this entry');
+          }
 
-      await _repository.updateEntry(entry);
+          await _repository.updateEntry(entry);
+        },
+        operationName: 'updateEntry',
+      );
     } catch (e) {
       debugPrint('Error updating trading entry: $e');
       rethrow;
@@ -226,13 +247,18 @@ class TradingViewModel extends ChangeNotifier {
   // Delete entry (soft delete)
   Future<void> deleteEntry(String entryId) async {
     try {
-      // Check if user can access this entry
-      if (_currentUser != null && 
-          !await _repository.canUserAccessEntry(_currentUser!['id'], entryId)) {
-        throw Exception('You do not have permission to delete this entry');
-      }
+      await FirebaseThreadingHandler.executeWithThreadSafety(
+        () async {
+          // Check if user can access this entry
+          if (_currentUser != null && 
+              !await _repository.canUserAccessEntry(_currentUser!['id'], entryId)) {
+            throw Exception('You do not have permission to delete this entry');
+          }
 
-      await _repository.deleteEntry(entryId);
+          await _repository.deleteEntry(entryId);
+        },
+        operationName: 'deleteEntry',
+      );
     } catch (e) {
       debugPrint('Error deleting trading entry: $e');
       rethrow;

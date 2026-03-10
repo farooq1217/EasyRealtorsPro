@@ -86,27 +86,30 @@ class SocietyRepositoryImpl implements SocietyRepository {
     debugPrint('SocietyRepositoryImpl: getBlocksBySociety called with societyId: $societyId');
     try {
       final result = await db.customSelect(
-        'SELECT id, name FROM blocks WHERE society_id = ? AND is_active = 1 ORDER BY name',
+        'SELECT id, society_id, name FROM blocks WHERE society_id = ? AND is_active = 1 ORDER BY name',
         variables: [d.Variable.withString(societyId)],
       ).get();
       
       debugPrint('SocietyRepositoryImpl: Query returned ${result.length} raw results');
       
-      // Explicit type-safe mapping
+      // Explicit type-safe mapping - FIX: Include society_id from query
       final List<Map<String, String>> items = [];
       for (final row in result) {
         final item = {
           'id': row.data['id']?.toString() ?? '',
+          'society_id': row.data['society_id']?.toString() ?? societyId, // FIX: Use queried society_id or fallback
           'name': row.data['name']?.toString() ?? '',
         };
         items.add(item);
-        debugPrint('SocietyRepositoryImpl: Added block: $item');
+        debugPrint('SocietyRepositoryImpl: Mapped block: $item');
       }
       
-      debugPrint('SocietyRepositoryImpl: Returning ${items.length} blocks: $items');
+      debugPrint('SocietyRepositoryImpl: Type-safe blocks mapping completed, blocks count: ${items.length}');
+      debugPrint('SocietyRepositoryImpl: Final blocks list: $items');
+      
       return items;
     } catch (e) {
-      debugPrint('SocietyRepositoryImpl: Error loading blocks by society: $e');
+      debugPrint('Error loading blocks for society $societyId: $e');
       return [];
     }
   }

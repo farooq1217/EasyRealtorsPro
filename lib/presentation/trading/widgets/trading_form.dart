@@ -1,23 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/font_utils.dart';
 import '../../../domain/models/trading_entry.dart';
+import '../../../core/services/pdf_service.dart';
 
 class GenericTradingForm extends StatefulWidget {
-  final TradingType type; // Buy ya Sell
-  final bool isFileTab;   // Trading File tab hai ya Trading Form tab
+  final TradingType type;
+  final bool isFileTab;
   final Function(TradingEntry) onSave;
-  final Function(TradingEntry)? onBuyEntry; // Callback for Buy button
-  final Function(TradingEntry)? onSellEntry; // Callback for Sell button
-  final VoidCallback? onFormReset; // NEW: Callback for form reset
+  final VoidCallback? onFormReset;
 
   const GenericTradingForm({
     super.key, 
     required this.type, 
     required this.isFileTab, 
     required this.onSave,
-    this.onBuyEntry,
-    this.onSellEntry,
-    this.onFormReset, // NEW: Form reset callback
+    this.onFormReset,
   });
 
   @override
@@ -27,36 +26,56 @@ class GenericTradingForm extends StatefulWidget {
 class _GenericTradingFormState extends State<GenericTradingForm> {
   final _formKey = GlobalKey<FormState>();
   
-  // Saare Controllers ek hi jagah
+  // Form controllers
   final _nameController = TextEditingController();
   final _mobileController = TextEditingController();
   final _estateController = TextEditingController();
-  final _plotController = TextEditingController();
-  final _blockController = TextEditingController(); // NEW: Block field for form entries
-  final _amountController = TextEditingController();
+  final _quantityController = TextEditingController();
+  final _priceController = TextEditingController();
   final _commissionController = TextEditingController();
-  final _taxController = TextEditingController();
+  final _remarksController = TextEditingController();
+  
+  // Form state variables
+  String _selectedType = 'File'; // 'File' or 'Farm'
+  String _selectedPaymentOption = 'Cash'; // Default payment option
+  DateTime _selectedDate = DateTime.now();
+  
+  // Payment options
+  static const List<String> _paymentOptions = [
+    'Cash',
+    'Bank Transfer',
+    'Cheque',
+    'Online Payment',
+    'Other',
+  ];
 
-  // Field decoration helper - matches original styling
-  InputDecoration _fieldDecoration(String label, {IconData? icon, Widget? suffixIcon, bool isRequired = false}) {
-    // Map labels to appropriate icons for better visual clarity
+  @override
+  void initState() {
+    super.initState();
+    // Auto-fill date with current date
+    _selectedDate = DateTime.now();
+  }
+
+  // Field decoration helper
+  InputDecoration _fieldDecoration(String label, {IconData? icon, bool isRequired = false}) {
+    // Map labels to appropriate icons
     IconData? fieldIcon = icon;
     if (fieldIcon == null) {
       final lowerLabel = label.toLowerCase();
-      if (lowerLabel.contains('name') || lowerLabel.contains('client') || lowerLabel.contains('owner')) {
+      if (lowerLabel.contains('name') || lowerLabel.contains('person')) {
         fieldIcon = Icons.person_outline;
-      } else if (lowerLabel.contains('mobile') || lowerLabel.contains('phone') || lowerLabel.contains('contact')) {
+      } else if (lowerLabel.contains('mobile') || lowerLabel.contains('phone')) {
         fieldIcon = Icons.phone_outlined;
       } else if (lowerLabel.contains('estate') || lowerLabel.contains('society')) {
         fieldIcon = Icons.apartment_outlined;
-      } else if (lowerLabel.contains('plot') || lowerLabel.contains('file no') || lowerLabel.contains('reference')) {
-        fieldIcon = Icons.numbers_outlined;
-      } else if (lowerLabel.contains('rate') || lowerLabel.contains('amount') || lowerLabel.contains('price')) {
-        fieldIcon = null; // Will use "Rs" text widget instead
+      } else if (lowerLabel.contains('quantity')) {
+        fieldIcon = Icons.inventory_2_outlined;
+      } else if (lowerLabel.contains('price') || lowerLabel.contains('amount')) {
+        fieldIcon = Icons.attach_money_outlined;
       } else if (lowerLabel.contains('commission')) {
         fieldIcon = Icons.percent_outlined;
-      } else if (lowerLabel.contains('tax')) {
-        fieldIcon = Icons.receipt_outlined;
+      } else if (lowerLabel.contains('remarks') || lowerLabel.contains('comments')) {
+        fieldIcon = Icons.comment_outlined;
       } else {
         fieldIcon = Icons.edit_outlined;
       }
@@ -84,32 +103,13 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
       );
     }
     
-    // Use "Rs" text widget for currency fields instead of dollar icon
-    Widget? prefixWidget;
-    if (fieldIcon == null && (label.toLowerCase().contains('rate') || label.toLowerCase().contains('amount'))) {
-      prefixWidget = Padding(
-        padding: const EdgeInsets.only(left: 16, right: 8),
-        child: Text(
-          'Rs',
-          style: AppFonts.poppins(
-            color: Colors.grey.shade700,
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
-          ),
-        ),
-      );
-    } else if (fieldIcon != null) {
-      prefixWidget = Padding(
-        padding: const EdgeInsets.only(left: 16, right: 8),
-        child: Icon(fieldIcon, color: Colors.grey.shade700),
-      );
-    }
-    
     return InputDecoration(
       labelText: isRequired ? null : label,
       label: labelWidget,
-      prefixIcon: prefixWidget,
-      suffixIcon: suffixIcon,
+      prefixIcon: fieldIcon != null ? Padding(
+        padding: const EdgeInsets.only(left: 16, right: 8),
+        child: Icon(fieldIcon, color: Colors.grey.shade700),
+      ) : null,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: Colors.grey.shade300),
@@ -132,20 +132,12 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
     );
   }
 
-  // Calculation Function: Rate + Commission + Tax
-  double _calculateNetAmount() {
-    double rate = double.tryParse(_amountController.text) ?? 0.0;
-    double commission = double.tryParse(_commissionController.text) ?? 0.0;
-    double tax = double.tryParse(_taxController.text) ?? 0.0;
-    return rate + commission + tax; // Aapki voice ke mutabiq calculation logic
-  }
-
   // Method to create TradingEntry from current form data
-  TradingEntry createEntry(TradingType type) {
+  TradingEntry createEntry() {
     if (!_formKey.currentState!.validate()) {
       return TradingEntry(
         id: '',
-        type: type,
+        type: widget.type,
         entryType: widget.isFileTab ? TradingEntryType.file : TradingEntryType.form,
         date: DateTime.now(),
         personName: '',
@@ -162,51 +154,29 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
       );
     }
 
-    final rate = double.tryParse(_amountController.text) ?? 0.0;
+    final quantity = int.tryParse(_quantityController.text) ?? 0;
+    final price = double.tryParse(_priceController.text) ?? 0.0;
     final commission = double.tryParse(_commissionController.text) ?? 0.0;
-    final tax = double.tryParse(_taxController.text) ?? 0.0;
-    final netAmount = rate + commission + tax;
+    final totalAmount = quantity * price;
 
-    // Create entry with conditional fields based on entry type
-    if (widget.isFileTab) {
-      // File entry: use payment field, no commission/tax/rate/plot/block
-      return TradingEntry(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        type: type,
-        entryType: TradingEntryType.file,
-        date: DateTime.now(),
-        personName: _nameController.text,
-        mobile: _mobileController.text,
-        estateName: _estateController.text,
-        plotNo: null, // File entries don't have plot numbers
-        block: null, // File entries don't have block
-        quantity: int.tryParse(_amountController.text) ?? 1, // Use amount as quantity for file entries
-        rate: null, // File entries don't have rate
-        totalAmount: rate, // Use rate as total_amount for file entries
-        commission: 0.0, // File entries don't have commission
-        tax: 0.0, // File entries don't have tax
-        netAmount: rate, // Net amount same as total_amount for file entries
-      );
-    } else {
-      // Form entry: use rate/commission/tax/plot/block, no payment field
-      return TradingEntry(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        type: type,
-        entryType: TradingEntryType.form,
-        date: DateTime.now(),
-        personName: _nameController.text,
-        mobile: _mobileController.text,
-        estateName: _estateController.text,
-        plotNo: _plotController.text,
-        block: _blockController.text, // NEW: Include block field
-        quantity: 1,
-        rate: rate,
-        totalAmount: rate, // Use rate as total_amount for form entries
-        commission: commission,
-        tax: tax,
-        netAmount: netAmount,
-      );
-    }
+    return TradingEntry(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      type: widget.type,
+      entryType: widget.isFileTab ? TradingEntryType.file : TradingEntryType.form,
+      date: _selectedDate,
+      personName: _nameController.text,
+      mobile: _mobileController.text,
+      estateName: _estateController.text,
+      plotNo: null, // Not used in new form
+      block: null, // Not used in new form
+      quantity: quantity,
+      rate: price, // Use price as rate
+      totalAmount: totalAmount,
+      commission: commission,
+      tax: null, // Not used in new form
+      netAmount: totalAmount + commission, // Total + commission
+      comments: _remarksController.text, // Store remarks in comments field
+    );
   }
 
   // Method to reset form fields
@@ -215,16 +185,30 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
     _nameController.clear();
     _mobileController.clear();
     _estateController.clear();
-    _plotController.clear();
-    _blockController.clear(); // NEW: Clear block controller
-    _amountController.clear();
+    _quantityController.clear();
+    _priceController.clear();
     _commissionController.clear();
-    _taxController.clear();
+    _remarksController.clear();
+    setState(() {
+      _selectedType = 'File';
+      _selectedPaymentOption = 'Cash';
+      _selectedDate = DateTime.now();
+    });
   }
 
-  // Method to validate form
-  bool validateForm() {
-    return _formKey.currentState?.validate() ?? false;
+  // Date picker
+  Future<void> _selectDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
   }
 
   @override
@@ -232,11 +216,10 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
     _nameController.dispose();
     _mobileController.dispose();
     _estateController.dispose();
-    _plotController.dispose();
-    _blockController.dispose(); // NEW: Dispose block controller
-    _amountController.dispose();
+    _quantityController.dispose();
+    _priceController.dispose();
     _commissionController.dispose();
-    _taxController.dispose();
+    _remarksController.dispose();
     super.dispose();
   }
 
@@ -258,8 +241,9 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Header
               Text(
-                "${widget.type == TradingType.buy ? 'Buy' : 'Sell'} - ${widget.isFileTab ? 'File' : 'Form'}",
+                "${widget.type == TradingType.buy ? 'Buy' : 'Sell'} - ${_selectedType}",
                 style: AppFonts.poppins(
                   fontSize: 20, 
                   fontWeight: FontWeight.bold,
@@ -270,106 +254,268 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
               ),
               const SizedBox(height: 20),
               
-              // Person Name Field
+              // Type Toggle: File or Farm
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _selectedType = 'File'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: _selectedType == 'File' 
+                                ? const Color(0xFFFF6B35) 
+                                : Colors.transparent,
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(12),
+                              bottomLeft: Radius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'File',
+                            textAlign: TextAlign.center,
+                            style: AppFonts.poppins(
+                              color: _selectedType == 'File' 
+                                  ? Colors.white 
+                                  : Colors.grey.shade700,
+                              fontWeight: _selectedType == 'File' 
+                                  ? FontWeight.w600 
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _selectedType = 'Farm'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: _selectedType == 'Farm' 
+                                ? const Color(0xFFFF6B35) 
+                                : Colors.transparent,
+                            borderRadius: const BorderRadius.only(
+                              topRight: Radius.circular(12),
+                              bottomRight: Radius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Farm',
+                            textAlign: TextAlign.center,
+                            style: AppFonts.poppins(
+                              color: _selectedType == 'Farm' 
+                                  ? Colors.white 
+                                  : Colors.grey.shade700,
+                              fontWeight: _selectedType == 'Farm' 
+                                  ? FontWeight.w600 
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Payment Option Dropdown
+              DropdownButtonFormField<String>(
+                value: _selectedPaymentOption,
+                decoration: _fieldDecoration('Payment Option', isRequired: true),
+                items: _paymentOptions.map((String option) {
+                  return DropdownMenuItem<String>(
+                    value: option,
+                    child: Text(option, style: AppFonts.poppins()),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  if (newValue != null) {
+                    setState(() {
+                      _selectedPaymentOption = newValue;
+                    });
+                  }
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Estate Name (Required)
+              TextFormField(
+                controller: _estateController,
+                decoration: _fieldDecoration('Estate Name', isRequired: true),
+                validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
+              ),
+
+              const SizedBox(height: 16),
+
+              // Mobile No (Required) - Numeric input
+              TextFormField(
+                controller: _mobileController,
+                decoration: _fieldDecoration('Mobile No', isRequired: true),
+                keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (value) {
+                  if (value?.isEmpty ?? true) return 'Required';
+                  if (value!.length < 10) return 'Please enter a valid mobile number';
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Person Name (Required)
               TextFormField(
                 controller: _nameController,
                 decoration: _fieldDecoration('Person Name', isRequired: true),
                 validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
 
-              // Mobile Field
+              // Quantity (Required) - Numeric input
               TextFormField(
-                controller: _mobileController,
-                decoration: _fieldDecoration('Mobile No.', isRequired: true),
-                keyboardType: TextInputType.phone,
-                validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
-              ),
-
-              const SizedBox(height: 12),
-
-              // Estate Name
-              TextFormField(
-                controller: _estateController,
-                decoration: _fieldDecoration('Estate/Society Name', isRequired: true),
-                validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
-              ),
-
-              const SizedBox(height: 12),
-
-              // Plot No (Sirf 'Form' tab mein dikhega)
-              if (!widget.isFileTab) ...[
-                TextFormField(
-                  controller: _plotController,
-                  decoration: _fieldDecoration('Plot Number'),
-                ),
-                const SizedBox(height: 12),
-
-                // Block Field (Sirf 'Form' tab mein dikhega)
-                TextFormField(
-                  controller: _blockController,
-                  decoration: _fieldDecoration('Block'),
-                ),
-                const SizedBox(height: 12),
-              ],
-
-              // Rate/Amount Field
-              TextFormField(
-                controller: _amountController,
-                decoration: _fieldDecoration('Rate/Amount', isRequired: true),
+                controller: _quantityController,
+                decoration: _fieldDecoration('Quantity', isRequired: true),
                 keyboardType: TextInputType.number,
-                validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (value) {
+                  if (value?.isEmpty ?? true) return 'Required';
+                  final quantity = int.tryParse(value ?? '');
+                  if (quantity == null || quantity! <= 0) return 'Please enter a valid quantity';
+                  return null;
+                },
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
 
-              // Commission Field
+              // Price (Required) - Numeric input
+              TextFormField(
+                controller: _priceController,
+                decoration: _fieldDecoration('Price', isRequired: true),
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                ],
+                validator: (value) {
+                  if (value?.isEmpty ?? true) return 'Required';
+                  final price = double.tryParse(value ?? '');
+                  if (price == null || price! <= 0) return 'Please enter a valid price';
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Commission (Optional) - Numeric input
               TextFormField(
                 controller: _commissionController,
                 decoration: _fieldDecoration('Commission'),
                 keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                ],
+                validator: (value) {
+                  if (value != null && value.isNotEmpty) {
+                    final commission = double.tryParse(value);
+                    if (commission == null || commission! < 0) return 'Please enter a valid commission';
+                  }
+                  return null;
+                },
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
 
-              // Tax Field
+              // Date - Auto-fill with current date, allow manual change
+              InkWell(
+                onTap: _selectDate,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(12),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF23272E)
+                        : Colors.grey.shade50,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_today, color: Colors.grey.shade700),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          DateFormat('dd MMM yyyy').format(_selectedDate),
+                          style: AppFonts.poppins(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Remarks - Multi-line text field
               TextFormField(
-                controller: _taxController,
-                decoration: _fieldDecoration('Tax'),
-                keyboardType: TextInputType.number,
+                controller: _remarksController,
+                decoration: _fieldDecoration('Remarks'),
+                maxLines: 3,
+                keyboardType: TextInputType.multiline,
               ),
 
-              const SizedBox(height: 20),
-              
+              const SizedBox(height: 16),
+
+              // Upload Image Button
+              Container(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    // TODO: Implement image upload functionality
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Image upload feature coming soon!',
+                          style: AppFonts.poppins(),
+                        ),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.cloud_upload_outlined),
+                  label: Text(
+                    'Upload Image/Documents',
+                    style: AppFonts.poppins(fontWeight: FontWeight.w500),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    side: BorderSide(color: const Color(0xFFFF6B35)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
               // Save Button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
                     if (_formKey.currentState!.validate()) {
-                      final rate = double.tryParse(_amountController.text) ?? 0.0;
-                      final commission = double.tryParse(_commissionController.text) ?? 0.0;
-                      final tax = double.tryParse(_taxController.text) ?? 0.0;
-                      final netAmount = rate + commission + tax;
-
-                      final entry = TradingEntry(
-                        id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        type: widget.type,
-                        entryType: widget.isFileTab ? TradingEntryType.file : TradingEntryType.form,
-                        date: DateTime.now(),
-                        personName: _nameController.text,
-                        mobile: _mobileController.text,
-                        estateName: _estateController.text,
-                        plotNo: widget.isFileTab ? null : _plotController.text,
-                        block: widget.isFileTab ? null : _blockController.text,
-                        quantity: widget.isFileTab ? int.tryParse(_amountController.text) ?? 1 : 1,
-                        rate: widget.isFileTab ? null : rate,
-                        totalAmount: widget.isFileTab ? rate : rate,
-                        commission: widget.isFileTab ? 0.0 : commission,
-                        tax: widget.isFileTab ? 0.0 : tax,
-                        netAmount: widget.isFileTab ? rate : netAmount,
-                      );
+                      final entry = createEntry();
                       widget.onSave(entry);
                       
                       // Reset form after successful save
@@ -396,46 +542,6 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                   ),
                 ),
               ),
-
-              // Buy and Sell Buttons
-              if (widget.onBuyEntry != null || widget.onSellEntry != null) ...[
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (widget.onBuyEntry != null)
-                      FloatingActionButton.extended(
-                        onPressed: () {
-                          if (_formKey.currentState!.validate()) {
-                            final entry = createEntry(TradingType.buy);
-                            if (entry.id.isNotEmpty) {
-                              widget.onBuyEntry!(entry);
-                            }
-                          }
-                        },
-                        icon: const Icon(Icons.shopping_cart),
-                        label: Text('Buy', style: AppFonts.poppins(fontWeight: FontWeight.bold)),
-                        backgroundColor: const Color(0xFFFF6B35),
-                      ),
-                    if (widget.onBuyEntry != null && widget.onSellEntry != null)
-                      const SizedBox(width: 12),
-                    if (widget.onSellEntry != null)
-                      FloatingActionButton.extended(
-                        onPressed: () {
-                          if (_formKey.currentState!.validate()) {
-                            final entry = createEntry(TradingType.sell);
-                            if (entry.id.isNotEmpty) {
-                              widget.onSellEntry!(entry);
-                            }
-                          }
-                        },
-                        icon: const Icon(Icons.work),
-                        label: Text('Sell', style: AppFonts.poppins(fontWeight: FontWeight.bold)),
-                        backgroundColor: Colors.blue,
-                      ),
-                  ],
-                ),
-              ],
             ],
           ),
         ),

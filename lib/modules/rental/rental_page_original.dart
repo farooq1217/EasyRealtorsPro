@@ -4418,11 +4418,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
       
 
-      final totalValue = (filesValue.data['total'] as int? ?? 0) + 
-
-                         (propertiesValue.data['total'] as int? ?? 0) + 
-
-                         (rentalValue.data['total'] as int? ?? 0);
+      // OPTIMIZATION: Convert all int values to double to prevent type-cast errors
+      final filesValueDouble = (filesValue.data['total'] as int? ?? 0).toDouble();
+      final propertiesValueDouble = (propertiesValue.data['total'] as int? ?? 0).toDouble();
+      final rentalValueDouble = (rentalValue.data['total'] as int? ?? 0).toDouble();
+      
+      final totalValue = filesValueDouble + propertiesValueDouble + rentalValueDouble;
 
       
 

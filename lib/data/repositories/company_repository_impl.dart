@@ -430,11 +430,18 @@ class CompanyRepositoryImpl implements CompanyRepository {
   Future<void> syncCompaniesFromFirestore() async {
     if (!_isFirestoreOperationAllowed()) return;
     
-    await _executeFirestoreOperation(() async {
+    // OPTIMIZATION: Run asynchronously without blocking navigation
+    unawaited(_executeFirestoreOperation(() async {
       // Implementation for syncing from Firestore would go here
       // For now, this is a no-op in SQLite-only mode
-      debugPrint('Firestore sync skipped in SQLite-only mode');
-    });
+      debugPrint('CompanyRepository: Firestore sync skipped in SQLite-only mode');
+    }));
+  }
+  
+  /// Helper method to run async operations without awaiting
+  void unawaited(Future<void> future) {
+    // Intentionally not awaiting the future
+    // This allows the operation to run in background without blocking
   }
 
   @override
