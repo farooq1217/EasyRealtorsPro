@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared/shared.dart';
 import '../../firestore_sync_service.dart';
@@ -14,9 +15,12 @@ class BackgroundSyncManager {
   factory BackgroundSyncManager() => _instance;
   BackgroundSyncManager._internal();
   
+  static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
+  
   bool _isInitialized = false;
   bool _isInitializing = false; // CRITICAL: Prevent concurrent initialization attempts
   static bool _hasBeenInitializedInSession = false; // CRITICAL: Session-wide flag
+  DateTime? _lastSyncTime; // CRITICAL: Track last sync time to prevent spam
   
   // CRITICAL: Public getter to access session flag from external classes
   bool get hasBeenInitializedInSession => _hasBeenInitializedInSession;
@@ -29,6 +33,16 @@ class BackgroundSyncManager {
   
   // Sync status tracking
   final Map<String, SyncStatus> _tableSyncStatus = {};
+
+  /// CRITICAL: Static pre-check method to prevent unnecessary initialization attempts
+  /// This saves CPU cycles by checking BEFORE attempting to initialize
+  static bool shouldAttemptInitialization() {
+    if (_hasBeenInitializedInSession) {
+      debugPrint('[SYNC] Initialization skipped - already initialized in this session');
+      return false;
+    }
+    return true;
+  }
 
   /// Initialize the sync manager
   /// Enhanced with comprehensive re-initialization prevention
@@ -92,20 +106,40 @@ class BackgroundSyncManager {
   }
 
   /// Start monitoring internet connectivity
+  /// Enhanced with ServicesBinding thread safety for Windows
   void _startConnectivityMonitoring() {
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
-      final result = results.isNotEmpty ? results.last : ConnectivityResult.none;
-      final hadInternet = _hasInternet;
-      _hasInternet = result != ConnectivityResult.none;
-      
-      debugPrint('[SYNC] Connectivity changed: ${result.name}, Has Internet: $_hasInternet');
-      
-      // Trigger sync when internet is restored
-      if (!hadInternet && _hasInternet) {
-        debugPrint('[SYNC] Internet restored - triggering background sync');
-        _triggerBackgroundSync();
-      }
-    });
+    // CRITICAL: Ensure connectivity monitoring starts on main thread
+    if (_isWindows) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+          final result = results.isNotEmpty ? results.last : ConnectivityResult.none;
+          final hadInternet = _hasInternet;
+          _hasInternet = result != ConnectivityResult.none;
+          
+          debugPrint('[SYNC] Connectivity changed: ${result.name}, Has Internet: $_hasInternet');
+          
+          // Trigger sync when internet is restored
+          if (!hadInternet && _hasInternet) {
+            debugPrint('[SYNC] Internet restored - triggering background sync');
+            _triggerBackgroundSync();
+          }
+        });
+      });
+    } else {
+      _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+        final result = results.isNotEmpty ? results.last : ConnectivityResult.none;
+        final hadInternet = _hasInternet;
+        _hasInternet = result != ConnectivityResult.none;
+        
+        debugPrint('[SYNC] Connectivity changed: ${result.name}, Has Internet: $_hasInternet');
+        
+        // Trigger sync when internet is restored
+        if (!hadInternet && _hasInternet) {
+          debugPrint('[SYNC] Internet restored - triggering background sync');
+          _triggerBackgroundSync();
+        }
+      });
+    }
   }
 
   /// Check current connectivity status
@@ -122,24 +156,52 @@ class BackgroundSyncManager {
   }
 
   /// Start periodic sync check
+  /// Enhanced with ServicesBinding thread safety for Windows
   void _startPeriodicSyncCheck() {
-    _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (_hasInternet && !_isSyncing) {
-        debugPrint('[SYNC] Periodic sync check - triggering background sync');
-        _triggerBackgroundSync();
-      }
-    });
+    // CRITICAL: Ensure timer starts on main thread for Windows
+    if (_isWindows) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+          if (_hasInternet && !_isSyncing) {
+            debugPrint('[SYNC] Periodic sync check - triggering background sync');
+            _triggerBackgroundSync();
+          }
+        });
+        debugPrint('[SYNC] Periodic sync timer started on main thread (Windows)');
+      });
+    } else {
+      _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+        if (_hasInternet && !_isSyncing) {
+          debugPrint('[SYNC] Periodic sync check - triggering background sync');
+          _triggerBackgroundSync();
+        }
+      });
+    }
   }
 
   /// Trigger background sync for all unsynced records
   Future<void> _triggerBackgroundSync() async {
-    if (_isSyncing || !_hasInternet) {
-      debugPrint('[SYNC] Sync already in progress or no internet - skipping');
+    // CRITICAL: Enhanced protection against concurrent sync attempts
+    if (_isSyncing) {
+      debugPrint('[SYNC] Sync already in progress - skipping (concurrent call prevented)');
+      return;
+    }
+    
+    if (!_hasInternet) {
+      debugPrint('[SYNC] No internet connection - skipping background sync');
+      return;
+    }
+
+    // CRITICAL: Additional protection against rapid successive calls
+    if (_lastSyncTime != null && 
+        DateTime.now().difference(_lastSyncTime!).inSeconds < 30) {
+      debugPrint('[SYNC] Sync called too recently - skipping (last sync: ${_lastSyncTime})');
       return;
     }
 
     _isSyncing = true;
-    debugPrint('[SYNC] Starting background sync');
+    _lastSyncTime = DateTime.now();
+    debugPrint('[SYNC] Starting background sync (timestamp: $_lastSyncTime)');
 
     try {
       final db = await AppDatabaseSingleton.instance();

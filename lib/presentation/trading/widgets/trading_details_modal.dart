@@ -7,7 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
 import '../../../../core/font_utils.dart';
 import '../../../../core/services/standardized_pdf_service.dart';
-import '../../../domain/models/trading_entry.dart';
+import 'package:shared/shared.dart' show TradingEntry, TradingType, TradingEntryType;
 
 class TradingDetailsModal extends StatefulWidget {
   final TradingEntry entry;
@@ -69,7 +69,7 @@ class _TradingDetailsModalState extends State<TradingDetailsModal> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          entry.estateName,
+                          entry.estateName ?? 'N/A',
                           style: AppFonts.poppins(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
@@ -128,7 +128,7 @@ class _TradingDetailsModalState extends State<TradingDetailsModal> {
                     const SizedBox(height: 12),
                     _buildDetailCard([
                       _buildDetailRow('Name', entry.personName),
-                      _buildDetailRow('Mobile', entry.mobile),
+                      _buildDetailRow('Mobile', entry.mobile ?? 'N/A'),
                     ]),
 
                     const SizedBox(height: 20),
@@ -137,7 +137,7 @@ class _TradingDetailsModalState extends State<TradingDetailsModal> {
                     _buildSectionHeader('Transaction Information', Icons.receipt_long),
                     const SizedBox(height: 12),
                     _buildDetailCard([
-                      _buildDetailRow('Estate Name', entry.estateName),
+                      _buildDetailRow('Estate Name', entry.estateName ?? 'N/A'),
                       _buildDetailRow('Transaction Type', isBuy ? 'Buy' : 'Sell'),
                       _buildDetailRow('Entry Type', entryType),
                       _buildDetailRow('Date', DateFormat('dd MMM yyyy').format(entry.date)),
@@ -396,9 +396,9 @@ class _TradingDetailsModalState extends State<TradingDetailsModal> {
                   ),
                 ),
                 pw.SizedBox(height: 10),
-                _buildPdfRow('Person Name', entry.personName),
-                _buildPdfRow('Mobile', entry.mobile),
-                _buildPdfRow('Estate Name', entry.estateName),
+                _buildPdfRow('Person Name', entry.personName ?? 'N/A'),
+                _buildPdfRow('Mobile', entry.mobile ?? 'N/A'),
+                _buildPdfRow('Estate Name', entry.estateName ?? 'N/A'),
                 if (entry.plotNo != null) _buildPdfRow('Plot/Form #', entry.plotNo!),
                 if (entry.block != null) _buildPdfRow('Block', entry.block!),
                 _buildPdfRow('Transaction Type', isBuy ? 'BUY' : 'SELL'),

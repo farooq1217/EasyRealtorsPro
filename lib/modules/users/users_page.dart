@@ -12,7 +12,8 @@ import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import 'package:provider/provider.dart';
-import '../../core/services/auth_service.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/widgets/safe_dropdown.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart' show buildKeyValueReportPdf, loadCurrentUserFromStorage, loadReportBranding, savePdfBytesToDisk, generateReportSerial, logReportHistory;
 import '../../core/professional_pdf_generator.dart';
@@ -46,10 +47,22 @@ class _UsersPageState extends State<UsersPage> {
     super.initState();
     _viewModel = UserViewModel(UserRepositoryImpl(widget.db));
     
-    // Initialize ViewModel
+    debugPrint('UsersPage: initState called, widget mounted: $mounted');
+    
+    // Initialize ViewModel but defer stream setup
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      debugPrint('UsersPage: PostFrameCallback - widget mounted: $mounted');
       _viewModel.initialize();
     });
+  }
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    debugPrint('UsersPage: didChangeDependencies called, widget mounted: $mounted');
+    // Set mounted state when dependencies change
+    _viewModel.setMounted(mounted);
   }
 
   @override
@@ -64,16 +77,37 @@ class _UsersPageState extends State<UsersPage> {
       value: _viewModel,
       child: Consumer<UserViewModel>(
         builder: (context, viewModel, child) {
+          // Show loading state but keep buttons visible
           if (viewModel.loading) {
-            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            return Scaffold(
+              appBar: AppBar(
+                title: Text('Users Management', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
+                actions: [
+                  // Show placeholder buttons during loading to maintain UI consistency
+                  const SizedBox(width: 48), // Placeholder for more_vert button
+                  const SizedBox(width: 48), // Placeholder for add button
+                  const SizedBox(width: 48), // Placeholder for search
+                ],
+              ),
+              body: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Loading users...', style: TextStyle(fontSize: 16)),
+                  ],
+                ),
+              ),
+            );
           }
 
           return Scaffold(
             appBar: AppBar(
               title: Text('Users Management', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
               actions: [
-                // Backfill User IDs button
-                if (RoleUtils.isSuperAdmin(viewModel.currentUser) || PermissionHelper.isBypassUser(viewModel.currentUser))
+                // Backfill User IDs button - enhanced with mayof286@gmail.com fallback
+                if (_shouldShowSuperAdminFeatures(viewModel.currentUser))
                   PopupMenuButton<String>(
                     icon: const Icon(Icons.more_vert),
                     onSelected: (value) {
@@ -94,12 +128,14 @@ class _UsersPageState extends State<UsersPage> {
                       ),
                     ],
                   ),
-                // Add button
-                if (viewModel.canAdd)
+                // Add button - enhanced with mayof286@gmail.com fallback
+                if (_shouldShowAddButton(viewModel))
                   IconButton(
                     icon: const Icon(Icons.add),
-                    onPressed: () => _showAddUserDialog(context, viewModel),
-                    tooltip: 'Add User',
+                    onPressed: _shouldEnableAddButton(viewModel)
+                        ? () => _showAddUserDialog(context, viewModel)
+                        : null,
+                    tooltip: _getAddButtonTooltip(viewModel),
                   ),
                 // Global Search
                 TopRightSearch(
@@ -294,13 +330,16 @@ class _UsersPageState extends State<UsersPage> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: CircleAvatar(
-          backgroundColor: user.isActive ? Colors.green : Colors.grey,
-          child: Text(
-            user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
-            style: AppFonts.poppins(
+      child: InkWell(
+        onTap: () => _showUserDetailDialog(context, user),
+        borderRadius: BorderRadius.circular(12),
+        child: ListTile(
+          contentPadding: const EdgeInsets.all(16),
+          leading: CircleAvatar(
+            backgroundColor: user.isActive ? Colors.green : Colors.grey,
+            child: Text(
+              user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
+              style: AppFonts.poppins(
               color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
@@ -373,11 +412,11 @@ class _UsersPageState extends State<UsersPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: _getStatusColor(user.status),
+                color: _getUserStatusColor(user),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                user.status ?? 'active',
+                _getUserStatusText(user),
                 style: AppFonts.poppins(
                   fontSize: 10,
                   color: Colors.white,
@@ -395,8 +434,8 @@ class _UsersPageState extends State<UsersPage> {
                     viewModel.editUser(user);
                     _showAddUserDialog(context, viewModel);
                   } else if (value == 'toggle_status') {
-                    final newStatus = user.status == 'active' ? 'inactive' : 'active';
-                    viewModel.toggleUserStatus(user.id, newStatus);
+                    // CRITICAL: Toggle based on isActive field, not status string
+                    viewModel.toggleUserActiveStatus(user.id, !user.isActive);
                   } else if (value == 'delete') {
                     _showDeleteConfirmation(context, user, viewModel);
                   }
@@ -418,9 +457,9 @@ class _UsersPageState extends State<UsersPage> {
                       value: 'toggle_status',
                       child: Row(
                         children: [
-                          Icon(user.status == 'active' ? Icons.person_off : Icons.person),
+                          Icon(user.isActive ? Icons.person_off : Icons.person),
                           const SizedBox(width: 8),
-                          Text(user.status == 'active' ? 'Deactivate' : 'Activate'),
+                          Text(user.isActive ? 'Deactivate' : 'Activate'),
                         ],
                       ),
                     ),
@@ -439,8 +478,45 @@ class _UsersPageState extends State<UsersPage> {
               ),
           ],
         ),
+        ),
       ),
     );
+  }
+
+  Color _getUserStatusColor(UserModel user) {
+    // CRITICAL: Prioritize isActive field over status string
+    if (!user.isActive) {
+      return Colors.red; // Red for inactive
+    }
+    
+    // If active, check status field for additional states
+    switch (user.status?.toLowerCase()) {
+      case 'archived':
+        return Colors.red;
+      case 'inactive':
+        return Colors.orange;
+      case 'active':
+      default:
+        return Colors.green; // Green for active
+    }
+  }
+
+  String _getUserStatusText(UserModel user) {
+    // CRITICAL: Prioritize isActive field over status string
+    if (!user.isActive) {
+      return 'Inactive';
+    }
+    
+    // If active, check status field for additional states
+    switch (user.status?.toLowerCase()) {
+      case 'archived':
+        return 'Archived';
+      case 'inactive':
+        return 'Inactive';
+      case 'active':
+      default:
+        return 'Active';
+    }
   }
 
   Color _getStatusColor(String? status) {
@@ -663,8 +739,12 @@ class _UsersPageState extends State<UsersPage> {
           ),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
+        SafeDropdown.createSafeStringDropdown(
+          items: _buildCompanyDropdownItems(viewModel.companies, viewModel.isCurrentUserSuperAdmin),
           value: viewModel.selectedCompanyId,
+          onChanged: (value) {
+            viewModel.selectedCompanyId = value;
+          },
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -674,16 +754,9 @@ class _UsersPageState extends State<UsersPage> {
               borderRadius: BorderRadius.circular(8),
               borderSide: const BorderSide(color: Color(0xFFFF6B35)),
             ),
+            labelText: 'Company',
+            hintText: 'Select Company',
           ),
-          items: viewModel.companies.map((company) {
-            return DropdownMenuItem<String>(
-              value: company['id'],
-              child: Text(company['name']!),
-            );
-          }).toList(),
-          onChanged: (value) {
-            viewModel.selectedCompanyId = value;
-          },
         ),
         const SizedBox(height: 16),
 
@@ -917,5 +990,383 @@ class _UsersPageState extends State<UsersPage> {
         ],
       ),
     );
+  }
+
+  // Helper method to get safe dropdown value (prevents assertion errors)
+  String? _getSafeDropdownValue(String? selectedValue, List<Map<String, dynamic>> companies) {
+    if (selectedValue == null) return null;
+    
+    // Check if selected value exists in companies list
+    final existsInCompanies = companies.any((company) => company['id'] == selectedValue);
+    
+    // If not found and it's GLOBAL_ADMIN, return null (will show placeholder)
+    if (!existsInCompanies && selectedValue == 'GLOBAL_ADMIN') {
+      return null;
+    }
+    
+    // Return the value if it exists, otherwise null
+    return existsInCompanies ? selectedValue : null;
+  }
+
+  // Helper method to build company dropdown items with GLOBAL_ADMIN option for Super Admins
+  List<DropdownMenuItem<String>> _buildCompanyDropdownItems(List<Map<String, dynamic>> companies, bool isCurrentUserSuperAdmin) {
+    final List<DropdownMenuItem<String>> items = [];
+    
+    // Add GLOBAL_ADMIN option for Super Admins
+    if (isCurrentUserSuperAdmin) {
+      items.add(DropdownMenuItem<String>(
+        value: 'GLOBAL_ADMIN',
+        child: Text('Global Admin (No Company)'),
+      ));
+    }
+    
+    // Add actual companies
+    for (final company in companies) {
+      items.add(DropdownMenuItem<String>(
+        value: company['id'],
+        child: Text(company['name']!),
+      ));
+    }
+    
+    return items;
+  }
+
+  // Helper methods for mayof286@gmail.com fallback logic
+  bool _shouldShowSuperAdminFeatures(Map<String, dynamic>? currentUser) {
+    if (currentUser == null) return false;
+    
+    // Check for mayof286@gmail.com fallback
+    if (currentUser['email']?.toString().toLowerCase() == 'mayof286@gmail.com') {
+      return true;
+    }
+    
+    return RoleUtils.isSuperAdmin(currentUser) || 
+           RoleUtils.isCompanyAdmin(currentUser) || 
+           PermissionHelper.isBypassUser(currentUser);
+  }
+
+  bool _shouldShowAddButton(UserViewModel viewModel) {
+    // Check for mayof286@gmail.com fallback
+    if (viewModel.currentUser?['email']?.toString().toLowerCase() == 'mayof286@gmail.com') {
+      return true;
+    }
+    
+    return viewModel.canAdd || viewModel.currentUser == null;
+  }
+
+  bool _shouldEnableAddButton(UserViewModel viewModel) {
+    // Check for mayof286@gmail.com fallback
+    if (viewModel.currentUser?['email']?.toString().toLowerCase() == 'mayof286@gmail.com') {
+      return true;
+    }
+    
+    return viewModel.currentUser != null;
+  }
+
+  String _getAddButtonTooltip(UserViewModel viewModel) {
+    // Check for mayof286@gmail.com fallback
+    if (viewModel.currentUser?['email']?.toString().toLowerCase() == 'mayof286@gmail.com') {
+      return 'Add User (Super Admin Access)';
+    }
+    
+    return viewModel.currentUser != null ? 'Add User' : 'Loading...';
+  }
+
+  void _showUserDetailDialog(BuildContext context, UserModel user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'User Details',
+          style: AppFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // User Avatar and Basic Info
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor: user.isActive ? Colors.green : Colors.grey,
+                    child: Text(
+                      user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
+                      style: AppFonts.poppins(
+                        fontSize: 24,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user.name,
+                          style: AppFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          user.email,
+                          style: AppFonts.poppins(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              
+              // Status Badge
+              Row(
+                children: [
+                  Text(
+                    'Status: ',
+                    style: AppFonts.poppins(fontWeight: FontWeight.w500),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getUserStatusColor(user),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _getUserStatusText(user),
+                      style: AppFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              
+              // Contact Information
+              _buildDetailRow('User ID', user.userId),
+              _buildDetailRow('Company ID', user.companyId ?? 'Not assigned'),
+              _buildDetailRow('Contact No', user.contactNo ?? 'Not provided'),
+              _buildDetailRow('Username', user.username),
+              _buildDetailRow('Role', _getRoleDisplay(user)),
+              const SizedBox(height: 16),
+              
+              // Permissions
+              Text(
+                'Permissions',
+                style: AppFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildPermissionsList(user),
+              const SizedBox(height: 16),
+              
+              // Timestamps
+              Text(
+                'Account Information',
+                style: AppFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildDetailRow('Created', _formatDateTime(user.createdAt)),
+              _buildDetailRow('Last Updated', _formatDateTime(user.updatedAt)),
+              if (user.isFirstLogin == true)
+                _buildDetailRow('First Login', 'Pending'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: AppFonts.poppins(
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+          const Text(': '),
+          Expanded(
+            child: Text(
+              value,
+              style: AppFonts.poppins(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPermissionsList(UserModel user) {
+    final permissions = user.permissionsMap;
+    
+    if (permissions.isEmpty) {
+      return Text(
+        'No permissions assigned',
+        style: AppFonts.poppins(color: Colors.grey[600]),
+      );
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: permissions.entries.map((entry) {
+          // CRITICAL: Convert permission value to string with proper bool handling
+          final valueStr = entry.value is bool 
+              ? (entry.value as bool ? "Yes" : "No") 
+              : entry.value.toString();
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              children: [
+                Icon(
+                  _getPermissionIcon(valueStr),
+                  size: 16,
+                  color: _getPermissionColor(valueStr),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${entry.key}: ${_getPermissionText(valueStr)}',
+                    style: AppFonts.poppins(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  IconData _getPermissionIcon(String permission) {
+    switch (permission.toLowerCase()) {
+      case 'full':
+      case 'all':
+        return Icons.check_circle;
+      case 'read':
+      case 'view':
+        return Icons.visibility;
+      case 'write':
+      case 'edit':
+        return Icons.edit;
+      case 'delete':
+        return Icons.delete;
+      case 'none':
+        return Icons.cancel;
+      default:
+        return Icons.info;
+    }
+  }
+
+  Color _getPermissionColor(String permission) {
+    switch (permission.toLowerCase()) {
+      case 'full':
+      case 'all':
+        return Colors.green;
+      case 'read':
+      case 'view':
+        return Colors.blue;
+      case 'write':
+      case 'edit':
+        return Colors.orange;
+      case 'delete':
+        return Colors.red;
+      case 'none':
+        return Colors.grey;
+      default:
+        return Colors.grey[600]!;
+    }
+  }
+
+  String _getPermissionText(String permission) {
+    switch (permission.toLowerCase()) {
+      case 'full':
+      case 'all':
+        return 'Full Access';
+      case 'read':
+      case 'view':
+        return 'View Only';
+      case 'write':
+      case 'edit':
+        return 'Edit Access';
+      case 'delete':
+        return 'Delete Access';
+      case 'none':
+        return 'No Access';
+      default:
+        return permission;
+    }
+  }
+
+  String _getRoleDisplay(UserModel user) {
+    final permissions = user.permissionsMap;
+    final userMap = user.toMap(); // Convert UserModel to Map for RoleUtils
+    
+    // Check for Super Admin
+    if (RoleUtils.isSuperAdmin(userMap) || 
+        (permissions['super_admin'] == true || permissions['super_admin'] == 'true')) {
+      return 'Super Admin';
+    }
+    
+    // Check for Company Admin
+    if (permissions['company_admin'] == true || permissions['company_admin'] == 'true') {
+      return 'Company Admin';
+    }
+    
+    // Check for Agent
+    if (permissions['agent'] == true || permissions['agent'] == 'true') {
+      return 'Agent';
+    }
+    
+    // Default role
+    return 'User';
+  }
+
+  String _formatDateTime(String? dateTimeString) {
+    if (dateTimeString == null) return 'Unknown';
+    
+    try {
+      final dateTime = DateTime.parse(dateTimeString);
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateTimeString;
+    }
   }
 }

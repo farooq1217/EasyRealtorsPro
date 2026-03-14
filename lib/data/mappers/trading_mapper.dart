@@ -1,5 +1,5 @@
 // data/mappers/trading_mapper.dart
-import '../../domain/models/trading_entry.dart';
+import 'package:shared/shared.dart' show TradingEntry, TradingType, TradingEntryType;
 
 class TradingMapper {
   // Database object ko Model mein badalna

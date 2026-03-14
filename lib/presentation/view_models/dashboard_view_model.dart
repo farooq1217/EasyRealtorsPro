@@ -9,7 +9,7 @@ import '../../domain/repositories/inventory_repository.dart';
 import '../../domain/models/user_model.dart';
 import '../../domain/models/company_model.dart';
 import '../../domain/models/expenditure_item.dart';
-import '../../domain/models/trading_entry.dart';
+import 'package:shared/shared.dart' show TradingEntry;
 import '../../domain/models/inventory_item.dart';
 
 class DashboardViewModel extends ChangeNotifier {

@@ -3710,6 +3710,40 @@ class _HomeScreenState extends State<HomeScreen> {
 
         _refreshInactivityTimerForRole();
 
+        // FIX: Check if Umer Shahzad needs role update
+        if (user['email']?.toString().toLowerCase() == 'umershahzad596@gmail.com' && _db != null) {
+          debugPrint('ROLE FIX: Checking Umer Shahzad role...');
+          final currentRole = RoleUtils.getUserRole(user);
+          if (currentRole == 'agent') {
+            debugPrint('ROLE FIX: Updating Umer Shahzad role from agent to company_admin...');
+            try {
+              final companyAdminPermissions = RoleUtils.createCompanyAdminPermissions();
+              await _db!.customStatement(
+                'UPDATE users SET permissions = ?, updated_at = ? WHERE email = ?',
+                [
+                  companyAdminPermissions,
+                  DateTime.now().toUtc().toIso8601String(),
+                  'umershahzad596@gmail.com'
+                ]
+              );
+              debugPrint('ROLE FIX: ✅ Successfully updated Umer Shahzad role to company_admin');
+              
+              // Reload user data with new role
+              final updatedUser = await authService.getCurrentUser(authToken);
+              if (updatedUser != null) {
+                setState(() {
+                  _currentUser = updatedUser;
+                });
+                debugPrint('ROLE FIX: ✅ Reloaded user data with new role: ${RoleUtils.getUserRole(updatedUser)}');
+              }
+            } catch (e) {
+              debugPrint('ROLE FIX: ❌ Error updating Umer Shahzad role: $e');
+            }
+          } else {
+            debugPrint('ROLE FIX: Umer Shahzad already has role: $currentRole');
+          }
+        }
+
       }
 
     }
@@ -3874,6 +3908,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
 
+    // CRITICAL DEBUG: Log role information for Umer Shahzad
+    if (_currentUser?['email']?.toString().toLowerCase() == 'umershahzad596@gmail.com') {
+      debugPrint('USER DEBUG: Umer Shahzad role check');
+      debugPrint('USER DEBUG: Email: ${_currentUser?['email']}');
+      debugPrint('USER DEBUG: Company ID: ${_currentUser?['company_id']}');
+      debugPrint('USER DEBUG: Permissions: ${_currentUser?['permissions']}');
+      debugPrint('USER DEBUG: Role: ${RoleUtils.getUserRole(_currentUser)}');
+      debugPrint('USER DEBUG: isBypass: $isBypass');
+      debugPrint('USER DEBUG: isCompanyAdmin: $isCompanyAdmin');
+      debugPrint('USER DEBUG: isSuperAdmin: $isSuperAdmin');
+      debugPrint('USER DEBUG: PermissionHelper.canViewModule(users): ${PermissionHelper.canViewModule(_currentUser, 'users')}');
+      debugPrint('USER DEBUG: showUsers: ${isSuperAdmin || ((isBypass || isCompanyAdmin) && PermissionHelper.canViewModule(_currentUser, 'users'))}');
+    }
+    
     // Always allow Dashboard + My Profile/Settings
 
     if (index == 0 || index == 5) return true;
@@ -7369,7 +7417,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
 
-    final normalizedNavIndex = (_navIndex == 7) ? 6 : _navIndex;
+    final normalizedNavIndex = _navIndex;
 
 
 
@@ -17367,6 +17415,8 @@ class _UsersPageState extends State<UsersPage> {
 
       {'value': 'company_admin', 'label': 'Company Admin'},
 
+      {'value': 'super_admin', 'label': 'Super Admin'},
+
     ];
 
 
@@ -18069,7 +18119,7 @@ class _UsersPageState extends State<UsersPage> {
 
 
 
-                              final effectiveCompanyId = isCompanyAdmin ? myCompanyId : selectedCompanyId;
+                              final effectiveCompanyId = isSuperAdmin ? selectedCompanyId : myCompanyId;
 
                               if (effectiveCompanyId == null || effectiveCompanyId.trim().isEmpty) {
 

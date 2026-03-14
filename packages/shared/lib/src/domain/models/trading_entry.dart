@@ -10,7 +10,7 @@ class TradingEntry {
   final DateTime date;
   final String personName;
   final String mobile;
-  final String estateName;
+  final String? estateName; // Form entries mein estate name, file entries mein null
   final String? plotNo; // Form entries mein plot number, file entries mein null
   final String? block; // Form entries mein block, file entries mein null
   final int quantity;
@@ -23,6 +23,8 @@ class TradingEntry {
   final String? comments;
   final String? companyId; // Company ID for role-based access
   final String? createdBy; // User ID who created this entry
+  final bool? isActive; // Database field
+  final bool? isSynced; // Database field
 
   const TradingEntry({
     required this.id,
@@ -31,7 +33,7 @@ class TradingEntry {
     required this.date,
     required this.personName,
     required this.mobile,
-    required this.estateName,
+    this.estateName,
     this.plotNo,
     this.block,
     required this.quantity,
@@ -44,6 +46,8 @@ class TradingEntry {
     this.comments,
     this.companyId,
     this.createdBy,
+    this.isActive,
+    this.isSynced,
   });
 
   // Data save karne ke liye Map mein convert karna (Duplication khatam karne ke liye)
@@ -68,6 +72,8 @@ class TradingEntry {
       'commission': commission,
       'tax': tax,
       'net_amount': netAmount,
+      'is_active': isActive,
+      'is_synced': isSynced,
     };
   }
 }

@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 class CompanyModel extends Equatable {
   final String id;
@@ -82,21 +83,38 @@ class CompanyModel extends Equatable {
   }
 
   factory CompanyModel.fromMap(Map<String, dynamic> map) {
-    return CompanyModel(
-      id: (map['id'] ?? '').toString(),
-      name: (map['name'] ?? '').toString(),
-      status: map['status']?.toString(),
-      metadata: map['metadata'] != null ? _decodeMetadata(map['metadata']) : null,
-      logoUrl: map['logo_url']?.toString(),
-      address: map['address']?.toString(),
-      contact: map['contact']?.toString(),
-      maxUserLimit: map['max_user_limit'] is int ? map['max_user_limit'] : int.tryParse(map['max_user_limit']?.toString() ?? ''),
-      subscriptionTier: map['subscription_tier']?.toString(),
-      isActive: (map['is_active'] is int ? map['is_active'] == 1 : map['is_active'] == true) ?? true,
-      isSynced: (map['is_synced'] is int ? map['is_synced'] == 1 : map['is_synced'] == true) ?? true,
-      createdAt: map['created_at']?.toString(),
-      updatedAt: map['updated_at']?.toString(),
-    );
+    try {
+      debugPrint('CompanyModel.fromMap: Input map keys: ${map.keys.toList()}');
+      debugPrint('CompanyModel.fromMap: Input map data: $map');
+      
+      final company = CompanyModel(
+        id: (map['id'] ?? '').toString(),
+        name: (map['name'] ?? '').toString(),
+        status: map['status']?.toString(),
+        metadata: map['metadata'] != null ? _decodeMetadata(map['metadata']) : null,
+        logoUrl: map['logo_url']?.toString(),
+        address: map['address']?.toString(),
+        contact: map['contact']?.toString(),
+        maxUserLimit: map['max_user_limit'] is int ? map['max_user_limit'] : int.tryParse(map['max_user_limit']?.toString() ?? ''),
+        subscriptionTier: map['subscription_tier']?.toString(),
+        isActive: (map['is_active'] is int ? map['is_active'] == 1 : map['is_active'] == true) ?? true,
+        isSynced: (map['is_synced'] is int ? map['is_synced'] == 1 : map['is_synced'] == true) ?? true,
+        createdAt: map['created_at']?.toString(),
+        updatedAt: map['updated_at']?.toString(),
+      );
+      
+      debugPrint('CompanyModel.fromMap: Successfully created company: ${company.name}');
+      return company;
+    } catch (e) {
+      debugPrint('CompanyModel.fromMap: Error creating company from map: $e');
+      debugPrint('CompanyModel.fromMap: Map that caused error: $map');
+      // Return empty company as fallback
+      return const CompanyModel(
+        id: '',
+        name: 'Error Loading Company',
+        status: 'error',
+      );
+    }
   }
 
   // Helper methods for metadata encoding/decoding

@@ -4,11 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../domain/repositories/report_repository.dart';
-import '../../data/repositories/report_repository_impl.dart';
+import 'package:shared/shared.dart' show WorkingProgressData, Expenditure, RentalItem, Reminder, TradingEntry, TradingType, RoleUtils;
 import '../../core/services/auth_service.dart';
 import '../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../core/services/app_storage.dart' show AppStorage;
-import 'package:shared/shared.dart' show WorkingProgressData, Expenditure, RoleUtils, RentalItem, TradingEntry, Reminder;
 
 class ReportViewModel extends ChangeNotifier {
   final ReportRepository _repository;
@@ -73,9 +72,16 @@ class ReportViewModel extends ChangeNotifier {
 
   // Initialize
   Future<void> initialize() async {
-    await _loadCurrentUser();
-    await _loadCompanyInfo();
-    await _loadReportData();
+    try {
+      // Wrap all initialization in platform thread safety
+      await _loadCurrentUser();
+      await _loadCompanyInfo();
+      await _loadReportData();
+    } catch (e) {
+      debugPrint('ReportViewModel: Initialization error: $e');
+      _error = 'Failed to initialize reports: $e';
+      notifyListeners();
+    }
   }
 
   // Load current user
@@ -384,17 +390,17 @@ class ReportViewModel extends ChangeNotifier {
         case 'rental':
           data = _rentalData.map((item) => {
             'id': item.id,
-            'itemName': item.itemName,
+            'itemName': item.name,
             'ownerName': item.ownerName,
-            'rentAmount': item.rentAmount?.toString() ?? '0',
-            'status': item.status,
-            'startDate': item.startDate,
-            'endDate': item.endDate,
+            'rentAmount': item.price?.toString() ?? '0',
+            'status': item.isActive ? 'Active' : 'Inactive',
+            'startDate': item.updatedAt,
+            'endDate': item.updatedAt,
           }).toList();
           break;
         case 'todo':
           data = _todoData.map((item) => {
-            'id': item.id,
+            'id': item.reminderId.toString(),
             'reminderTitle': item.reminderTitle,
             'clientName': item.clientName,
             'reminderDate': item.reminderDate,
@@ -404,13 +410,13 @@ class ReportViewModel extends ChangeNotifier {
           break;
         case 'trading':
           data = _tradingData.map((item) => {
-            'id': item.id,
-            'entryType': item.entryType,
-            'itemName': item.itemName,
-            'clientName': item.clientName,
-            'amount': item.amount?.toString() ?? '0',
+            'id': item.id ?? '',
+            'entryType': item.type == TradingType.buy ? 'Buy' : 'Sell',
+            'itemName': item.personName ?? '',
+            'clientName': item.mobile ?? '',
+            'amount': item.totalAmount?.toString() ?? '0',
             'date': item.date,
-            'status': item.status,
+            'status': item.status ?? '',
           }).toList();
           break;
         default:
@@ -476,17 +482,17 @@ class ReportViewModel extends ChangeNotifier {
         case 'rental':
           data = _rentalData.map((e) => {
             'id': e.id,
-            'itemName': e.itemName,
+            'itemName': e.name,
             'ownerName': e.ownerName,
-            'rentAmount': e.rentAmount,
-            'status': e.status,
-            'startDate': e.startDate,
-            'endDate': e.endDate,
+            'rentAmount': e.price,
+            'status': e.isActive ? 'Active' : 'Inactive',
+            'startDate': e.updatedAt,
+            'endDate': e.updatedAt,
           }).toList();
           break;
         case 'todo':
           data = _todoData.map((e) => {
-            'id': e.id,
+            'id': e.reminderId.toString(),
             'reminderTitle': e.reminderTitle,
             'clientName': e.clientName,
             'reminderDate': e.reminderDate,
@@ -496,13 +502,13 @@ class ReportViewModel extends ChangeNotifier {
           break;
         case 'trading':
           data = _tradingData.map((e) => {
-            'id': e.id,
-            'entryType': e.entryType,
-            'itemName': e.itemName,
-            'clientName': e.clientName,
-            'amount': e.amount,
+            'id': e.id ?? '',
+            'entryType': e.type == TradingType.buy ? 'Buy' : 'Sell',
+            'itemName': e.personName ?? '',
+            'clientName': e.mobile ?? '',
+            'amount': e.totalAmount,
             'date': e.date,
-            'status': e.status,
+            'status': e.status ?? '',
           }).toList();
           break;
         default:
@@ -585,11 +591,75 @@ class ReportViewModel extends ChangeNotifier {
   Map<String, String> get formattedSummary {
     final formatted = <String, String>{};
     
-    for (final entry in _summary.entries) {
+    // Get only module-specific summary entries
+    final moduleSummary = _getModuleSpecificSummary();
+    
+    for (final entry in moduleSummary.entries) {
       formatted[entry.key] = _formatSummaryValue(entry.key, entry.value);
     }
     
     return formatted;
+  }
+
+  // Get summary statistics filtered by current module
+  Map<String, dynamic> _getModuleSpecificSummary() {
+    final filtered = <String, dynamic>{};
+    
+    switch (_selectedReportType) {
+      case 'inventory':
+        // Show only inventory-related metrics
+        if (_summary.containsKey('totalInventory')) filtered['totalInventory'] = _summary['totalInventory'];
+        if (_summary.containsKey('activeInventory')) filtered['activeInventory'] = _summary['activeInventory'];
+        if (_summary.containsKey('soldInventory')) filtered['soldInventory'] = _summary['soldInventory'];
+        if (_summary.containsKey('pendingInventory')) filtered['pendingInventory'] = _summary['pendingInventory'];
+        break;
+        
+      case 'rental':
+        // Show only rental-related metrics
+        if (_summary.containsKey('totalRentalIncome')) filtered['totalRentalIncome'] = _summary['totalRentalIncome'];
+        if (_summary.containsKey('activeRentals')) filtered['activeRentals'] = _summary['activeRentals'];
+        if (_summary.containsKey('pendingRentals')) filtered['pendingRentals'] = _summary['pendingRentals'];
+        if (_summary.containsKey('completedRentals')) filtered['completedRentals'] = _summary['completedRentals'];
+        break;
+        
+      case 'expenditure':
+        // Show only expenditure-related metrics
+        if (_summary.containsKey('totalExpenditure')) filtered['totalExpenditure'] = _summary['totalExpenditure'];
+        if (_summary.containsKey('officeExpenditure')) filtered['officeExpenditure'] = _summary['officeExpenditure'];
+        if (_summary.containsKey('projectExpenditure')) filtered['projectExpenditure'] = _summary['projectExpenditure'];
+        if (_summary.containsKey('pendingExpenditure')) filtered['pendingExpenditure'] = _summary['pendingExpenditure'];
+        break;
+        
+      case 'trading':
+        // Show only trading-related metrics
+        if (_summary.containsKey('totalTradingValue')) filtered['totalTradingValue'] = _summary['totalTradingValue'];
+        if (_summary.containsKey('completedTrades')) filtered['completedTrades'] = _summary['completedTrades'];
+        if (_summary.containsKey('pendingTrades')) filtered['pendingTrades'] = _summary['pendingTrades'];
+        if (_summary.containsKey('totalProfit')) filtered['totalProfit'] = _summary['totalProfit'];
+        break;
+        
+      case 'todo':
+        // Show only todo-related metrics
+        if (_summary.containsKey('completedTodos')) filtered['completedTodos'] = _summary['completedTodos'];
+        if (_summary.containsKey('pendingTodos')) filtered['pendingTodos'] = _summary['pendingTodos'];
+        if (_summary.containsKey('overdueTodos')) filtered['overdueTodos'] = _summary['overdueTodos'];
+        if (_summary.containsKey('todayTodos')) filtered['todayTodos'] = _summary['todayTodos'];
+        break;
+        
+      case 'agent_working':
+        // Show only agent working-related metrics
+        if (_summary.containsKey('totalAgents')) filtered['totalAgents'] = _summary['totalAgents'];
+        if (_summary.containsKey('activeAgents')) filtered['activeAgents'] = _summary['activeAgents'];
+        if (_summary.containsKey('completedTasks')) filtered['completedTasks'] = _summary['completedTasks'];
+        if (_summary.containsKey('pendingTasks')) filtered['pendingTasks'] = _summary['pendingTasks'];
+        break;
+        
+      default:
+        // Show all metrics if no specific module
+        return _summary;
+    }
+    
+    return filtered;
   }
 
   String _formatSummaryValue(String key, dynamic value) {

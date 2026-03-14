@@ -5,7 +5,7 @@ import '../../../core/font_utils.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:intl/intl.dart';
-import '../../domain/models/trading_entry.dart';
+import 'package:shared/shared.dart' show TradingEntry, TradingType;
 import '../../domain/repositories/trading_repository.dart';
 import '../../data/repositories/trading_repository_impl.dart';
 import '../../presentation/view_models/trading_view_model.dart';

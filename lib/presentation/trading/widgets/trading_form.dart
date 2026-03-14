@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/font_utils.dart';
-import '../../../domain/models/trading_entry.dart';
+import 'package:shared/shared.dart' show TradingEntry, TradingType, TradingEntryType;
 import '../../../core/services/pdf_service.dart';
 
 class GenericTradingForm extends StatefulWidget {

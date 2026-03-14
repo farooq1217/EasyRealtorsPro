@@ -1,6 +1,6 @@
 // data/repositories/trading_repository_impl.dart
 import 'dart:async';
-import '../../domain/models/trading_entry.dart';
+import 'package:shared/shared.dart' show TradingEntry, TradingType, TradingEntryType;
 import '../../domain/repositories/trading_repository.dart';
 import 'package:drift/drift.dart' as d;
 import 'package:flutter/foundation.dart';

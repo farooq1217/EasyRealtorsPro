@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:drift/drift.dart' as d;
 import 'package:uuid/uuid.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import '../../domain/models/user_model.dart';
 import '../../domain/repositories/user_repository.dart';
@@ -11,6 +12,7 @@ import '../../firestore_sync_service.dart';
 import '../../core/services/app_storage.dart';
 import '../../core/services/permission_helper.dart';
 import '../../core/app_utils.dart';
+import '../../core/services/firebase_threading_handler.dart';
 import 'package:shared/shared.dart';
 
 class UserRepositoryImpl implements UserRepository {
@@ -21,7 +23,43 @@ class UserRepositoryImpl implements UserRepository {
   // SQLite-only flag - disables all Firestore operations
   static const bool _sqliteOnlyMode = true;
 
+  // Platform detection for thread safety
+  static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
+
   UserRepositoryImpl(this.db);
+
+  // Helper method to wrap streams with platform thread safety
+  Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
+    if (_isWindows) {
+      debugPrint('UserRepository: Wrapping $streamName with Windows thread safety');
+      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+        stream,
+        streamName: 'UserRepository $streamName',
+      ).transform(StreamTransformer<T, T>.fromHandlers(
+        handleData: (data, sink) {
+          // CRITICAL: Execute callback on main platform thread using ServicesBinding
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            sink.add(data);
+          });
+        },
+        handleError: (error, stackTrace, sink) {
+          // Suppress shell.cc warnings and other platform thread warnings
+          if (error.toString().contains('shell.cc') || 
+              error.toString().contains('non-platform thread') ||
+              error.toString().contains('channel sent a message')) {
+            debugPrint('UserRepository: $streamName platform warning suppressed: ${error.runtimeType}');
+            // Don't add error to sink, just suppress it
+            return;
+          }
+          debugPrint('UserRepository: $streamName error: $error');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            sink.addError(error);
+          });
+        },
+      ));
+    }
+    return stream;
+  }
 
   // Helper method to disable Firestore operations in SQLite-only mode
   bool _isFirestoreOperationAllowed() {
@@ -44,31 +82,36 @@ class UserRepositoryImpl implements UserRepository {
   @override
   Future<List<UserModel>> getUsers(String? companyId) async {
     try {
-      final isSuperAdmin = await _isSuperAdmin();
-      final effectiveCompanyId = isSuperAdmin ? null : companyId;
-      
       String query;
       List<d.Variable> variables = [];
       
-      if (isSuperAdmin) {
+      // CRITICAL FIX: Company Admin should only see users from their own company
+      if (companyId != null && companyId.isNotEmpty) {
+        // Company Admin or regular user - only show users from their company
+        query = '''
+          SELECT id, username, user_id, name, email, contact_no, permissions, 
+                 company_id, status, is_active, is_synced, created_at, updated_at,
+                 password_hash, salt, iterations, is_first_login, profile_picture_path
+          FROM users 
+          WHERE company_id = ? 
+          AND (is_active = 1 OR is_active IS NULL) 
+          AND (status IS NULL OR status != 'deleted')
+          ORDER BY updated_at DESC
+        ''';
+        variables = [d.Variable.withString(companyId)];
+        debugPrint('UserRepository: getUsers query for Company Admin - filtering by company: $companyId');
+      } else {
+        // Super Admin - show all users across all companies
         query = '''
           SELECT id, username, user_id, name, email, contact_no, permissions, 
                  company_id, status, is_active, is_synced, created_at, updated_at,
                  password_hash, salt, iterations, is_first_login, profile_picture_path
           FROM users 
           WHERE (is_active = 1 OR is_active IS NULL) 
+          AND (status IS NULL OR status != 'deleted')
           ORDER BY updated_at DESC
         ''';
-      } else {
-        query = '''
-          SELECT id, username, user_id, name, email, contact_no, permissions, 
-                 company_id, status, is_active, is_synced, created_at, updated_at,
-                 password_hash, salt, iterations, is_first_login, profile_picture_path
-          FROM users 
-          WHERE company_id = ? AND (is_active = 1 OR is_active IS NULL) 
-          ORDER BY updated_at DESC
-        ''';
-        variables = [d.Variable.withString(effectiveCompanyId ?? '')];
+        debugPrint('UserRepository: getUsers query for Super Admin - showing all users');
       }
       
       final result = await db.customSelect(query, variables: variables).get();
@@ -145,7 +188,7 @@ class UserRepositoryImpl implements UserRepository {
           userWithTimestamp.name,
           userWithTimestamp.email,
           userWithTimestamp.contactNo,
-          userWithTimestamp.permissions != null ? UserModel.encodePermissions(userWithTimestamp.permissions!) : null,
+          userWithTimestamp.permissions, // Already a String, no encoding needed
           userWithTimestamp.companyId,
           userWithTimestamp.status,
           userWithTimestamp.isActive ? 1 : 0,
@@ -190,7 +233,7 @@ class UserRepositoryImpl implements UserRepository {
           updatedUser.name,
           updatedUser.email,
           updatedUser.contactNo,
-          updatedUser.permissions != null ? UserModel.encodePermissions(updatedUser.permissions!) : null,
+          updatedUser.permissions, // Already a String, no encoding needed
           updatedUser.companyId,
           updatedUser.status,
           updatedUser.isActive ? 1 : 0,
@@ -234,9 +277,105 @@ class UserRepositoryImpl implements UserRepository {
 
   @override
   Stream<List<UserModel>> watchUsers(String? companyId) {
-    // For now, return a one-time stream. In a full implementation, 
-    // this would use Drift's watch() method for real-time updates
-    return getUsers(companyId).asStream();
+    try {
+      String query;
+      List<d.Variable> variables = [];
+      
+      // CRITICAL FIX: Check if user is Super Admin, not just if companyId is null
+      // Super Admins have role == 'super_admin' OR company_id == 'GLOBAL_ADMIN'
+      final isSuperAdmin = companyId == 'GLOBAL_ADMIN' || 
+                           (AuthService.currentUser?['permissions']?.toString().contains('super_admin') ?? false) ||
+                           (RoleUtils.isSuperAdmin(AuthService.currentUser));
+      
+      if (isSuperAdmin) {
+        // Super Admin - show all users across all companies
+        query = '''
+          SELECT id, username, user_id, name, email, contact_no, permissions, 
+                 company_id, status, is_active, is_synced, created_at, updated_at,
+                 password_hash, salt, iterations, is_first_login, profile_picture_path
+          FROM users 
+          WHERE (is_active = 1 OR is_active IS NULL) 
+          AND (status IS NULL OR status != 'deleted')
+          ORDER BY updated_at DESC
+        ''';
+        debugPrint('UserRepository: watchUsers query for Super Admin - showing all users (companyId: $companyId)');
+      } else if (companyId != null && companyId.isNotEmpty && companyId != 'GLOBAL_ADMIN') {
+        // Company Admin or regular user - only show users from their company
+        query = '''
+          SELECT id, username, user_id, name, email, contact_no, permissions, 
+                 company_id, status, is_active, is_synced, created_at, updated_at,
+                 password_hash, salt, iterations, is_first_login, profile_picture_path
+          FROM users 
+          WHERE company_id = ? 
+          AND (is_active = 1 OR is_active IS NULL) 
+          AND (status IS NULL OR status != 'deleted')
+          ORDER BY updated_at DESC
+        ''';
+        variables = [d.Variable.withString(companyId)];
+        debugPrint('UserRepository: watchUsers query for Company Admin - filtering by company: $companyId');
+      } else {
+        // Fallback: Show all users if companyId is null or invalid (for safety)
+        query = '''
+          SELECT id, username, user_id, name, email, contact_no, permissions, 
+                 company_id, status, is_active, is_synced, created_at, updated_at,
+                 password_hash, salt, iterations, is_first_login, profile_picture_path
+          FROM users 
+          WHERE (is_active = 1 OR is_active IS NULL) 
+          AND (status IS NULL OR status != 'deleted')
+          ORDER BY updated_at DESC
+        ''';
+        debugPrint('UserRepository: watchUsers query fallback - showing all users (companyId: $companyId)');
+      }
+      
+      debugPrint('UserRepository: watchUsers query: $query');
+      
+      final stream = db
+          .customSelect(query, variables: variables)
+          .watch()
+          .map((rows) {
+            debugPrint('UserRepository: watchUsers fetched ${rows.length} rows');
+            return rows.map((r) {
+              debugPrint('UserRepository: mapping user data: ${r.data}');
+              return UserModel.fromMap(r.data);
+            }).toList();
+          })
+          .distinct((previous, current) {
+            // CRITICAL: Only rebuild UI if actual data changes
+            if (previous.length != current.length) {
+              debugPrint('UserRepository: Stream data changed - previous: ${previous.length}, current: ${current.length}');
+              return false; // Different length, emit new value
+            }
+            
+            // Compare user lists for actual differences
+            for (int i = 0; i < previous.length; i++) {
+              if (i >= current.length) return false; // Different lengths
+              
+              final prevUser = previous[i];
+              final currUser = current[i];
+              
+              // Compare key fields that matter for UI
+              if (prevUser.id != currUser.id ||
+                  prevUser.email != currUser.email ||
+                  prevUser.name != currUser.name ||
+                  prevUser.status != currUser.status ||
+                  prevUser.isActive != currUser.isActive ||
+                  prevUser.companyId != currUser.companyId) {
+                debugPrint('UserRepository: Stream data changed - user ${currUser.email} modified');
+                return false; // User data changed, emit new value
+              }
+            }
+            
+            debugPrint('UserRepository: Stream data unchanged - suppressing UI rebuild');
+            return true; // Same data, suppress emission
+          });
+      
+      // CRITICAL: Wrap stream with platform thread safety for Windows
+      return _wrapStreamWithThreadSafety(stream, 'watchUsers');
+    } catch (e) {
+      debugPrint('Error in watchUsers stream: $e');
+      // Return empty stream on error
+      return Stream.value([]);
+    }
   }
 
   @override

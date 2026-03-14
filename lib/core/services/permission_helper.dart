@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared/shared.dart';
 
 /// Global permission helper for checking user permissions
@@ -89,9 +90,43 @@ class PermissionHelper {
     if (user == null) return 'no_access';
     if (isBypassUser(user)) return 'view_add_edit';
     if (RoleUtils.isSuperAdmin(user)) return 'view_add_edit';
+    
+    // ROLE-BASED SHORTCUTS: Skip permissionsMap checking for known roles
+    final userRole = RoleUtils.getUserRole(user);
+    
+    // DEBUG: Add detailed logging for 'users' module
+    if (moduleKey == 'users') {
+      final email = (user['email'] ?? user['username'])?.toString().toLowerCase();
+      debugPrint('PermissionHelper.getModulePermissionLevel(users) DEBUG:');
+      debugPrint('  User email: $email');
+      debugPrint('  getUserRole: $userRole');
+      debugPrint('  isBypassUser: ${isBypassUser(user)}');
+      debugPrint('  isSuperAdmin: ${RoleUtils.isSuperAdmin(user)}');
+    }
+    
+    if (userRole == 'company_admin') {
+      // Company Admin gets full access within their company
+      if (moduleKey == 'users') {
+        debugPrint('  Company Admin detected, returning view_add_edit for users module');
+      }
+      return 'view_add_edit';
+    }
+    if (userRole == 'agent') {
+      // Agent gets view-only access
+      if (moduleKey == 'users') {
+        debugPrint('  Agent detected, returning view_only for users module');
+      }
+      return 'view_only';
+    }
+    
+    // Fallback to permissionsMap for unknown roles
     final map = getModulePermissionsMap(user);
     final v = map[moduleKey];
     if (v != null && v.trim().isNotEmpty) return v.trim();
+    
+    // Only log this for debugging unknown roles, not for standard roles
+    debugPrint('PermissionHelper: Unknown role "$userRole" with empty permissionsMap for module $moduleKey');
+    
     if (map.isNotEmpty) return 'no_access';
     final legacy = getPermissionLevel(user);
     return normalizeLegacyToModuleLevel(legacy);
@@ -99,6 +134,23 @@ class PermissionHelper {
 
   static bool canViewModule(Map<String, dynamic>? user, String moduleKey) {
     if (isBypassUser(user)) return true;
+    
+    // DEBUG: Add detailed logging for 'users' module
+    if (moduleKey == 'users') {
+      final email = (user?['email'] ?? user?['username'])?.toString().toLowerCase();
+      debugPrint('PermissionHelper.canViewModule(users) DEBUG:');
+      debugPrint('  User email: $email');
+      debugPrint('  isBypassUser: ${isBypassUser(user)}');
+      debugPrint('  RoleUtils.isSuperAdmin: ${RoleUtils.isSuperAdmin(user)}');
+      debugPrint('  RoleUtils.isCompanyAdmin: ${RoleUtils.isCompanyAdmin(user)}');
+      debugPrint('  RoleUtils.isAgent: ${RoleUtils.isAgent(user)}');
+      debugPrint('  RoleUtils.getUserRole: ${RoleUtils.getUserRole(user)}');
+      
+      final level = getModulePermissionLevel(user, moduleKey);
+      debugPrint('  getModulePermissionLevel: $level');
+      debugPrint('  Final result: ${level != 'no_access'}');
+    }
+    
     final level = getModulePermissionLevel(user, moduleKey);
     return level != 'no_access';
   }
@@ -107,9 +159,14 @@ class PermissionHelper {
     if (user == null) return false;
     if (isBypassUser(user)) return true;
     if (RoleUtils.isSuperAdmin(user)) return true;
+    
+    // ROLE-BASED SHORTCUT: Company Admin can add within their company
+    if (RoleUtils.isCompanyAdmin(user)) return true;
+    
+    // ROLE-BASED SHORTCUT: Agent cannot add anything
+    if (RoleUtils.isAgent(user)) return false;
+    
     final level = getModulePermissionLevel(user, moduleKey);
-    // Company Admins can add anywhere inside their company if the module is visible.
-    if (RoleUtils.isCompanyAdmin(user)) return level != 'no_access';
     return level == 'view_add' || level == 'view_add_edit';
   }
 
@@ -117,9 +174,14 @@ class PermissionHelper {
     if (user == null) return false;
     if (isBypassUser(user)) return true;
     if (RoleUtils.isSuperAdmin(user)) return true;
+    
+    // ROLE-BASED SHORTCUT: Company Admin can edit within their company
+    if (RoleUtils.isCompanyAdmin(user)) return true;
+    
+    // ROLE-BASED SHORTCUT: Agent cannot edit anything
+    if (RoleUtils.isAgent(user)) return false;
+    
     final level = getModulePermissionLevel(user, moduleKey);
-    // Company Admins can edit anywhere inside their company if the module is visible.
-    if (RoleUtils.isCompanyAdmin(user)) return level != 'no_access';
     return level == 'view_add_edit';
   }
 
@@ -127,9 +189,15 @@ class PermissionHelper {
     if (user == null) return false;
     if (isBypassUser(user)) return true;
     if (RoleUtils.isSuperAdmin(user)) return true;
-    // Company Admins can delete within their company only when the module itself is visible.
-    if (RoleUtils.isCompanyAdmin(user)) return getModulePermissionLevel(user, moduleKey) != 'no_access';
-    return false;
+    
+    // ROLE-BASED SHORTCUT: Company Admin can delete within their company
+    if (RoleUtils.isCompanyAdmin(user)) return true;
+    
+    // ROLE-BASED SHORTCUT: Agent cannot delete anything
+    if (RoleUtils.isAgent(user)) return false;
+    
+    final level = getModulePermissionLevel(user, moduleKey);
+    return level == 'view_add_edit';
   }
   
   /// Check if user can view (any permission except 'no_access')

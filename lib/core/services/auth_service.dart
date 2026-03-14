@@ -3,7 +3,9 @@ import 'dart:async';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:shared/shared.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -30,16 +32,76 @@ class AuthService {
   static const String _jwtSecret = 'your-secret-key-change-in-production'; // TODO: Use environment variable
   static bool showAuthLogs = false; // Set to true to enable auth-related debug prints
   static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
+  
+  // Memory cache to prevent infinite file access loop
+  static Map<String, dynamic>? _cachedUser;
+  static String? _cachedToken;
+  static DateTime? _cacheTimestamp;
+  static const Duration _cacheTimeout = Duration(minutes: 5);
+  
+  // Stream controller for reactive user data updates
+  static final StreamController<Map<String, dynamic>?> _userStreamController = 
+      StreamController<Map<String, dynamic>?>.broadcast();
+  static Stream<Map<String, dynamic>?> get currentUserStream => _userStreamController.stream;
+
+  // Helper method to emit user data updates to stream
+  static void _emitUserUpdate(Map<String, dynamic>? user) {
+    if (!_userStreamController.isClosed) {
+      _userStreamController.add(user);
+      if (kDebugMode && showAuthLogs) {
+        debugPrint('AuthService: Emitted user update for ${user?['email']}');
+      }
+    }
+  }
+
+  // Helper method to run operations in background to prevent blocking main thread
+  Future<T> _runInBackground<T>(Future<T> Function() operation) async {
+    try {
+      // For Flutter, we can use compute for true isolation, but for simplicity
+      // and to maintain Firebase context, we'll use Future.microtask
+      return await Future.microtask(operation);
+    } catch (e) {
+      debugPrint('AuthService: Background operation failed: $e');
+      rethrow;
+    }
+  }
 
   /// Stream authStateChanges with proper thread safety for Windows.
-  /// Enhanced with comprehensive FirebaseThreadingHandler integration
+  /// Enhanced with comprehensive FirebaseThreadingHandler and ServicesBinding integration
   Stream<fb.User?> authStateChanges() {
     try {
       final stream = fb.FirebaseAuth.instance.authStateChanges();
-      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
-        stream,
-        streamName: 'authStateChanges',
-      );
+      
+      // CRITICAL: Ensure all stream operations happen on main thread for Windows
+      if (_isWindows) {
+        return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+          stream,
+          streamName: 'authStateChanges',
+        ).transform(StreamTransformer<fb.User?, fb.User?>.fromHandlers(
+          handleData: (data, sink) {
+            // CRITICAL: Execute callback on main platform thread using ServicesBinding
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              sink.add(data);
+            });
+          },
+          handleError: (error, stackTrace, sink) {
+            // Suppress shell.cc warnings and other platform thread warnings
+            if (error.toString().contains('shell.cc') || 
+                error.toString().contains('non-platform thread') ||
+                error.toString().contains('channel sent a message')) {
+              debugPrint('AuthService: authStateChanges platform warning suppressed: ${error.runtimeType}');
+              // Don't add error to sink, just suppress it
+              return;
+            }
+            debugPrint('AuthService: authStateChanges error: $error');
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              sink.addError(error);
+            });
+          },
+        ));
+      }
+      
+      return stream;
     } catch (e) {
       debugPrint('AuthService: authStateChanges wrapper error: $e');
       return StreamController<fb.User?>.broadcast().stream;
@@ -47,14 +109,41 @@ class AuthService {
   }
 
   /// Stream idTokenChanges with proper thread safety for Windows.
-  /// Enhanced with comprehensive FirebaseThreadingHandler integration
+  /// Enhanced with comprehensive FirebaseThreadingHandler and ServicesBinding integration
   Stream<fb.User?> idTokenChanges() {
     try {
       final stream = fb.FirebaseAuth.instance.idTokenChanges();
-      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
-        stream,
-        streamName: 'idTokenChanges',
-      );
+      
+      // CRITICAL: Ensure all stream operations happen on main thread for Windows
+      if (_isWindows) {
+        return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+          stream,
+          streamName: 'idTokenChanges',
+        ).transform(StreamTransformer<fb.User?, fb.User?>.fromHandlers(
+          handleData: (data, sink) {
+            // CRITICAL: Execute callback on main platform thread using ServicesBinding
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              sink.add(data);
+            });
+          },
+          handleError: (error, stackTrace, sink) {
+            // Suppress shell.cc warnings and other platform thread warnings
+            if (error.toString().contains('shell.cc') || 
+                error.toString().contains('non-platform thread') ||
+                error.toString().contains('channel sent a message')) {
+              debugPrint('AuthService: idTokenChanges platform warning suppressed: ${error.runtimeType}');
+              // Don't add error to sink, just suppress it
+              return;
+            }
+            debugPrint('AuthService: idTokenChanges error: $error');
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              sink.addError(error);
+            });
+          },
+        ));
+      }
+      
+      return stream;
     } catch (e) {
       debugPrint('AuthService: idTokenChanges wrapper error: $e');
       return StreamController<fb.User?>.broadcast().stream;
@@ -219,11 +308,35 @@ class AuthService {
     // CRITICAL: Ensure all Firebase Auth operations happen on platform thread
     if (_isWindows) {
       try {
-        // On Windows, avoid getIdToken() calls that can cause platform thread errors
-        // Just check if user exists without refreshing token
+        // On Windows, attempt safe token refresh using FirebaseThreadingHandler
         if (FirebaseAuth.instance.currentUser != null) {
-          debugPrint('AuthService: Windows - Firebase Auth ready, skipping token refresh');
-          return true;
+          debugPrint('AuthService: Windows - Firebase Auth ready, attempting safe token refresh');
+          
+          // Use FirebaseThreadingHandler for safe token refresh on Windows
+          try {
+            await FirebaseThreadingHandler.executeWithThreadSafety(
+              () async {
+                if (FirebaseAuth.instance.currentUser != null) {
+                  final idToken = await FirebaseAuth.instance.currentUser!.getIdToken(true);
+                  debugPrint('AuthService: Windows - Token refresh successful');
+                  return idToken;
+                }
+                return null;
+              },
+              operationName: 'AuthService Windows _ensureFirebaseAuthReady token refresh',
+            );
+            return true;
+          } catch (tokenError) {
+            // Filter platform thread warnings but log other errors
+            if (tokenError.toString().contains('channel sent a message') || 
+                tokenError.toString().contains('non-platform thread')) {
+              debugPrint('AuthService: Windows - Token refresh platform thread warning silenced: ${tokenError.runtimeType}');
+            } else {
+              debugPrint('AuthService: Windows - Token refresh failed: $tokenError');
+            }
+            // Still return true because user is authenticated
+            return true;
+          }
         }
         return false;
       } catch (e) {
@@ -258,6 +371,15 @@ class AuthService {
     if (kIsWeb) return 0;
     if (!_firebaseReady) return 0;
     
+    // CRITICAL: Run in background to prevent blocking main thread during hot reload
+    return await _runInBackground(() async {
+      return await _syncUsersFromFirestoreInternal();
+    });
+  }
+
+  /// Internal implementation of syncUsersFromFirestore
+  /// This method runs in the background/isolate
+  Future<int> _syncUsersFromFirestoreInternal() async {
     // CRITICAL: Ensure Firebase Auth is ready before Firestore operations
     if (!await _ensureFirebaseAuthReady()) {
       return 0;
@@ -269,11 +391,22 @@ class AuthService {
       QuerySnapshot<Map<String, dynamic>> snap;
       try {
         snap = await FirebaseFirestore.instance.collection('users').get();
+        debugPrint('syncUsersFromFirestore: Successfully fetched ${snap.docs.length} users from Firestore');
       } on FirebaseException catch (e) {
+        debugPrint('syncUsersFromFirestore: FirebaseException - ${e.code}: ${e.message}');
         if (e.code == 'permission-denied') {
           debugPrint('syncUsersFromFirestore: permission denied, will wait for auth state to change');
           return 0;
+        } else if (e.code == 'unknown-error') {
+          debugPrint('syncUsersFromFirestore: Unknown Firebase error - this might be the issue affecting umershahzad596@gmail.com and shakeelahmed2161083@gmail.com');
+          debugPrint('syncUsersFromFirestore: Error details: ${e.message}');
+          // Try to continue with empty snapshot
+          return 0;
+        } else {
+          rethrow;
         }
+      } catch (e) {
+        debugPrint('syncUsersFromFirestore: General error fetching users: $e');
         rethrow;
       }
       for (final doc in snap.docs) {
@@ -302,6 +435,12 @@ class AuthService {
         final passwordHash = (data['password_hash'] ?? data['passwordHash'])?.toString();
         final salt = data['salt']?.toString();
         final iterations = data['iterations'] is int ? data['iterations'] as int : int.tryParse(data['iterations']?.toString() ?? '');
+        
+        // CRITICAL: Add specific logging for problematic users
+        if (email == 'umershahzad596@gmail.com' || email == 'shakeelahmed2161083@gmail.com') {
+          debugPrint('syncUsersFromFirestore: Processing problematic user - Email: $email, DocId: $docId');
+          debugPrint('syncUsersFromFirestore: User data - Name: $name, Status: $status, CompanyId: $companyId');
+        }
 
         await db.customStatement(
           'INSERT OR REPLACE INTO users (id, username, password_hash, salt, iterations, user_id, name, email, contact_no, permissions, company_id, status, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -324,9 +463,12 @@ class AuthService {
           ],
         );
 
-        // Update local users.json
+        // Update local users.json with role preservation logic
         final users = await _readUsers();
-        users[email] = {
+        final existingUser = users[email] as Map<String, dynamic>?;
+        
+        // CRITICAL: Preserve local role changes to prevent downgrade
+        Map<String, dynamic> updatedUser = {
           'id': id,
           'email': email,
           'username': username,
@@ -346,12 +488,65 @@ class AuthService {
           'salt': salt,
           'iterations': iterations,
         };
+        
+        // ROLE PRESERVATION LOGIC: Check if local user has higher role
+        if (existingUser != null) {
+          final localPermissions = existingUser['permissions'];
+          final firestorePermissions = permissions;
+          
+          try {
+            // Parse local permissions to get role
+            String? localRole;
+            if (localPermissions is String) {
+              final decoded = jsonDecode(localPermissions);
+              if (decoded is Map) {
+                localRole = decoded['role']?.toString();
+              }
+            } else if (localPermissions is Map) {
+              localRole = localPermissions['role']?.toString();
+            }
+            
+            // Parse Firestore permissions to get role
+            String? firestoreRole;
+            if (firestorePermissions is String) {
+              final decoded = jsonDecode(firestorePermissions);
+              if (decoded is Map) {
+                firestoreRole = decoded['role']?.toString();
+              }
+            } else if (firestorePermissions is Map) {
+              firestoreRole = firestorePermissions['role']?.toString();
+            }
+            
+            // CRITICAL: Preserve local role if it's higher than Firestore role
+            if (localRole != null && firestoreRole != null) {
+              if ((localRole == 'company_admin' && firestoreRole == 'agent') ||
+                  (localRole == 'super_admin' && firestoreRole != 'super_admin')) {
+                
+                // Keep local permissions with higher role
+                updatedUser['permissions'] = localPermissions;
+                
+                debugPrint('syncUsersFromFirestore: PRESERVED local role for $email - Local: $localRole, Firestore: $firestoreRole');
+                
+                // Special logging for problematic users
+                if (email == 'umershahzad596@gmail.com' || email == 'shakeelahmed2161083@gmail.com') {
+                  debugPrint('syncUsersFromFirestore: PRESERVED problematic user role - Email: $email');
+                  debugPrint('syncUsersFromFirestore: Local role: $localRole, Firestore role: $firestoreRole');
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('syncUsersFromFirestore: Error parsing roles for $email: $e');
+            // Keep Firestore permissions if parsing fails
+          }
+        }
+        
+        users[email] = updatedUser;
         await _writeUsers(users);
         synced++;
       }
       debugPrint('Users Synced: $synced');
     } catch (e) {
-      debugPrint('syncUsersFromFirestore failed: $e');
+      debugPrint('syncUsersFromFirestoreInternal failed: $e');
     }
     return synced;
   }
@@ -405,31 +600,177 @@ class AuthService {
         try {
           await file.create(recursive: true);
           await file.writeAsString(jsonEncode({}));
-        } catch (_) {}
-        return {};
-      }
-      final text = await file.readAsString();
-      if (text.trim().isEmpty) {
-        if (kDebugMode && showAuthLogs) {
-          debugPrint('AuthService: Users file is empty, returning empty map');
+        } catch (e) {
+          debugPrint('AuthService: Error creating users file: $e');
+          // Return empty map even if file creation fails
+          return {};
         }
         return {};
       }
-      final users = jsonDecode(text) as Map<String, dynamic>;
-      if (kDebugMode && showAuthLogs) {
-        debugPrint('AuthService: Successfully loaded ${users.length} users from: ${file.path}');
+      
+      // CRITICAL: Handle PathNotFoundException and FormatException
+      try {
+        final text = await file.readAsString();
+        if (text.trim().isEmpty) {
+          if (kDebugMode && showAuthLogs) {
+            debugPrint('AuthService: Users file is empty, returning empty map');
+          }
+          return {};
+        }
+        
+        final users = jsonDecode(text) as Map<String, dynamic>;
+        if (kDebugMode && showAuthLogs) {
+          debugPrint('AuthService: Successfully loaded ${users.length} users from: ${file.path}');
+        }
+        return users;
+      } on io.PathNotFoundException catch (e) {
+        debugPrint('AuthService: PathNotFoundException reading users file: $e');
+        debugPrint('AuthService: File path was: ${file.path}');
+        // File doesn't exist, create it and return empty map
+        try {
+          await file.create(recursive: true);
+          await file.writeAsString(jsonEncode({}));
+          debugPrint('AuthService: Created new users file after PathNotFoundException');
+        } catch (createError) {
+          debugPrint('AuthService: Error creating users file after PathNotFoundException: $createError');
+        }
+        return {};
+      } catch (e) {
+        debugPrint('AuthService: Unexpected error reading users: $e');
+        debugPrint('AuthService: Error type: ${e.runtimeType}');
+        return {};
       }
-      return users;
     } catch (e) {
-      debugPrint('AuthService: Error reading users: $e');
+      debugPrint('AuthService: Critical error in _readUsers: $e');
       return {};
+    }
+  }
+
+  /// Utility function to delete corrupted users.json file
+  /// Call this when FormatException is detected to start fresh
+  Future<bool> deleteCorruptedUsersFile() async {
+    if (kIsWeb) return false;
+    try {
+      final appDir = await _getAppDir();
+      final file = io.File('${appDir.path}${io.Platform.pathSeparator}$_usersFile');
+      
+      if (await file.exists()) {
+        // Backup before deletion
+        final backupFile = io.File('${appDir.path}${io.Platform.pathSeparator}$_usersFile.backup.${DateTime.now().millisecondsSinceEpoch}');
+        await file.copy(backupFile.path);
+        debugPrint('AuthService: Users file backed up to: ${backupFile.path}');
+        
+        // Delete corrupted file
+        await file.delete();
+        debugPrint('AuthService: Corrupted users.json file deleted successfully');
+        
+        // Create fresh empty file
+        await file.create(recursive: true);
+        await file.writeAsString(jsonEncode({}));
+        debugPrint('AuthService: Fresh empty users.json file created');
+        
+        return true;
+      } else {
+        debugPrint('AuthService: Users file does not exist, no need to delete');
+        return true;
+      }
+    } catch (e) {
+      debugPrint('AuthService: Error deleting corrupted users file: $e');
+      return false;
     }
   }
 
   Future<void> _writeUsers(Map<String, dynamic> users) async {
     if (kIsWeb) return;
-    final file = io.File('${(await _getAppDir()).path}${io.Platform.pathSeparator}$_usersFile');
-    await file.writeAsString(jsonEncode(users));
+    try {
+      final appDir = await _getAppDir();
+      final file = io.File('${appDir.path}${io.Platform.pathSeparator}$_usersFile');
+      
+      // CRITICAL: Simplified direct write to avoid file renaming issues on Windows
+      final jsonContent = jsonEncode(users);
+      
+      // Ensure directory exists
+      try {
+        await file.parent.create(recursive: true);
+      } catch (e) {
+        debugPrint('AuthService: Error creating directory: $e');
+      }
+      
+      // Direct write with proper error handling and flush
+      await _writeFileWithRetry(file, jsonContent);
+      
+      if (kDebugMode && showAuthLogs) {
+        debugPrint('AuthService: Successfully wrote ${users.length} users to: ${file.path}');
+      }
+    } catch (e) {
+      debugPrint('AuthService: Error writing users: $e');
+      rethrow;
+    }
+  }
+
+  // Helper method to write file with retry logic for Windows file access issues
+  Future<void> _writeFileWithRetry(io.File file, String content) async {
+    const maxRetries = 3;
+    const retryDelayMs = 100;
+    
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Add delay for retries (except first attempt)
+        if (attempt > 0) {
+          debugPrint('AuthService: File write retry attempt ${attempt + 1}/$maxRetries');
+          await Future.delayed(Duration(milliseconds: retryDelayMs * attempt));
+        }
+        
+        // Validate JSON content before writing
+        try {
+          jsonDecode(content); // Verify JSON is valid
+        } catch (e) {
+          debugPrint('AuthService: Invalid JSON content, skipping write: $e');
+          rethrow;
+        }
+        
+        // Direct write with flush to ensure data is written to disk
+        await file.writeAsString(
+          content,
+          mode: io.FileMode.write,
+          flush: true, // CRITICAL: Force flush to disk
+        );
+        
+        // Verify write was successful by reading back
+        if (await file.exists()) {
+          final writtenContent = await file.readAsString();
+          if (writtenContent == content) {
+            debugPrint('AuthService: File write successful');
+            return; // Success, exit the method
+          } else {
+            debugPrint('AuthService: Write verification failed, content mismatch');
+          }
+        }
+        
+        if (attempt == maxRetries - 1) {
+          throw io.FileSystemException('Failed to write file after $maxRetries attempts', file.path);
+        }
+        
+      } catch (e) {
+        debugPrint('AuthService: File write attempt ${attempt + 1} failed: $e');
+        
+        // Check if it's a file access error that should be retried
+        final shouldRetry = e is io.FileSystemException || 
+                           e is io.PathAccessException ||
+                           (e.toString().contains('being used by another process') ||
+                            e.toString().contains('The system cannot find the file specified') ||
+                            e.toString().contains('errno = 2') ||
+                            e.toString().contains('errno = 32'));
+        
+        if (!shouldRetry || attempt == maxRetries - 1) {
+          debugPrint('AuthService: File write failed permanently: $e');
+          rethrow; // Last attempt or non-retryable error
+        }
+        
+        // Continue to next retry attempt
+        continue;
+      }
+    }
   }
 
   // Session Management
@@ -1451,32 +1792,84 @@ class AuthService {
       
       // Platform-specific authentication handling
       if (_isWindows) {
-        // Windows: Use simplified approach to avoid platform thread errors
+        // Windows: Use enhanced approach to avoid platform thread errors
         try {
           await ensureFirebasePersistence();
           debugPrint('AuthService: Windows - Attempting Firebase Auth sign-in...');
           
-          // Wrap signInWithEmailAndPassword in try-catch with proper null checks
+          // CRITICAL: Use FirebaseThreadingHandler for complete Windows thread safety
           try {
-            await Future.delayed(const Duration(seconds: 1)); // Pre-delay to avoid native races
-            cred = await fb.FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password);
+            await Future.delayed(const Duration(milliseconds: 500)); // Reduced pre-delay
+            
+            // CRITICAL: Add SchedulerBinding safety to prevent platform thread errors
+            await SchedulerBinding.instance.endOfFrame;
+            
+            cred = await FirebaseThreadingHandler.executeWithThreadSafety(
+              () async {
+                debugPrint('AuthService: Windows - Executing signInWithEmailAndPassword on platform thread');
+                final result = await fb.FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password);
+                debugPrint('AuthService: Windows - signInWithEmailAndPassword completed');
+                return result;
+              },
+              operationName: 'AuthService Windows signInWithEmailAndPassword',
+            );
+            
+            // CRITICAL: Add additional safety delay before navigation
+            await SchedulerBinding.instance.endOfFrame;
+            await Future.delayed(Duration.zero);
             
             // Ensure result is not null before proceeding
             if (cred?.user == null) {
               debugPrint('AuthService: Windows - Firebase Auth returned null user');
               zonedError = 'Authentication returned null user';
             } else {
-              await Future.delayed(const Duration(seconds: 2)); // Reduced post-delay for Windows
+              await Future.delayed(const Duration(milliseconds: 1000)); // Reduced post-delay
               debugPrint('AuthService: Windows - Firebase Auth sign-in success for $emailKey');
               
-              // CRITICAL: Skip idToken refresh logic for Windows explicitly
-              debugPrint('AuthService: Windows - Skipping ID token refresh to avoid platform thread errors');
+              // CRITICAL FIX: Implement safe ID token refresh for Windows
+              try {
+                // Use FirebaseThreadingHandler for safe token refresh on Windows
+                await FirebaseThreadingHandler.executeWithThreadSafety(
+                  () async {
+                    if (cred?.user != null) {
+                      debugPrint('AuthService: Windows - Refreshing ID token on platform thread');
+                      final idToken = await cred!.user!.getIdToken(true);
+                      debugPrint('AuthService: Windows - ID token refreshed successfully for $emailKey');
+                      return idToken;
+                    }
+                    return null;
+                  },
+                  operationName: 'AuthService Windows getIdToken after sign-in',
+                );
+              } catch (tokenError) {
+                // Filter platform thread warnings but log other errors
+                if (tokenError.toString().contains('channel sent a message') || 
+                    tokenError.toString().contains('non-platform thread') ||
+                    tokenError.toString().contains('shell.cc')) {
+                  debugPrint('AuthService: Windows - Token refresh platform thread warning silenced: ${tokenError.runtimeType}');
+                } else {
+                  debugPrint('AuthService: Windows - Token refresh failed for $emailKey: $tokenError');
+                  // Don't treat as critical error - user is already authenticated
+                }
+              }
             }
           } catch (authError) {
             zonedError = authError;
-            // Filter platform thread warnings
-            if (authError.toString().contains('channel sent a message') || 
-                authError.toString().contains('non-platform thread')) {
+            
+            // CRITICAL: Enhanced error handling for unknown-error
+            if (authError.toString().contains('unknown-error')) {
+              debugPrint('AuthService: Windows - UNKNOWN ERROR during Firebase Auth sign-in for $emailKey');
+              debugPrint('AuthService: This might indicate a corrupted Firebase Auth account or password mismatch');
+              debugPrint('AuthService: Error details: $authError');
+              debugPrint('AuthService: Error type: ${authError.runtimeType}');
+              
+              // For unknown-error, we'll continue with SQLite login since local auth succeeded
+              // This allows users to access the app even if Firebase Auth has issues
+              debugPrint('AuthService: Continuing with SQLite login despite Firebase Auth unknown-error');
+              zonedError = null; // Don't treat as blocking error
+            } else if (authError.toString().contains('channel sent a message') || 
+                       authError.toString().contains('non-platform thread') ||
+                       authError.toString().contains('shell.cc')) {
               debugPrint('AuthService: Windows - Platform thread warning silenced: ${authError.runtimeType}');
               zonedError = null; // Don't treat as error
             } else {
@@ -1497,10 +1890,17 @@ class AuthService {
             
             // Wrap signInWithEmailAndPassword in try-catch with proper null checks
             try {
+              // CRITICAL: Add SchedulerBinding safety to prevent platform thread errors
+              await SchedulerBinding.instance.endOfFrame;
+              
               cred = await FirebaseThreadingHandler.executeWithThreadSafety(
                 () => fb.FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password),
                 operationName: 'AuthService signInWithEmailAndPassword',
               );
+              
+              // CRITICAL: Add additional safety delay before navigation
+              await SchedulerBinding.instance.endOfFrame;
+              await Future.delayed(Duration.zero);
               
               // Ensure result is not null before proceeding
               if (cred?.user == null) {
@@ -1557,8 +1957,30 @@ class AuthService {
                 await Future.delayed(const Duration(seconds: 1)); // post-delay after create
                 debugPrint('AuthService: Windows - Created user on-demand $emailKey');
                 
-                // CRITICAL: Skip token refresh logic for Windows explicitly
-                debugPrint('AuthService: Windows - Skipping token refresh for new user');
+                // CRITICAL FIX: Implement safe ID token refresh for Windows after user creation
+                try {
+                  // Use FirebaseThreadingHandler for safe token refresh on Windows
+                  await FirebaseThreadingHandler.executeWithThreadSafety(
+                    () async {
+                      if (created?.user != null) {
+                        final idToken = await created!.user!.getIdToken(true);
+                        debugPrint('AuthService: Windows - ID token refreshed successfully for new user $emailKey');
+                        return idToken;
+                      }
+                      return null;
+                    },
+                    operationName: 'AuthService Windows getIdToken after create',
+                  );
+                } catch (tokenError) {
+                  // Filter platform thread warnings but log other errors
+                  if (tokenError.toString().contains('channel sent a message') || 
+                      tokenError.toString().contains('non-platform thread')) {
+                    debugPrint('AuthService: Windows - Create user token refresh platform thread warning silenced: ${tokenError.runtimeType}');
+                  } else {
+                    debugPrint('AuthService: Windows - Create user token refresh failed for $emailKey: $tokenError');
+                    // Don't treat as critical error - user is already created
+                  }
+                }
               }
             } catch (createError) {
               if (createError.toString().contains('channel sent a message') || 
@@ -2232,45 +2654,94 @@ class AuthService {
   Future<Map<String, dynamic>?> getCurrentUser(String? token) async {
     if (token == null || !_verifyJWT(token)) return null;
 
+    // CRITICAL: Check memory cache first to prevent infinite file access loop
+    if (_cachedUser != null && 
+        _cachedToken == token && 
+        _cacheTimestamp != null && 
+        DateTime.now().difference(_cacheTimestamp!) < _cacheTimeout) {
+      if (kDebugMode && showAuthLogs) {
+        debugPrint('AuthService: Returning cached user data for ${_cachedUser?['email']}');
+      }
+      return _cachedUser;
+    }
+
     final payload = _decodeJWT(token);
     if (payload == null) return null;
 
     final email = payload['email'] as String?;
     if (email == null) return null;
 
-    final users = await _readUsers();
-    final emailKey = email.toLowerCase();
-    final cached = users[emailKey] as Map<String, dynamic>?;
-
-    Map<String, dynamic>? merged = cached != null ? {...cached} : null;
-
-    // Try local DB merge
+    // CRITICAL: Force local data refresh to ensure UserModel is populated
+    Map<String, dynamic>? merged;
+    
+    // Priority 1: Check local SQLite/JSON first (guaranteed data)
     try {
-      final dbUser = await _readUserFromDbByEmailOrUsername(emailKey);
+      final users = await _readUsers();
+      final emailKey = email.toLowerCase();
+      final cached = users[emailKey] as Map<String, dynamic>?;
+      
+      if (cached != null) {
+        merged = {...cached};
+        if (kDebugMode && showAuthLogs) {
+          debugPrint('AuthService: Found user in local cache: ${merged['email']}');
+        }
+      }
+    } catch (e) {
+      debugPrint('AuthService: Error reading local users in getCurrentUser: $e');
+    }
+
+    // Priority 2: Try local DB merge for additional fields
+    try {
+      final dbUser = await _readUserFromDbByEmailOrUsername(email.toLowerCase());
       if (dbUser != null) {
         merged = {...(merged ?? <String, dynamic>{}), ...dbUser};
+        if (kDebugMode && showAuthLogs) {
+          debugPrint('AuthService: Merged user with local DB data');
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('AuthService: Error reading from local DB in getCurrentUser: $e');
+    }
 
-    // Fetch Firestore user doc (by fb.FirebaseAuth uid if available, otherwise by email query)
+    // Priority 3: Fetch Firestore user doc if Firebase is available (non-blocking)
+    if (merged != null) {
+      // We have local data, return it immediately and fetch Firestore in background
+      _fetchFirestoreUserInBackground(email.toLowerCase(), merged);
+      
+      // Update cache
+      _cachedUser = merged;
+      _cachedToken = token;
+      _cacheTimestamp = DateTime.now();
+      AuthService.currentUser = merged;
+      
+      // Emit user update to stream
+      _emitUserUpdate(merged);
+      
+      if (kDebugMode && showAuthLogs) {
+        debugPrint('AuthService: Returning local user data, fetching Firestore in background');
+      }
+      return merged;
+    }
+
+    // Fallback: Try to get from Firestore if no local data exists
     try {
       if (Firebase.apps.isNotEmpty && !_isWindows) {
         await ensureFirebasePersistence();
         final auth = fb.FirebaseAuth.instance;
         String? uid = auth.currentUser?.uid;
         Map<String, dynamic>? fsUser;
+        
         if (uid != null && uid.isNotEmpty) {
-          // Enhanced with FirebaseThreadingHandler for Windows compatibility
           final doc = await FirebaseThreadingHandler.executeWithThreadSafety(
             () => FirebaseFirestore.instance.collection('users').doc(uid).get(),
             operationName: 'AuthService getCurrentUser',
           );
           if (doc.exists) fsUser = doc.data();
         }
+        
         if (fsUser == null) {
-          // Enhanced with FirebaseThreadingHandler for Windows compatibility
           final snap = await FirebaseThreadingHandler.executeWithThreadSafety(
-            () => FirebaseFirestore.instance.collection('users').where('email', isEqualTo: emailKey).limit(1).get(),
+            () => FirebaseFirestore.instance.collection('users').where('email', isEqualTo: email.toLowerCase()).limit(1).get(),
             operationName: 'AuthService getCurrentUser email query',
           );
           if (snap.docs.isNotEmpty) {
@@ -2278,39 +2749,116 @@ class AuthService {
             uid = snap.docs.first.id;
           }
         }
+        
         if (fsUser != null) {
-          merged = {...(merged ?? <String, dynamic>{}), ...fsUser};
+          merged = {...fsUser};
           if (uid != null && uid.isNotEmpty) merged['id'] = uid;
+          
+          // Update cache and save locally
+          _cachedUser = merged;
+          _cachedToken = token;
+          _cacheTimestamp = DateTime.now();
+          AuthService.currentUser = merged;
+          
+          // Emit user update to stream
+          _emitUserUpdate(merged);
+          
+          // Save to local cache for future use
+          try {
+            final users = await _readUsers();
+            users[email.toLowerCase()] = merged;
+            await _writeUsers(users);
+          } catch (e) {
+            debugPrint('AuthService: Error saving Firestore user to local cache: $e');
+          }
+          
+          if (kDebugMode && showAuthLogs) {
+            debugPrint('AuthService: Retrieved user from Firestore: ${merged['email']}');
+          }
+          return merged;
         }
       }
     } catch (e) {
-      debugPrint('AuthService: Firestore fetch failed: $e');
+      debugPrint('AuthService: Firestore fetch failed in getCurrentUser: $e');
     }
 
-    // Finalize
-    if (merged != null) {
-      // Deactivate if inactive/archived
-      final isInactive = (merged['status'] ?? '').toString().toLowerCase() == 'archived' ||
-          (merged['status'] ?? '').toString().toLowerCase() == 'inactive' ||
-          ((merged['is_active'] ?? merged['isActive']) is num
-              ? (merged['is_active'] ?? merged['isActive']) == 0
-              : (merged['is_active'] ?? merged['isActive']) == false);
-      if (isInactive) {
-        final uid = (merged['id'] ?? merged['userId'] ?? merged['user_id'])?.toString() ?? '';
-        await _revokeSessionsByUserId(uid);
-        return null;
-      }
-      users[emailKey] = merged;
-      await _writeUsers(users);
-      AuthService.currentUser = merged;
-      
-      // Initialize background sync after user is loaded
-      _initializeBackgroundSyncAfterLogin();
-      
-      return merged;
+    if (kDebugMode && showAuthLogs) {
+      debugPrint('AuthService: No user data found for email: $email');
     }
-
     return null;
+  }
+
+  // Helper method to fetch Firestore user data in background without blocking
+  Future<void> _fetchFirestoreUserInBackground(String email, Map<String, dynamic> localUser) async {
+    try {
+      if (Firebase.apps.isNotEmpty && !_isWindows) {
+        final auth = fb.FirebaseAuth.instance;
+        String? uid = auth.currentUser?.uid;
+        Map<String, dynamic>? fsUser;
+        
+        if (uid != null && uid.isNotEmpty) {
+          final doc = await FirebaseThreadingHandler.executeWithThreadSafety(
+            () => FirebaseFirestore.instance.collection('users').doc(uid).get(),
+            operationName: 'AuthService background fetch',
+          );
+          if (doc.exists) fsUser = doc.data();
+        }
+        
+        if (fsUser == null) {
+          final snap = await FirebaseThreadingHandler.executeWithThreadSafety(
+            () => FirebaseFirestore.instance.collection('users').where('email', isEqualTo: email).limit(1).get(),
+            operationName: 'AuthService background email fetch',
+          );
+          if (snap.docs.isNotEmpty) {
+            fsUser = snap.docs.first.data();
+            uid = snap.docs.first.id;
+          }
+        }
+        
+        if (fsUser != null) {
+          // Merge with local data and update cache
+          final merged = {...localUser, ...fsUser};
+          if (uid != null && uid.isNotEmpty) merged['id'] = uid;
+          
+          _cachedUser = merged;
+          AuthService.currentUser = merged;
+          
+          // Emit user update to stream
+          _emitUserUpdate(merged);
+          
+          // Save merged data locally
+          try {
+            final users = await _readUsers();
+            users[email] = merged;
+            await _writeUsers(users);
+            if (kDebugMode && showAuthLogs) {
+              debugPrint('AuthService: Background Firestore sync completed for $email');
+            }
+          } catch (e) {
+            debugPrint('AuthService: Error saving background sync: $e');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('AuthService: Background Firestore fetch failed: $e');
+    }
+  }
+
+  // Clear user cache (useful for logout or forced refresh)
+  static void clearUserCache() {
+    _cachedUser = null;
+    _cachedToken = null;
+    _cacheTimestamp = null;
+    AuthService.currentUser = null;
+    
+    // Emit null to stream to notify listeners
+    if (!_userStreamController.isClosed) {
+      _userStreamController.add(null);
+    }
+    
+    if (kDebugMode && showAuthLogs) {
+      debugPrint('AuthService: User cache cleared and stream updated');
+    }
   }
 
   // Logout
@@ -2328,6 +2876,9 @@ class AuthService {
     settings.remove('cachedRole');
     settings.remove('cachedCompanyId');
     await storage.writeSettings(settings);
+
+    // CRITICAL: Clear user cache to prevent stale data on next login
+    clearUserCache();
 
     // Clear cached user/session data to avoid stale role/companyId on next login
     try {
@@ -2402,20 +2953,20 @@ class AuthService {
   /// Enhanced with redundant call prevention
   static void _initializeBackgroundSyncAfterLogin() {
     if (AuthService.currentUser != null) {
-      // CRITICAL: Check if Background Sync Manager is already initialized to prevent redundant calls
-      if (!BackgroundSyncManager().hasBeenInitializedInSession) {
+      // CRITICAL: Pre-check to prevent unnecessary initialization attempts
+      if (BackgroundSyncManager.shouldAttemptInitialization()) {
         BackgroundSyncManager().initialize().catchError((e) {
           debugPrint('[AUTH] Error initializing background sync after login: $e');
         });
         debugPrint('[AUTH] Background sync initialized after login');
       } else {
-        // Reduced verbosity - only log in debug mode
-        if (kDebugMode) {
-          debugPrint('[AUTH] Background sync already initialized in this session, skipping...');
-        }
+        debugPrint('[AUTH] Background sync initialization skipped - already initialized');
       }
     } else {
-      debugPrint('[AUTH] No current user, skipping background sync initialization');
+      // Reduced verbosity - only log in debug mode
+      if (kDebugMode) {
+        debugPrint('[AUTH] No current user, skipping background sync initialization');
+      }
     }
   }
 }

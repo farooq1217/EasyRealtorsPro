@@ -8,7 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:csv/csv.dart';
-import 'package:shared/shared.dart' show AppDatabase, WorkingProgressData, Expenditure;
+import 'package:shared/shared.dart' show AppDatabase, WorkingProgressData, Expenditure, RentalItem, TradingEntry, TradingType, TradingEntryType, Reminder;
 import 'package:drift/drift.dart' as d;
 import '../../domain/repositories/report_repository.dart';
 import '../../core/services/app_storage.dart' show AppStorage;
@@ -514,6 +514,196 @@ class ReportRepositoryImpl implements ReportRepository {
   }
 
   @override
+  Future<List<RentalItem>> getRentalReport({
+    String? companyId,
+    bool isSuperAdmin = false,
+    String? startDate,
+    String? endDate,
+  }) async {
+    try {
+      final clauses = <String>['is_active = 1'];
+      final vars = <d.Variable<String>>[];
+      
+      if (!isSuperAdmin && companyId != null) {
+        clauses.add('company_id = ?');
+        vars.add(d.Variable.withString(companyId));
+      }
+      
+      if (startDate != null) {
+        clauses.add('DATE(updated_at) >= DATE(?)');
+        vars.add(d.Variable.withString(startDate));
+      }
+      
+      if (endDate != null) {
+        clauses.add('DATE(updated_at) <= DATE(?)');
+        vars.add(d.Variable.withString(endDate));
+      }
+      
+      final where = clauses.isNotEmpty ? 'WHERE ${clauses.join(' AND ')}' : '';
+      
+      final result = await db.customSelect(
+        'SELECT * FROM rental_items $where ORDER BY updated_at DESC',
+        variables: vars,
+      ).get();
+      
+      final rentals = <RentalItem>[];
+      for (final row in result) {
+        final data = row.data;
+        rentals.add(
+          RentalItem(
+            id: data['id']?.toString() ?? '',
+            companyId: data['company_id']?.toString(),
+            createdBy: data['created_by']?.toString(),
+            name: data['name']?.toString() ?? '',
+            price: data['price'] != null ? int.tryParse(data['price'].toString()) ?? 0 : 0,
+            remarks: data['remarks']?.toString(),
+            location: data['location']?.toString(),
+            ownerName: data['owner_name']?.toString(),
+            contactNo: data['contact_no']?.toString(),
+            cnic: data['cnic']?.toString(),
+            security: data['security'] != null ? int.tryParse(data['security'].toString()) : null,
+            saleStatus: data['sale_status']?.toString(),
+            isActive: (data['is_active'] as int? ?? 1) == 1,
+            updatedAt: data['updated_at']?.toString() ?? '',
+            isSynced: (data['is_synced'] as int? ?? 1) == 1,
+          ),
+        );
+      }
+      
+      return rentals;
+    } catch (e) {
+      debugPrint('Error loading rental report: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<List<Reminder>> getTodoReport({
+    String? companyId,
+    bool isSuperAdmin = false,
+    String? startDate,
+    String? endDate,
+  }) async {
+    try {
+      final clauses = <String>['is_active = 1'];
+      final vars = <d.Variable<String>>[];
+      
+      if (!isSuperAdmin && companyId != null) {
+        clauses.add('company_id = ?');
+        vars.add(d.Variable.withString(companyId));
+      }
+      
+      if (startDate != null) {
+        clauses.add('DATE(reminder_date) >= DATE(?)');
+        vars.add(d.Variable.withString(startDate));
+      }
+      
+      if (endDate != null) {
+        clauses.add('DATE(reminder_date) <= DATE(?)');
+        vars.add(d.Variable.withString(endDate));
+      }
+      
+      final where = clauses.isNotEmpty ? 'WHERE ${clauses.join(' AND ')}' : '';
+      
+      final result = await db.customSelect(
+        'SELECT * FROM reminders $where ORDER BY created_at DESC',
+        variables: vars,
+      ).get();
+      
+      final reminders = <Reminder>[];
+      for (final row in result) {
+        final data = row.data;
+        reminders.add(
+          Reminder(
+            reminderId: data['reminder_id'] as int? ?? 0,
+            agentId: data['agent_id']?.toString() ?? '',
+            companyId: data['company_id']?.toString(),
+            clientName: data['client_name']?.toString(),
+            clientPhone: data['client_phone']?.toString(),
+            reminderTitle: data['reminder_title']?.toString() ?? '',
+            reminderDetails: data['reminder_details']?.toString(),
+            reminderDate: data['reminder_date']?.toString() ?? '',
+            reminderTime: data['reminder_time']?.toString() ?? '',
+            notificationStatus: data['notification_status']?.toString() ?? '',
+            is_active: (data['is_active'] as int? ?? 1) == 1,
+            createdAt: data['created_at']?.toString() ?? '',
+            updatedAt: data['updated_at']?.toString() ?? '',
+            isSynced: (data['is_synced'] as int? ?? 1) == 1,
+          ),
+        );
+      }
+      
+      return reminders;
+    } catch (e) {
+      debugPrint('Error loading todo report: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<List<TradingEntry>> getTradingReport({
+    String? companyId,
+    bool isSuperAdmin = false,
+    String? startDate,
+    String? endDate,
+  }) async {
+    try {
+      final clauses = <String>['is_active = 1'];
+      final vars = <d.Variable<String>>[];
+      
+      if (!isSuperAdmin && companyId != null) {
+        clauses.add('company_id = ?');
+        vars.add(d.Variable.withString(companyId));
+      }
+      
+      if (startDate != null) {
+        clauses.add('DATE(date) >= DATE(?)');
+        vars.add(d.Variable.withString(startDate));
+      }
+      
+      if (endDate != null) {
+        clauses.add('DATE(date) <= DATE(?)');
+        vars.add(d.Variable.withString(endDate));
+      }
+      
+      final where = clauses.isNotEmpty ? 'WHERE ${clauses.join(' AND ')}' : '';
+      
+      final result = await db.customSelect(
+        'SELECT * FROM trading_entries $where ORDER BY updated_at DESC',
+        variables: vars,
+      ).get();
+      
+      final entries = <TradingEntry>[];
+      for (final row in result) {
+        final data = row.data;
+        final typeValue = data['type']?.toString();
+        final entryTypeValue = data['entry_type']?.toString();
+        
+        entries.add(
+          TradingEntry(
+            id: data['id']?.toString() ?? '',
+            companyId: data['company_id']?.toString(),
+            createdBy: data['created_by']?.toString(),
+            type: typeValue == 'buy' ? TradingType.buy : TradingType.sell,
+            entryType: entryTypeValue == 'file' ? TradingEntryType.file : TradingEntryType.form,
+            date: DateTime.tryParse(data['date']?.toString() ?? '') ?? DateTime.now(),
+            personName: data['person_name']?.toString() ?? '',
+            mobile: data['mobile']?.toString() ?? '',
+            quantity: data['quantity'] != null ? int.tryParse(data['quantity'].toString()) ?? 0 : 0,
+            totalAmount: data['amount'] != null ? double.tryParse(data['amount'].toString()) : 0.0,
+            status: data['status']?.toString() ?? '',
+          ),
+        );
+      }
+      
+      return entries;
+    } catch (e) {
+      debugPrint('Error loading trading report: $e');
+      return [];
+    }
+  }
+
+  @override
   Future<Map<String, dynamic>> getReportSummary({
     String? companyId,
     bool isSuperAdmin = false,
@@ -558,6 +748,48 @@ class ReportRepositoryImpl implements ReportRepository {
       summary['totalExpenditure'] = expenditureData.fold<double>(
         0.0,
         (sum, e) => sum + (e.amount ?? 0.0),
+      );
+      
+      // Get rental summary
+      final rentalData = await getRentalReport(
+        companyId: companyId,
+        isSuperAdmin: isSuperAdmin,
+        startDate: startDate,
+        endDate: endDate,
+      );
+      
+      summary['totalRentals'] = rentalData.length;
+      summary['activeRentals'] = rentalData.where((e) => e.isActive).length;
+      summary['totalRentalIncome'] = rentalData.fold<double>(
+        0.0,
+        (sum, e) => sum + (e.price ?? 0.0),
+      );
+      
+      // Get todo summary
+      final todoData = await getTodoReport(
+        companyId: companyId,
+        isSuperAdmin: isSuperAdmin,
+        startDate: startDate,
+        endDate: endDate,
+      );
+      
+      summary['totalTodos'] = todoData.length;
+      summary['completedTodos'] = todoData.where((e) => e.notificationStatus.toLowerCase() == 'sent').length;
+      summary['pendingTodos'] = todoData.where((e) => e.notificationStatus.toLowerCase() != 'sent').length;
+      
+      // Get trading summary
+      final tradingData = await getTradingReport(
+        companyId: companyId,
+        isSuperAdmin: isSuperAdmin,
+        startDate: startDate,
+        endDate: endDate,
+      );
+      
+      summary['totalTradingEntries'] = tradingData.length;
+      summary['completedTradingEntries'] = tradingData.where((e) => e.status.toLowerCase() == 'completed').length;
+      summary['totalTradingValue'] = tradingData.fold<double>(
+        0.0,
+        (sum, e) => sum + (e.totalAmount ?? 0.0),
       );
       
       return summary;
@@ -659,9 +891,27 @@ class ReportRepositoryImpl implements ReportRepository {
               item['id'] ?? '',
               _formatDate(item['date']),
               item['description'] ?? '',
-              item['amount']?.toString() ?? '',
+              item['totalAmount']?.toString() ?? '0',
               item['category'] ?? '',
               item['kind'] ?? '',
+            ]);
+          }
+          break;
+        case 'rental':
+          csvData.add(['ID', 'Name', 'Price', 'Remarks', 'Location', 'Owner Name', 'Contact No', 'CNIC', 'Security', 'Sale Status', 'Updated']);
+          for (final item in data) {
+            csvData.add([
+              item['id'] ?? '',
+              item['name'] ?? '',
+              item['price']?.toString() ?? '0',
+              item['remarks'] ?? '',
+              item['location'] ?? '',
+              item['ownerName'] ?? '',
+              item['contactNo'] ?? '',
+              item['cnic'] ?? '',
+              item['security']?.toString() ?? '',
+              item['saleStatus'] ?? '',
+              _formatDate(item['updatedAt']),
             ]);
           }
           break;

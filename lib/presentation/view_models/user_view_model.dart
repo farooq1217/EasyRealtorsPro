@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
@@ -63,6 +64,34 @@ class UserViewModel extends ChangeNotifier {
   bool get backfillingUserIds => _backfillingUserIds;
   bool get backfillUserIdsDone => _backfillUserIdsDone;
 
+  // Set mounted state and process any stored data
+  void setMounted(bool mounted) {
+    _mounted = mounted;
+    debugPrint('UserViewModel: setMounted called with mounted: $mounted');
+    
+    if (mounted && _users.isNotEmpty) {
+      debugPrint('UserViewModel: Widget mounted, processing stored ${_users.length} users');
+      
+      // Process the stored data that was received before widget was mounted
+      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final effectiveCompanyId = RoleUtils.getUserCompanyId(_currentUser);
+      
+      debugPrint('UserViewModel: Processing stored data - isSuperAdmin=$isSuperAdmin, effectiveCompanyId=$effectiveCompanyId');
+      
+      List<UserModel> filteredData = _users;
+      if (!isSuperAdmin && effectiveCompanyId != null) {
+        filteredData = _users.where((user) => user.companyId == effectiveCompanyId).toList();
+        debugPrint('UserViewModel: Filtered stored data to ${filteredData.length} users for company $effectiveCompanyId');
+      }
+      
+      _users = filteredData;
+      _applySearchFilter();
+      
+      debugPrint('UserViewModel: Stored data processed, notifyListeners called');
+      notifyListeners();
+    }
+  }
+
   // Form getters
   TextEditingController get nameController => _nameController;
   TextEditingController get emailController => _emailController;
@@ -102,6 +131,10 @@ class UserViewModel extends ChangeNotifier {
     PermissionHelper.getModulePermissionLevel(_currentUser, 'users').contains('delete') || 
     RoleUtils.isCompanyAdmin(_currentUser) ||
     RoleUtils.isSuperAdmin(_currentUser);
+
+  // Helper method to check if current user is Super Admin
+  bool get isCurrentUserSuperAdmin => 
+    RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
 
   // Initialization
   Future<void> initialize() async {
@@ -168,6 +201,15 @@ class UserViewModel extends ChangeNotifier {
   Future<void> _setupStreams() async {
     final companyId = RoleUtils.getUserCompanyId(_currentUser);
     
+    // CRITICAL DEBUG: Log company filtering for Umer Shahzad
+    if (_currentUser?['email']?.toString().toLowerCase() == 'umershahzad596@gmail.com') {
+      debugPrint('USER VIEW MODEL DEBUG: Umer Shahzad setting up streams');
+      debugPrint('USER VIEW MODEL DEBUG: Company ID: $companyId');
+      debugPrint('USER VIEW MODEL DEBUG: User role: ${RoleUtils.getUserRole(_currentUser)}');
+      debugPrint('USER VIEW MODEL DEBUG: isCompanyAdmin: ${RoleUtils.isCompanyAdmin(_currentUser)}');
+      debugPrint('USER VIEW MODEL DEBUG: isSuperAdmin: ${RoleUtils.isSuperAdmin(_currentUser)}');
+    }
+    
     // Cancel existing subscription
     await _usersSubscription?.cancel();
     
@@ -176,6 +218,20 @@ class UserViewModel extends ChangeNotifier {
       (data) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
+          
+          // CRITICAL DEBUG: Log user filtering results for Umer Shahzad
+          if (_currentUser?['email']?.toString().toLowerCase() == 'umershahzad596@gmail.com') {
+            debugPrint('USER VIEW MODEL DEBUG: Stream update received for Umer Shahzad');
+            debugPrint('USER VIEW MODEL DEBUG: Total users loaded: ${data.length}');
+            for (int i = 0; i < data.length && i < 5; i++) {
+              final user = data[i];
+              debugPrint('USER VIEW MODEL DEBUG: User ${i + 1}: ${user.name} (${user.email}) - Company: ${user.companyId}');
+            }
+            if (data.length > 5) {
+              debugPrint('USER VIEW MODEL DEBUG: ... and ${data.length - 5} more users');
+            }
+          }
+          
           _users = data;
           _applySearchFilter();
         });
@@ -234,9 +290,16 @@ class UserViewModel extends ChangeNotifier {
     _contactController.text = user.contactNo ?? '';
     _usernameController.text = user.username;
     _userIdController.text = user.userId;
-    _selectedCompanyId = user.companyId;
+    
+    // CRITICAL FIX: Handle GLOBAL_ADMIN company ID properly
+    if (user.companyId == 'GLOBAL_ADMIN' || user.companyId == null) {
+      _selectedCompanyId = null; // Set to null for Super Admins
+    } else {
+      _selectedCompanyId = user.companyId;
+    }
+    
     _selectedStatus = user.status ?? 'active';
-    _permissions = user.permissions ?? {};
+    _permissions = user.permissionsMap; // Use permissionsMap getter
     notifyListeners();
   }
 
@@ -362,7 +425,7 @@ class UserViewModel extends ChangeNotifier {
         name: name,
         email: email,
         contactNo: contact.isEmpty ? null : contact,
-        permissions: _permissions.isNotEmpty ? _permissions : null,
+        permissions: _permissions.isNotEmpty ? jsonEncode(_permissions) : null,
         companyId: _selectedCompanyId,
         status: _selectedStatus,
         isActive: _selectedStatus != 'archived',
@@ -428,6 +491,35 @@ class UserViewModel extends ChangeNotifier {
     } catch (e) {
       _error = 'Failed to update user status: $e';
       debugPrint('Error updating user status: $e');
+      return false;
+    }
+  }
+
+  Future<bool> toggleUserActiveStatus(String id, bool newActiveStatus) async {
+    if (!canEdit) {
+      _error = 'Permission denied';
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      final user = await _repository.getUserById(id);
+      if (user != null) {
+        final updatedUser = user.copyWith(
+          isActive: newActiveStatus,
+          status: newActiveStatus ? 'active' : 'inactive',
+          updatedAt: DateTime.now().toIso8601String(),
+        );
+        await _repository.updateUser(updatedUser);
+        
+        // CRITICAL: Notify listeners immediately for UI update
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      _error = 'Failed to toggle user active status: $e';
+      notifyListeners();
       return false;
     }
   }

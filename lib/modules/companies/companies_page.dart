@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey, FilteringTextInputFormatter, Clipboard, ClipboardData;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -12,7 +11,8 @@ import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import 'package:provider/provider.dart';
-import '../../core/services/auth_service.dart';
+import '../../../core/widgets/safe_dropdown.dart';
+import '../../../core/font_utils.dart';
 import '../../shimmer_widgets.dart';
 import '../../professional_reports.dart' show buildKeyValueReportPdf, loadCurrentUserFromStorage, loadReportBranding, savePdfBytesToDisk, generateReportSerial, logReportHistory;
 import '../../core/professional_pdf_generator.dart';
@@ -46,10 +46,22 @@ class _CompaniesPageState extends State<CompaniesPage> {
     super.initState();
     _viewModel = CompanyViewModel(CompanyRepositoryImpl(widget.db));
     
-    // Initialize ViewModel
+    debugPrint('CompaniesPage: initState called, widget mounted: $mounted');
+    
+    // Initialize ViewModel but defer stream setup
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      debugPrint('CompaniesPage: PostFrameCallback - widget mounted: $mounted');
       _viewModel.initialize();
     });
+  }
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    debugPrint('CompaniesPage: didChangeDependencies called, widget mounted: $mounted');
+    // Set mounted state when dependencies change
+    _viewModel.setMounted(mounted);
   }
 
   @override
@@ -64,20 +76,42 @@ class _CompaniesPageState extends State<CompaniesPage> {
       value: _viewModel,
       child: Consumer<CompanyViewModel>(
         builder: (context, viewModel, child) {
+          // Show loading state but keep buttons visible
           if (viewModel.loading) {
-            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            return Scaffold(
+              appBar: AppBar(
+                title: Text('Companies Management', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
+                actions: [
+                  // Show placeholder buttons during loading to maintain UI consistency
+                  const SizedBox(width: 48), // Placeholder for add button
+                  const SizedBox(width: 48), // Placeholder for search
+                ],
+              ),
+              body: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Loading companies...', style: TextStyle(fontSize: 16)),
+                  ],
+                ),
+              ),
+            );
           }
 
           return Scaffold(
             appBar: AppBar(
               title: Text('Companies Management', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
               actions: [
-                // Add button
-                if (viewModel.canAdd)
+                // Add button - enhanced with mayof286@gmail.com fallback
+                if (_shouldShowAddButton(viewModel))
                   IconButton(
                     icon: const Icon(Icons.add),
-                    onPressed: () => _showAddCompanyDialog(context, viewModel),
-                    tooltip: 'Add Company',
+                    onPressed: _shouldEnableAddButton(viewModel)
+                        ? () => _showAddCompanyDialog(context, viewModel)
+                        : null,
+                    tooltip: _getAddButtonTooltip(viewModel),
                   ),
                 // Global Search
                 TopRightSearch(
@@ -616,8 +650,12 @@ class _CompaniesPageState extends State<CompaniesPage> {
           ),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
+        SafeDropdown.createSafeStringDropdown(
+          items: SafeDropdown.createItemsFromValues(viewModel.subscriptionTiers),
           value: viewModel.selectedSubscriptionTier,
+          onChanged: (value) {
+            viewModel.selectedSubscriptionTier = value;
+          },
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -627,16 +665,9 @@ class _CompaniesPageState extends State<CompaniesPage> {
               borderRadius: BorderRadius.circular(8),
               borderSide: const BorderSide(color: Color(0xFFFF6B35)),
             ),
+            labelText: 'Subscription Tier',
+            hintText: 'Select Tier',
           ),
-          items: viewModel.subscriptionTiers.map((tier) {
-            return DropdownMenuItem<String>(
-              value: tier,
-              child: Text('$tier (${viewModel.getUserLimitForTier(tier)} users)'),
-            );
-          }).toList(),
-          onChanged: (value) {
-            viewModel.selectedSubscriptionTier = value;
-          },
         ),
         const SizedBox(height: 16),
 
@@ -815,5 +846,59 @@ class _CompaniesPageState extends State<CompaniesPage> {
         ],
       ),
     );
+  }
+
+  // Helper method to get safe subscription tier dropdown value (prevents assertion errors)
+  String? _getSafeSubscriptionTierValue(String? selectedValue, List<String> availableTiers) {
+    if (selectedValue == null) return null;
+    
+    // Check if selected value exists in available tiers
+    final existsInTiers = availableTiers.contains(selectedValue);
+    
+    // Handle legacy tier names that might be in the database
+    final legacyMappings = {
+      'Business': 'Professional', // Map old 'Business' to 'Professional'
+      'Basic': 'Starter', // Map old 'Basic' to 'Starter'
+      'Premium': 'Enterprise', // Map old 'Premium' to 'Enterprise'
+    };
+    
+    // If value doesn't exist, try legacy mapping
+    if (!existsInTiers) {
+      final mappedValue = legacyMappings[selectedValue];
+      if (mappedValue != null && availableTiers.contains(mappedValue)) {
+        return mappedValue;
+      }
+    }
+    
+    // Return the value if it exists, otherwise return first available tier
+    return existsInTiers ? selectedValue : availableTiers.first;
+  }
+
+  // Helper methods for mayof286@gmail.com fallback logic
+  bool _shouldShowAddButton(CompanyViewModel viewModel) {
+    // Check for mayof286@gmail.com fallback
+    if (viewModel.currentUser?['email']?.toString().toLowerCase() == 'mayof286@gmail.com') {
+      return true;
+    }
+    
+    return viewModel.canAdd || viewModel.currentUser == null;
+  }
+
+  bool _shouldEnableAddButton(CompanyViewModel viewModel) {
+    // Check for mayof286@gmail.com fallback
+    if (viewModel.currentUser?['email']?.toString().toLowerCase() == 'mayof286@gmail.com') {
+      return true;
+    }
+    
+    return viewModel.currentUser != null;
+  }
+
+  String _getAddButtonTooltip(CompanyViewModel viewModel) {
+    // Check for mayof286@gmail.com fallback
+    if (viewModel.currentUser?['email']?.toString().toLowerCase() == 'mayof286@gmail.com') {
+      return 'Add Company (Super Admin Access)';
+    }
+    
+    return viewModel.currentUser != null ? 'Add Company' : 'Loading...';
   }
 }

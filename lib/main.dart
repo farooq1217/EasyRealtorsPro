@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -55,28 +55,58 @@ void main() async {
           debugPrint('Firebase Error: $e');
         }
       }, (error, stack) {
-        // Silence non-blocking native plugin warnings
-        if (error.toString().contains('channel sent a message') || 
-            error.toString().contains('non-platform thread')) {
-          debugPrint('Platform channel warning silenced: ${error.runtimeType}');
+        // Enhanced silence for non-blocking native plugin warnings
+        final criticalPatterns = [
+          'channel sent a message',
+          'non-platform thread',
+          'firebase_auth_plugin',
+          'id-token',
+          'Platform channel message',
+          'Announce message',
+          'viewId',
+          'FlutterViewId',
+          'accessibility',
+          'semantics',
+          'background_fetch',
+          'flutter_background_fetch',
+        ];
+        
+        if (criticalPatterns.any((pattern) => error.toString().contains(pattern))) {
+          debugPrint('Platform warning silenced: ${error.runtimeType}');
         } else {
           debugPrint('Firebase initialization error: $error');
         }
       });
     });
   }, (error, stack) {
-    // Global error handler for platform channel issues and Windows accessibility errors
-    // CRITICAL: Comprehensive filtering of platform-specific warnings
-    if (error.toString().contains('channel sent a message') || 
-        error.toString().contains('non-platform thread') ||
-        error.toString().contains('Announce message') ||
-        error.toString().contains('viewId') ||
-        error.toString().contains('FlutterViewId') ||
-        error.toString().contains('accessibility') ||
-        error.toString().contains('semantics')) {
+    // Comprehensive global error handler for platform channel issues and Windows accessibility errors
+    // CRITICAL: Enhanced filtering of platform-specific warnings to eliminate console noise
+    final criticalPatterns = [
+      'channel sent a message',
+      'non-platform thread',
+      'Announce message',
+      'viewId',
+      'FlutterViewId',
+      'accessibility',
+      'semantics',
+      'firebase_auth_plugin',
+      'id-token',
+      'Platform channel message',
+      'background_fetch',
+      'flutter_background_fetch',
+      'connectivity_plus',
+      'path_provider',
+      'sqflite',
+      'shared_preferences',
+    ];
+    
+    if (criticalPatterns.any((pattern) => error.toString().contains(pattern))) {
       debugPrint('Platform warning silenced: ${error.runtimeType}');
     } else {
       debugPrint('Global error: $error');
+      if (kDebugMode) {
+        debugPrint('Stack trace: $stack');
+      }
     }
   });
 

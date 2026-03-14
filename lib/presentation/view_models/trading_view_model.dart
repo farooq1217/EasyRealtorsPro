@@ -2,11 +2,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import '../../domain/models/trading_entry.dart';
+import 'package:shared/shared.dart' show TradingEntry, TradingEntryType, RoleUtils;
 import '../../domain/repositories/trading_repository.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/firebase_threading_handler.dart';
-import 'package:shared/shared.dart' show RoleUtils;
 
 class TradingViewModel extends ChangeNotifier {
   final TradingRepository _repository;
@@ -305,9 +304,9 @@ class TradingViewModel extends ChangeNotifier {
     // Apply search filter
     if (_searchQuery.isNotEmpty) {
       filtered = filtered.where((entry) =>
-        entry.personName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        entry.estateName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        entry.mobile.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+        entry.personName?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false ||
+        (entry.estateName?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ?? false ||
+        (entry.mobile?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false) ?? false ||
         (entry.comments?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false)
       ).toList();
     }

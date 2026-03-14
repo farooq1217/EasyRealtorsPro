@@ -5,3 +5,4 @@ export 'src/db/dao.dart';
 export 'src/security/pbkdf2.dart';
 export 'src/csv/csv_models.dart';
 export 'src/auth/role_utils.dart';
+export 'src/domain/models/trading_entry.dart';

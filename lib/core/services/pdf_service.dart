@@ -4,7 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
-import '../../domain/models/trading_entry.dart';
+import 'package:shared/shared.dart' show TradingEntry, TradingType, TradingEntryType;
 
 class PdfService {
   static Future<void> generateTradingReport(List<TradingEntry> entries) async {
@@ -139,8 +139,8 @@ class PdfService {
                       ),
                       pw.SizedBox(height: 10),
                       _buildReceiptRow('Person Name', entry.personName),
-                      _buildReceiptRow('Mobile', entry.mobile),
-                      _buildReceiptRow('Estate Name', entry.estateName),
+                      _buildReceiptRow('Mobile', entry.mobile ?? 'N/A'),
+                      _buildReceiptRow('Estate Name', entry.estateName ?? 'N/A'),
                       if (entry.plotNo != null) _buildReceiptRow('Plot/Form #', entry.plotNo!),
                       if (entry.block != null) _buildReceiptRow('Block', entry.block!),
                       _buildReceiptRow('Transaction Type', entry.type == TradingType.buy ? 'BUY' : 'SELL'),

@@ -66,7 +66,13 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
     final s = await storage.readSettings();
     final token = s['authToken'] as String?;
     if (token != null) {
-      _currentUser = await AuthService().getCurrentUser(token);
+      try {
+        _currentUser = await AuthService().getCurrentUser(token);
+      } catch (e) {
+        debugPrint('InventoryPage: Error getting current user, falling back to memory: $e');
+        // Fall back to static current user if available
+        _currentUser = AuthService.currentUser;
+      }
     }
     
     final isSuper = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);

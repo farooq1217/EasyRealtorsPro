@@ -10434,6 +10434,729 @@ class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
   }
 }
 
+class $TradingFileEntriesTable extends TradingFileEntries
+    with TableInfo<$TradingFileEntriesTable, TradingFileEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TradingFileEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _companyIdMeta =
+      const VerificationMeta('companyId');
+  @override
+  late final GeneratedColumn<String> companyId = GeneratedColumn<String>(
+      'company_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createdByMeta =
+      const VerificationMeta('createdBy');
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+      'created_by', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+      'type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<String> date = GeneratedColumn<String>(
+      'date', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _mobileMeta = const VerificationMeta('mobile');
+  @override
+  late final GeneratedColumn<String> mobile = GeneratedColumn<String>(
+      'mobile', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _personNameMeta =
+      const VerificationMeta('personName');
+  @override
+  late final GeneratedColumn<String> personName = GeneratedColumn<String>(
+      'person_name', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _estateNameMeta =
+      const VerificationMeta('estateName');
+  @override
+  late final GeneratedColumn<String> estateName = GeneratedColumn<String>(
+      'estate_name', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _quantityMeta =
+      const VerificationMeta('quantity');
+  @override
+  late final GeneratedColumn<int> quantity = GeneratedColumn<int>(
+      'quantity', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _totalAmountMeta =
+      const VerificationMeta('totalAmount');
+  @override
+  late final GeneratedColumn<double> totalAmount = GeneratedColumn<double>(
+      'total_amount', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('Pending'));
+  static const VerificationMeta _commentsMeta =
+      const VerificationMeta('comments');
+  @override
+  late final GeneratedColumn<String> comments = GeneratedColumn<String>(
+      'comments', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
+  static const VerificationMeta _isSyncedMeta =
+      const VerificationMeta('isSynced');
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+      'is_synced', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_synced" IN (0, 1))'),
+      defaultValue: const Constant(true));
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        companyId,
+        createdBy,
+        type,
+        date,
+        mobile,
+        personName,
+        estateName,
+        quantity,
+        totalAmount,
+        status,
+        comments,
+        updatedAt,
+        isActive,
+        isSynced
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'trading_file_entries';
+  @override
+  VerificationContext validateIntegrity(Insertable<TradingFileEntry> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('company_id')) {
+      context.handle(_companyIdMeta,
+          companyId.isAcceptableOrUnknown(data['company_id']!, _companyIdMeta));
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(_createdByMeta,
+          createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta));
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+          _typeMeta, type.isAcceptableOrUnknown(data['type']!, _typeMeta));
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+          _dateMeta, date.isAcceptableOrUnknown(data['date']!, _dateMeta));
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('mobile')) {
+      context.handle(_mobileMeta,
+          mobile.isAcceptableOrUnknown(data['mobile']!, _mobileMeta));
+    }
+    if (data.containsKey('person_name')) {
+      context.handle(
+          _personNameMeta,
+          personName.isAcceptableOrUnknown(
+              data['person_name']!, _personNameMeta));
+    }
+    if (data.containsKey('estate_name')) {
+      context.handle(
+          _estateNameMeta,
+          estateName.isAcceptableOrUnknown(
+              data['estate_name']!, _estateNameMeta));
+    }
+    if (data.containsKey('quantity')) {
+      context.handle(_quantityMeta,
+          quantity.isAcceptableOrUnknown(data['quantity']!, _quantityMeta));
+    }
+    if (data.containsKey('total_amount')) {
+      context.handle(
+          _totalAmountMeta,
+          totalAmount.isAcceptableOrUnknown(
+              data['total_amount']!, _totalAmountMeta));
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    }
+    if (data.containsKey('comments')) {
+      context.handle(_commentsMeta,
+          comments.isAcceptableOrUnknown(data['comments']!, _commentsMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
+    if (data.containsKey('is_synced')) {
+      context.handle(_isSyncedMeta,
+          isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TradingFileEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TradingFileEntry(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      companyId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}company_id']),
+      createdBy: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}created_by']),
+      type: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}type'])!,
+      date: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}date'])!,
+      mobile: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}mobile']),
+      personName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}person_name']),
+      estateName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}estate_name']),
+      quantity: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}quantity']),
+      totalAmount: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}total_amount']),
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      comments: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}comments']),
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}updated_at'])!,
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
+      isSynced: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_synced'])!,
+    );
+  }
+
+  @override
+  $TradingFileEntriesTable createAlias(String alias) {
+    return $TradingFileEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class TradingFileEntry extends DataClass
+    implements Insertable<TradingFileEntry> {
+  final String id;
+  final String? companyId;
+  final String? createdBy;
+  final String type;
+  final String date;
+  final String? mobile;
+  final String? personName;
+  final String? estateName;
+  final int? quantity;
+  final double? totalAmount;
+  final String status;
+  final String? comments;
+  final String updatedAt;
+  final bool isActive;
+  final bool isSynced;
+  const TradingFileEntry(
+      {required this.id,
+      this.companyId,
+      this.createdBy,
+      required this.type,
+      required this.date,
+      this.mobile,
+      this.personName,
+      this.estateName,
+      this.quantity,
+      this.totalAmount,
+      required this.status,
+      this.comments,
+      required this.updatedAt,
+      required this.isActive,
+      required this.isSynced});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    if (!nullToAbsent || companyId != null) {
+      map['company_id'] = Variable<String>(companyId);
+    }
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
+    map['type'] = Variable<String>(type);
+    map['date'] = Variable<String>(date);
+    if (!nullToAbsent || mobile != null) {
+      map['mobile'] = Variable<String>(mobile);
+    }
+    if (!nullToAbsent || personName != null) {
+      map['person_name'] = Variable<String>(personName);
+    }
+    if (!nullToAbsent || estateName != null) {
+      map['estate_name'] = Variable<String>(estateName);
+    }
+    if (!nullToAbsent || quantity != null) {
+      map['quantity'] = Variable<int>(quantity);
+    }
+    if (!nullToAbsent || totalAmount != null) {
+      map['total_amount'] = Variable<double>(totalAmount);
+    }
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || comments != null) {
+      map['comments'] = Variable<String>(comments);
+    }
+    map['updated_at'] = Variable<String>(updatedAt);
+    map['is_active'] = Variable<bool>(isActive);
+    map['is_synced'] = Variable<bool>(isSynced);
+    return map;
+  }
+
+  TradingFileEntriesCompanion toCompanion(bool nullToAbsent) {
+    return TradingFileEntriesCompanion(
+      id: Value(id),
+      companyId: companyId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(companyId),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
+      type: Value(type),
+      date: Value(date),
+      mobile:
+          mobile == null && nullToAbsent ? const Value.absent() : Value(mobile),
+      personName: personName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(personName),
+      estateName: estateName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(estateName),
+      quantity: quantity == null && nullToAbsent
+          ? const Value.absent()
+          : Value(quantity),
+      totalAmount: totalAmount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(totalAmount),
+      status: Value(status),
+      comments: comments == null && nullToAbsent
+          ? const Value.absent()
+          : Value(comments),
+      updatedAt: Value(updatedAt),
+      isActive: Value(isActive),
+      isSynced: Value(isSynced),
+    );
+  }
+
+  factory TradingFileEntry.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TradingFileEntry(
+      id: serializer.fromJson<String>(json['id']),
+      companyId: serializer.fromJson<String?>(json['companyId']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
+      type: serializer.fromJson<String>(json['type']),
+      date: serializer.fromJson<String>(json['date']),
+      mobile: serializer.fromJson<String?>(json['mobile']),
+      personName: serializer.fromJson<String?>(json['personName']),
+      estateName: serializer.fromJson<String?>(json['estateName']),
+      quantity: serializer.fromJson<int?>(json['quantity']),
+      totalAmount: serializer.fromJson<double?>(json['totalAmount']),
+      status: serializer.fromJson<String>(json['status']),
+      comments: serializer.fromJson<String?>(json['comments']),
+      updatedAt: serializer.fromJson<String>(json['updatedAt']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'companyId': serializer.toJson<String?>(companyId),
+      'createdBy': serializer.toJson<String?>(createdBy),
+      'type': serializer.toJson<String>(type),
+      'date': serializer.toJson<String>(date),
+      'mobile': serializer.toJson<String?>(mobile),
+      'personName': serializer.toJson<String?>(personName),
+      'estateName': serializer.toJson<String?>(estateName),
+      'quantity': serializer.toJson<int?>(quantity),
+      'totalAmount': serializer.toJson<double?>(totalAmount),
+      'status': serializer.toJson<String>(status),
+      'comments': serializer.toJson<String?>(comments),
+      'updatedAt': serializer.toJson<String>(updatedAt),
+      'isActive': serializer.toJson<bool>(isActive),
+      'isSynced': serializer.toJson<bool>(isSynced),
+    };
+  }
+
+  TradingFileEntry copyWith(
+          {String? id,
+          Value<String?> companyId = const Value.absent(),
+          Value<String?> createdBy = const Value.absent(),
+          String? type,
+          String? date,
+          Value<String?> mobile = const Value.absent(),
+          Value<String?> personName = const Value.absent(),
+          Value<String?> estateName = const Value.absent(),
+          Value<int?> quantity = const Value.absent(),
+          Value<double?> totalAmount = const Value.absent(),
+          String? status,
+          Value<String?> comments = const Value.absent(),
+          String? updatedAt,
+          bool? isActive,
+          bool? isSynced}) =>
+      TradingFileEntry(
+        id: id ?? this.id,
+        companyId: companyId.present ? companyId.value : this.companyId,
+        createdBy: createdBy.present ? createdBy.value : this.createdBy,
+        type: type ?? this.type,
+        date: date ?? this.date,
+        mobile: mobile.present ? mobile.value : this.mobile,
+        personName: personName.present ? personName.value : this.personName,
+        estateName: estateName.present ? estateName.value : this.estateName,
+        quantity: quantity.present ? quantity.value : this.quantity,
+        totalAmount: totalAmount.present ? totalAmount.value : this.totalAmount,
+        status: status ?? this.status,
+        comments: comments.present ? comments.value : this.comments,
+        updatedAt: updatedAt ?? this.updatedAt,
+        isActive: isActive ?? this.isActive,
+        isSynced: isSynced ?? this.isSynced,
+      );
+  TradingFileEntry copyWithCompanion(TradingFileEntriesCompanion data) {
+    return TradingFileEntry(
+      id: data.id.present ? data.id.value : this.id,
+      companyId: data.companyId.present ? data.companyId.value : this.companyId,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      type: data.type.present ? data.type.value : this.type,
+      date: data.date.present ? data.date.value : this.date,
+      mobile: data.mobile.present ? data.mobile.value : this.mobile,
+      personName:
+          data.personName.present ? data.personName.value : this.personName,
+      estateName:
+          data.estateName.present ? data.estateName.value : this.estateName,
+      quantity: data.quantity.present ? data.quantity.value : this.quantity,
+      totalAmount:
+          data.totalAmount.present ? data.totalAmount.value : this.totalAmount,
+      status: data.status.present ? data.status.value : this.status,
+      comments: data.comments.present ? data.comments.value : this.comments,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TradingFileEntry(')
+          ..write('id: $id, ')
+          ..write('companyId: $companyId, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('type: $type, ')
+          ..write('date: $date, ')
+          ..write('mobile: $mobile, ')
+          ..write('personName: $personName, ')
+          ..write('estateName: $estateName, ')
+          ..write('quantity: $quantity, ')
+          ..write('totalAmount: $totalAmount, ')
+          ..write('status: $status, ')
+          ..write('comments: $comments, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isActive: $isActive, ')
+          ..write('isSynced: $isSynced')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      companyId,
+      createdBy,
+      type,
+      date,
+      mobile,
+      personName,
+      estateName,
+      quantity,
+      totalAmount,
+      status,
+      comments,
+      updatedAt,
+      isActive,
+      isSynced);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TradingFileEntry &&
+          other.id == this.id &&
+          other.companyId == this.companyId &&
+          other.createdBy == this.createdBy &&
+          other.type == this.type &&
+          other.date == this.date &&
+          other.mobile == this.mobile &&
+          other.personName == this.personName &&
+          other.estateName == this.estateName &&
+          other.quantity == this.quantity &&
+          other.totalAmount == this.totalAmount &&
+          other.status == this.status &&
+          other.comments == this.comments &&
+          other.updatedAt == this.updatedAt &&
+          other.isActive == this.isActive &&
+          other.isSynced == this.isSynced);
+}
+
+class TradingFileEntriesCompanion extends UpdateCompanion<TradingFileEntry> {
+  final Value<String> id;
+  final Value<String?> companyId;
+  final Value<String?> createdBy;
+  final Value<String> type;
+  final Value<String> date;
+  final Value<String?> mobile;
+  final Value<String?> personName;
+  final Value<String?> estateName;
+  final Value<int?> quantity;
+  final Value<double?> totalAmount;
+  final Value<String> status;
+  final Value<String?> comments;
+  final Value<String> updatedAt;
+  final Value<bool> isActive;
+  final Value<bool> isSynced;
+  final Value<int> rowid;
+  const TradingFileEntriesCompanion({
+    this.id = const Value.absent(),
+    this.companyId = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.type = const Value.absent(),
+    this.date = const Value.absent(),
+    this.mobile = const Value.absent(),
+    this.personName = const Value.absent(),
+    this.estateName = const Value.absent(),
+    this.quantity = const Value.absent(),
+    this.totalAmount = const Value.absent(),
+    this.status = const Value.absent(),
+    this.comments = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  TradingFileEntriesCompanion.insert({
+    required String id,
+    this.companyId = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    required String type,
+    required String date,
+    this.mobile = const Value.absent(),
+    this.personName = const Value.absent(),
+    this.estateName = const Value.absent(),
+    this.quantity = const Value.absent(),
+    this.totalAmount = const Value.absent(),
+    this.status = const Value.absent(),
+    this.comments = const Value.absent(),
+    required String updatedAt,
+    this.isActive = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        type = Value(type),
+        date = Value(date),
+        updatedAt = Value(updatedAt);
+  static Insertable<TradingFileEntry> custom({
+    Expression<String>? id,
+    Expression<String>? companyId,
+    Expression<String>? createdBy,
+    Expression<String>? type,
+    Expression<String>? date,
+    Expression<String>? mobile,
+    Expression<String>? personName,
+    Expression<String>? estateName,
+    Expression<int>? quantity,
+    Expression<double>? totalAmount,
+    Expression<String>? status,
+    Expression<String>? comments,
+    Expression<String>? updatedAt,
+    Expression<bool>? isActive,
+    Expression<bool>? isSynced,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (companyId != null) 'company_id': companyId,
+      if (createdBy != null) 'created_by': createdBy,
+      if (type != null) 'type': type,
+      if (date != null) 'date': date,
+      if (mobile != null) 'mobile': mobile,
+      if (personName != null) 'person_name': personName,
+      if (estateName != null) 'estate_name': estateName,
+      if (quantity != null) 'quantity': quantity,
+      if (totalAmount != null) 'total_amount': totalAmount,
+      if (status != null) 'status': status,
+      if (comments != null) 'comments': comments,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (isActive != null) 'is_active': isActive,
+      if (isSynced != null) 'is_synced': isSynced,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  TradingFileEntriesCompanion copyWith(
+      {Value<String>? id,
+      Value<String?>? companyId,
+      Value<String?>? createdBy,
+      Value<String>? type,
+      Value<String>? date,
+      Value<String?>? mobile,
+      Value<String?>? personName,
+      Value<String?>? estateName,
+      Value<int?>? quantity,
+      Value<double?>? totalAmount,
+      Value<String>? status,
+      Value<String?>? comments,
+      Value<String>? updatedAt,
+      Value<bool>? isActive,
+      Value<bool>? isSynced,
+      Value<int>? rowid}) {
+    return TradingFileEntriesCompanion(
+      id: id ?? this.id,
+      companyId: companyId ?? this.companyId,
+      createdBy: createdBy ?? this.createdBy,
+      type: type ?? this.type,
+      date: date ?? this.date,
+      mobile: mobile ?? this.mobile,
+      personName: personName ?? this.personName,
+      estateName: estateName ?? this.estateName,
+      quantity: quantity ?? this.quantity,
+      totalAmount: totalAmount ?? this.totalAmount,
+      status: status ?? this.status,
+      comments: comments ?? this.comments,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isActive: isActive ?? this.isActive,
+      isSynced: isSynced ?? this.isSynced,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (companyId.present) {
+      map['company_id'] = Variable<String>(companyId.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<String>(date.value);
+    }
+    if (mobile.present) {
+      map['mobile'] = Variable<String>(mobile.value);
+    }
+    if (personName.present) {
+      map['person_name'] = Variable<String>(personName.value);
+    }
+    if (estateName.present) {
+      map['estate_name'] = Variable<String>(estateName.value);
+    }
+    if (quantity.present) {
+      map['quantity'] = Variable<int>(quantity.value);
+    }
+    if (totalAmount.present) {
+      map['total_amount'] = Variable<double>(totalAmount.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (comments.present) {
+      map['comments'] = Variable<String>(comments.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<String>(updatedAt.value);
+    }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TradingFileEntriesCompanion(')
+          ..write('id: $id, ')
+          ..write('companyId: $companyId, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('type: $type, ')
+          ..write('date: $date, ')
+          ..write('mobile: $mobile, ')
+          ..write('personName: $personName, ')
+          ..write('estateName: $estateName, ')
+          ..write('quantity: $quantity, ')
+          ..write('totalAmount: $totalAmount, ')
+          ..write('status: $status, ')
+          ..write('comments: $comments, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isActive: $isActive, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10460,6 +11183,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ExpendituresTable expenditures = $ExpendituresTable(this);
   late final $ExpenditureSubItemsTable expenditureSubItems =
       $ExpenditureSubItemsTable(this);
+  late final $TradingFileEntriesTable tradingFileEntries =
+      $TradingFileEntriesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10483,7 +11208,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         syncLogs,
         clients,
         expenditures,
-        expenditureSubItems
+        expenditureSubItems,
+        tradingFileEntries
       ];
 }
 
@@ -17492,6 +18218,331 @@ typedef $$ExpenditureSubItemsTableProcessedTableManager = ProcessedTableManager<
     (ExpenditureSubItem, $$ExpenditureSubItemsTableReferences),
     ExpenditureSubItem,
     PrefetchHooks Function({bool parentId})>;
+typedef $$TradingFileEntriesTableCreateCompanionBuilder
+    = TradingFileEntriesCompanion Function({
+  required String id,
+  Value<String?> companyId,
+  Value<String?> createdBy,
+  required String type,
+  required String date,
+  Value<String?> mobile,
+  Value<String?> personName,
+  Value<String?> estateName,
+  Value<int?> quantity,
+  Value<double?> totalAmount,
+  Value<String> status,
+  Value<String?> comments,
+  required String updatedAt,
+  Value<bool> isActive,
+  Value<bool> isSynced,
+  Value<int> rowid,
+});
+typedef $$TradingFileEntriesTableUpdateCompanionBuilder
+    = TradingFileEntriesCompanion Function({
+  Value<String> id,
+  Value<String?> companyId,
+  Value<String?> createdBy,
+  Value<String> type,
+  Value<String> date,
+  Value<String?> mobile,
+  Value<String?> personName,
+  Value<String?> estateName,
+  Value<int?> quantity,
+  Value<double?> totalAmount,
+  Value<String> status,
+  Value<String?> comments,
+  Value<String> updatedAt,
+  Value<bool> isActive,
+  Value<bool> isSynced,
+  Value<int> rowid,
+});
+
+class $$TradingFileEntriesTableFilterComposer
+    extends Composer<_$AppDatabase, $TradingFileEntriesTable> {
+  $$TradingFileEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get companyId => $composableBuilder(
+      column: $table.companyId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+      column: $table.createdBy, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get type => $composableBuilder(
+      column: $table.type, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get date => $composableBuilder(
+      column: $table.date, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get mobile => $composableBuilder(
+      column: $table.mobile, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get personName => $composableBuilder(
+      column: $table.personName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get estateName => $composableBuilder(
+      column: $table.estateName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get quantity => $composableBuilder(
+      column: $table.quantity, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get totalAmount => $composableBuilder(
+      column: $table.totalAmount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get comments => $composableBuilder(
+      column: $table.comments, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+      column: $table.isSynced, builder: (column) => ColumnFilters(column));
+}
+
+class $$TradingFileEntriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $TradingFileEntriesTable> {
+  $$TradingFileEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get companyId => $composableBuilder(
+      column: $table.companyId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+      column: $table.createdBy, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get type => $composableBuilder(
+      column: $table.type, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get date => $composableBuilder(
+      column: $table.date, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get mobile => $composableBuilder(
+      column: $table.mobile, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get personName => $composableBuilder(
+      column: $table.personName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get estateName => $composableBuilder(
+      column: $table.estateName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get quantity => $composableBuilder(
+      column: $table.quantity, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get totalAmount => $composableBuilder(
+      column: $table.totalAmount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get comments => $composableBuilder(
+      column: $table.comments, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+      column: $table.isSynced, builder: (column) => ColumnOrderings(column));
+}
+
+class $$TradingFileEntriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TradingFileEntriesTable> {
+  $$TradingFileEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get companyId =>
+      $composableBuilder(column: $table.companyId, builder: (column) => column);
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<String> get mobile =>
+      $composableBuilder(column: $table.mobile, builder: (column) => column);
+
+  GeneratedColumn<String> get personName => $composableBuilder(
+      column: $table.personName, builder: (column) => column);
+
+  GeneratedColumn<String> get estateName => $composableBuilder(
+      column: $table.estateName, builder: (column) => column);
+
+  GeneratedColumn<int> get quantity =>
+      $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  GeneratedColumn<double> get totalAmount => $composableBuilder(
+      column: $table.totalAmount, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get comments =>
+      $composableBuilder(column: $table.comments, builder: (column) => column);
+
+  GeneratedColumn<String> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+}
+
+class $$TradingFileEntriesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $TradingFileEntriesTable,
+    TradingFileEntry,
+    $$TradingFileEntriesTableFilterComposer,
+    $$TradingFileEntriesTableOrderingComposer,
+    $$TradingFileEntriesTableAnnotationComposer,
+    $$TradingFileEntriesTableCreateCompanionBuilder,
+    $$TradingFileEntriesTableUpdateCompanionBuilder,
+    (
+      TradingFileEntry,
+      BaseReferences<_$AppDatabase, $TradingFileEntriesTable, TradingFileEntry>
+    ),
+    TradingFileEntry,
+    PrefetchHooks Function()> {
+  $$TradingFileEntriesTableTableManager(
+      _$AppDatabase db, $TradingFileEntriesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TradingFileEntriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TradingFileEntriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TradingFileEntriesTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String?> companyId = const Value.absent(),
+            Value<String?> createdBy = const Value.absent(),
+            Value<String> type = const Value.absent(),
+            Value<String> date = const Value.absent(),
+            Value<String?> mobile = const Value.absent(),
+            Value<String?> personName = const Value.absent(),
+            Value<String?> estateName = const Value.absent(),
+            Value<int?> quantity = const Value.absent(),
+            Value<double?> totalAmount = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<String?> comments = const Value.absent(),
+            Value<String> updatedAt = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
+            Value<bool> isSynced = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              TradingFileEntriesCompanion(
+            id: id,
+            companyId: companyId,
+            createdBy: createdBy,
+            type: type,
+            date: date,
+            mobile: mobile,
+            personName: personName,
+            estateName: estateName,
+            quantity: quantity,
+            totalAmount: totalAmount,
+            status: status,
+            comments: comments,
+            updatedAt: updatedAt,
+            isActive: isActive,
+            isSynced: isSynced,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            Value<String?> companyId = const Value.absent(),
+            Value<String?> createdBy = const Value.absent(),
+            required String type,
+            required String date,
+            Value<String?> mobile = const Value.absent(),
+            Value<String?> personName = const Value.absent(),
+            Value<String?> estateName = const Value.absent(),
+            Value<int?> quantity = const Value.absent(),
+            Value<double?> totalAmount = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<String?> comments = const Value.absent(),
+            required String updatedAt,
+            Value<bool> isActive = const Value.absent(),
+            Value<bool> isSynced = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              TradingFileEntriesCompanion.insert(
+            id: id,
+            companyId: companyId,
+            createdBy: createdBy,
+            type: type,
+            date: date,
+            mobile: mobile,
+            personName: personName,
+            estateName: estateName,
+            quantity: quantity,
+            totalAmount: totalAmount,
+            status: status,
+            comments: comments,
+            updatedAt: updatedAt,
+            isActive: isActive,
+            isSynced: isSynced,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$TradingFileEntriesTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $TradingFileEntriesTable,
+    TradingFileEntry,
+    $$TradingFileEntriesTableFilterComposer,
+    $$TradingFileEntriesTableOrderingComposer,
+    $$TradingFileEntriesTableAnnotationComposer,
+    $$TradingFileEntriesTableCreateCompanionBuilder,
+    $$TradingFileEntriesTableUpdateCompanionBuilder,
+    (
+      TradingFileEntry,
+      BaseReferences<_$AppDatabase, $TradingFileEntriesTable, TradingFileEntry>
+    ),
+    TradingFileEntry,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -17534,4 +18585,6 @@ class $AppDatabaseManager {
       $$ExpendituresTableTableManager(_db, _db.expenditures);
   $$ExpenditureSubItemsTableTableManager get expenditureSubItems =>
       $$ExpenditureSubItemsTableTableManager(_db, _db.expenditureSubItems);
+  $$TradingFileEntriesTableTableManager get tradingFileEntries =>
+      $$TradingFileEntriesTableTableManager(_db, _db.tradingFileEntries);
 }

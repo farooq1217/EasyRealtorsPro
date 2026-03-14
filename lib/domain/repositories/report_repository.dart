@@ -1,6 +1,6 @@
 // domain/repositories/report_repository.dart
 import 'dart:typed_data';
-import 'package:shared/shared.dart' show WorkingProgressData, Expenditure;
+import 'package:shared/shared.dart' show WorkingProgressData, Expenditure, RentalItem, TradingEntry, Reminder;
 
 /// Repository interface for Reports and Professional Receipt Generation module operations
 abstract class ReportRepository {
@@ -39,6 +39,27 @@ abstract class ReportRepository {
     String? endDate,
     String? category,
     String? kind,
+  });
+
+  Future<List<RentalItem>> getRentalReport({
+    String? companyId,
+    bool isSuperAdmin = false,
+    String? startDate,
+    String? endDate,
+  });
+
+  Future<List<Reminder>> getTodoReport({
+    String? companyId,
+    bool isSuperAdmin = false,
+    String? startDate,
+    String? endDate,
+  });
+
+  Future<List<TradingEntry>> getTradingReport({
+    String? companyId,
+    bool isSuperAdmin = false,
+    String? startDate,
+    String? endDate,
   });
 
   // Summary Statistics

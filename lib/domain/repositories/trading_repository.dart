@@ -1,6 +1,6 @@
 // domain/repositories/trading_repository.dart
 import 'dart:async';
-import '../models/trading_entry.dart';
+import 'package:shared/shared.dart' show TradingEntry, TradingEntryType;
 
 abstract class TradingRepository {
   // Basic CRUD operations

@@ -304,6 +304,26 @@ class ExpenditureSubItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class TradingFileEntries extends Table {
+  TextColumn get id => text()();
+  TextColumn get companyId => text().nullable()();
+  TextColumn get createdBy => text().nullable()();
+  TextColumn get type => text()(); // 'buy' or 'sell'
+  TextColumn get date => text()();
+  TextColumn get mobile => text().nullable()();
+  TextColumn get personName => text().nullable()();
+  TextColumn get estateName => text().nullable()();
+  IntColumn get quantity => integer().nullable()();
+  RealColumn get totalAmount => real().nullable()(); // payment for file entries
+  TextColumn get status => text().withDefault(const Constant('Pending'))();
+  TextColumn get comments => text().nullable()();
+  TextColumn get updatedAt => text()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DriftDatabase(tables: [
   Companies,
   Users,
@@ -324,6 +344,7 @@ class ExpenditureSubItems extends Table {
   Clients,
   Expenditures,
   ExpenditureSubItems,
+  TradingFileEntries,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(QueryExecutor e) : super(e);
@@ -827,6 +848,27 @@ Future<void> _ensureBusinessTables(dynamic db) async {
     )
   ''');
 
+  // Trading file entries - LEGACY TABLE FOR BACKWARD COMPATIBILITY
+  await run('''
+    CREATE TABLE IF NOT EXISTS trading_file_entries (
+      id TEXT PRIMARY KEY,
+      company_id TEXT,
+      created_by TEXT,
+      type TEXT NOT NULL, -- 'buy' or 'sell'
+      date TEXT NOT NULL,
+      mobile TEXT,
+      person_name TEXT,
+      estate_name TEXT,
+      quantity INTEGER,
+      total_amount REAL, -- payment for file entries
+      status TEXT NOT NULL DEFAULT 'Pending',
+      comments TEXT,
+      updated_at TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      is_synced INTEGER NOT NULL DEFAULT 1
+    )
+  ''');
+
   // Expenditures
   await run('''
     CREATE TABLE IF NOT EXISTS expenditures (
@@ -892,16 +934,17 @@ Future<void> _safeAddIsActiveColumnsToBusinessTables(GeneratedDatabase db) async
     'ALTER TABLE trading_entries ADD COLUMN commission REAL', 
     'ALTER TABLE trading_entries ADD COLUMN tax REAL', 
     'ALTER TABLE trading_entries ADD COLUMN rate REAL', 
-    'DROP TABLE IF EXISTS trading_file_entries',
+    // Note: trading_file_entries table is now created with is_active and is_synced columns
+    // No need to drop it - it's maintained for backward compatibility
   ]) {
     try {
       await db.customStatement(stmt);
-    } catch (_) {}
+    } catch (e) {
+      // Column might already exist, ignore error
+    }
   }
 
-  try {
-    print('[MIGRATION] ensured is_active columns on business tables');
-  } catch (_) {}
+  print('[MIGRATION] ensured is_active columns on business tables');
 
   // Backfill to active so existing records are considered active
   for (final stmt in [

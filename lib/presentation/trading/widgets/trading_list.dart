@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/font_utils.dart';
 import 'package:intl/intl.dart';
-import '../../../domain/models/trading_entry.dart';
+import 'package:shared/shared.dart' show TradingEntry, TradingType, TradingEntryType;
 import '../../../core/services/pdf_service.dart';
 import 'trading_details_modal.dart';
 
@@ -64,7 +64,7 @@ class TradingList extends StatelessWidget {
                           children: [
                             // Main Title: Estate Name
                             Text(
-                              entry.estateName,
+                              entry.estateName ?? 'N/A',
                               style: AppFonts.poppins(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -127,7 +127,7 @@ class TradingList extends StatelessWidget {
                       Expanded(
                         child: _buildSubtitleRow(
                           icon: Icons.phone_outlined,
-                          label: entry.mobile,
+                          label: entry.mobile ?? 'N/A',
                         ),
                       ),
                     ],

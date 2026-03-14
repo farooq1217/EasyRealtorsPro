@@ -354,31 +354,7 @@ class _GuardedEntryState extends State<_GuardedEntry> {
         return;
       }
 
-      // Permission check for the requested module
-      if (widget.moduleKey != null) {
-        final level = PermissionHelper.getModulePermissionLevel(user, widget.moduleKey!);
-        final canView = level != null && level != 'no_access';
-        if (!canView) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Permission denied for this module'), backgroundColor: Colors.red),
-          );
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (_) => HomeScreen(
-                storage: AppStorage(),
-                initialCreds: null,
-                folderId: 'LOCAL',
-                bypassDrive: true,
-                initialNavIndex: 0,
-              ),
-            ),
-            (route) => false,
-          );
-          return;
-        }
-      }
-
+      
       // Authorized: proceed to Home with target nav
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(

@@ -51,6 +51,23 @@ class CompanyViewModel extends ChangeNotifier {
   List<CompanyModel> get filteredCompanies => _filteredCompanies;
   CompanyModel? get editingCompany => _editingCompany;
   String get searchQuery => _searchQuery;
+  
+  // Set mounted state and process any stored data
+  void setMounted(bool mounted) {
+    _mounted = mounted;
+    debugPrint('CompanyViewModel: setMounted called with mounted: $mounted');
+    
+    if (mounted && _companies.isNotEmpty) {
+      debugPrint('CompanyViewModel: Widget mounted, processing stored ${_companies.length} companies');
+      
+      // Process the stored data that was received before widget was mounted
+      _companies = _companies;
+      _applySearchFilter();
+      
+      debugPrint('CompanyViewModel: Stored data processed, notifyListeners called');
+      notifyListeners();
+    }
+  }
 
   // Form getters
   TextEditingController get nameController => _nameController;
@@ -86,9 +103,20 @@ class CompanyViewModel extends ChangeNotifier {
     PermissionHelper.getModulePermissionLevel(_currentUser, 'companies').contains('delete') || 
     RoleUtils.isSuperAdmin(_currentUser);
 
-  // Subscription tiers
-  List<String> get subscriptionTiers => ['Starter', 'Professional', 'Enterprise'];
+  // Subscription tiers with static limits
+  static const Map<String, int> _tierLimits = {
+    'Starter': 5,
+    'Professional': 15,
+    'Enterprise': 50,
+  };
+  
+  List<String> get subscriptionTiers => _tierLimits.keys.toList();
   List<String> get statuses => ['active', 'inactive', 'archived'];
+  
+  // Synchronous method to get user limit for tier
+  int getUserLimitForTier(String? tier) {
+    return _tierLimits[tier ?? 'Starter'] ?? 5;
+  }
 
   // Initialization
   Future<void> initialize() async {
@@ -126,26 +154,52 @@ class CompanyViewModel extends ChangeNotifier {
   }
 
   Future<void> _setupStreams() async {
+    // Debug permission information
+    debugPrint('CompanyViewModel: Current User Role: ${_currentUser?['permissions']}');
+    debugPrint('CompanyViewModel: Current User Data: $_currentUser');
+    debugPrint('CompanyViewModel: Is Super Admin: ${RoleUtils.isSuperAdmin(_currentUser)}');
+    debugPrint('CompanyViewModel: Widget mounted state: $mounted');
+    
     // Cancel existing subscription
     await _companiesSubscription?.cancel();
+    
+    debugPrint('CompanyViewModel: Setting up stream subscription...');
     
     // Setup new stream
     _companiesSubscription = _repository.watchCompanies().listen(
       (data) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
+        debugPrint('CompanyViewModel: RAW STREAM DATA RECEIVED - ${data.length} companies');
+        debugPrint('CompanyViewModel: Widget mounted state in stream: $mounted');
+        
+        // Process data immediately without waiting for postFrameCallback
+        if (!mounted) {
+          debugPrint('CompanyViewModel: Widget not mounted, storing data for later');
+          // Store data for when widget becomes mounted
           _companies = data;
-          _applySearchFilter();
-        });
+          return;
+        }
+        
+        debugPrint('CompanyViewModel: Received ${data.length} companies from repository');
+        _companies = data;
+        _applySearchFilter();
+        
+        debugPrint('CompanyViewModel: notifyListeners called');
+        notifyListeners();
       },
       onError: (e) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
+        debugPrint('CompanyViewModel: STREAM ERROR - $e');
+        if (mounted) {
           _error = 'Error loading companies: $e';
+          debugPrint('CompanyViewModel: Stream error - $e');
           notifyListeners();
-        });
+        }
+      },
+      onDone: () {
+        debugPrint('CompanyViewModel: Stream completed');
       },
     );
+    
+    debugPrint('CompanyViewModel: Stream subscription setup complete');
   }
 
   // Search functionality
@@ -248,7 +302,7 @@ class CompanyViewModel extends ChangeNotifier {
 
       // Set default user limit based on subscription tier if not provided
       if (maxUserLimit == null) {
-        maxUserLimit = await getUserLimitForTier(_selectedSubscriptionTier);
+        maxUserLimit = getUserLimitForTier(_selectedSubscriptionTier);
       }
 
       // Create or update company
@@ -372,7 +426,7 @@ class CompanyViewModel extends ChangeNotifier {
       await _repository.updateSubscriptionTier(companyId, tier);
       
       // Update user limit based on new tier
-      final newLimit = await _repository.getUserLimitForTier(tier);
+      final newLimit = getUserLimitForTier(tier);
       await updateUserLimit(companyId, newLimit);
     } catch (e) {
       _error = 'Failed to update subscription tier: $e';
@@ -402,15 +456,6 @@ class CompanyViewModel extends ChangeNotifier {
   }
 
   // Utility methods
-  Future<int> getUserLimitForTier(String? tier) async {
-    try {
-      return await _repository.getUserLimitForTier(tier ?? 'Starter');
-    } catch (e) {
-      debugPrint('Error getting user limit for tier: $e');
-      return 5;
-    }
-  }
-
   void refreshData() {
     _setupStreams();
   }

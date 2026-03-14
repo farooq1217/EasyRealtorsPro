@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:drift/drift.dart' as d;
 import 'package:uuid/uuid.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import '../../domain/models/company_model.dart';
 import '../../domain/repositories/company_repository.dart';
@@ -9,6 +9,7 @@ import '../../core/services/sync_database_helper.dart';
 import '../../firestore_sync_service.dart';
 import '../../core/services/app_storage.dart';
 import '../../core/app_utils.dart';
+import '../../core/services/firebase_threading_handler.dart';
 import 'package:shared/shared.dart';
 
 class CompanyRepositoryImpl implements CompanyRepository {
@@ -19,7 +20,22 @@ class CompanyRepositoryImpl implements CompanyRepository {
   // SQLite-only flag - disables all Firestore operations
   static const bool _sqliteOnlyMode = true;
 
+  // Platform detection for thread safety
+  static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
+
   CompanyRepositoryImpl(this.db);
+
+  // Helper method to wrap streams with platform thread safety
+  Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
+    if (_isWindows) {
+      debugPrint('CompanyRepository: Wrapping $streamName with Windows thread safety');
+      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+        stream,
+        streamName: 'CompanyRepository $streamName',
+      );
+    }
+    return stream;
+  }
 
   // Helper method to disable Firestore operations in SQLite-only mode
   bool _isFirestoreOperationAllowed() {
@@ -185,9 +201,37 @@ class CompanyRepositoryImpl implements CompanyRepository {
 
   @override
   Stream<List<CompanyModel>> watchCompanies() {
-    // For now, return a one-time stream. In a full implementation, 
-    // this would use Drift's watch() method for real-time updates
-    return getCompanies().asStream();
+    try {
+      debugPrint('CompanyRepository: watchCompanies starting...');
+      
+      final stream = db
+          .customSelect(
+            '''
+            SELECT id, name, status, metadata, logo_url, address, contact, 
+                   max_user_limit, subscription_tier, is_active, is_synced, 
+                   created_at, updated_at
+            FROM companies 
+            WHERE (is_active = 1 OR is_active IS NULL OR is_active = 0)
+            AND (status IS NULL OR status != 'deleted')
+            ORDER BY updated_at DESC
+            ''',
+          )
+          .watch()
+          .map((rows) {
+            debugPrint('CompanyRepository: watchCompanies fetched ${rows.length} rows');
+            return rows.map((r) {
+              debugPrint('CompanyRepository: mapping company data: ${r.data}');
+              return CompanyModel.fromMap(r.data);
+            }).toList();
+          });
+      
+      // CRITICAL: Wrap stream with platform thread safety for Windows
+      return _wrapStreamWithThreadSafety(stream, 'watchCompanies');
+    } catch (e) {
+      debugPrint('Error in watchCompanies stream: $e');
+      // Return empty stream on error
+      return Stream.value([]);
+    }
   }
 
   @override
