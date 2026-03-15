@@ -20,7 +20,8 @@ import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
 
 import 'core/services/auth_service.dart';
-import 'domain/models/expenditure_item.dart';
+import 'features/users/models/user_model.dart';
+import 'features/expenditure/models/expenditure_item.dart';
 import 'image_cache_service.dart';
 
 class ReportBranding {

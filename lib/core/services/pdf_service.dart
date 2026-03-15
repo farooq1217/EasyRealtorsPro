@@ -4,7 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
-import 'package:shared/shared.dart' show TradingEntry, TradingType, TradingEntryType;
+import 'package:shared/shared.dart' show TradingEntry;
 
 class PdfService {
   static Future<void> generateTradingReport(List<TradingEntry> entries) async {
@@ -27,17 +27,16 @@ class PdfService {
           ),
           pw.SizedBox(height: 20),
           pw.TableHelper.fromTextArray(
-            headers: ['Type', 'Person Name', 'Estate', 'Plot', 'Base Rate', 'Commission', 'Tax', 'Net Amount', 'Status'],
+            headers: ['Type', 'Person Name', 'Estate', 'Quantity', 'Unit Price', 'Total Price', 'Date', 'Mobile'],
             data: entries.map((e) => [
-              e.type == TradingType.buy ? 'BUY' : 'SELL',
+              e.entryType == 'buy' ? 'BUY' : 'SELL',
               e.personName,
               e.estateName,
-              e.plotNo ?? '-',
-              'Rs. ${e.rate?.toStringAsFixed(0) ?? '0'}',
-              'Rs. ${e.commission?.toStringAsFixed(0) ?? '0'}',
-              'Rs. ${e.tax?.toStringAsFixed(0) ?? '0'}',
-              'Rs. ${e.netAmount?.toStringAsFixed(0) ?? '0'}',
-              e.status,
+              e.quantity.toString(),
+              'Rs. ${e.unitPrice.toStringAsFixed(2)}',
+              'Rs. ${e.totalPrice.toStringAsFixed(2)}',
+              DateFormat('dd MMM yyyy').format(e.date),
+              e.mobileNo,
             ]).toList(),
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
@@ -67,10 +66,8 @@ class PdfService {
               children: [
                 pw.Text('Summary', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 10),
-                pw.Text('Total Entries: ${entries.length.toString()}'),
-                pw.Text('Total Net Amount: Rs. ${entries.fold<double>(0, (sum, e) => (sum + (e.netAmount ?? 0.0))).toStringAsFixed(0)}'),
-                pw.Text('Total Commission: Rs. ${entries.fold<double>(0, (sum, e) => (sum + (e.commission ?? 0.0))).toStringAsFixed(0)}'),
-                pw.Text('Total Tax: Rs. ${entries.fold<double>(0, (sum, e) => (sum + (e.tax ?? 0.0))).toStringAsFixed(0)}'),
+                pw.Text('Total Quantity: ${entries.fold<double>(0, (sum, e) => sum + e.quantity).toStringAsFixed(0)}'),
+                pw.Text('Total Value: Rs. ${entries.fold<double>(0, (sum, e) => sum + e.totalPrice).toStringAsFixed(2)}'),
               ],
             ),
           ),
@@ -139,16 +136,11 @@ class PdfService {
                       ),
                       pw.SizedBox(height: 10),
                       _buildReceiptRow('Person Name', entry.personName),
-                      _buildReceiptRow('Mobile', entry.mobile ?? 'N/A'),
-                      _buildReceiptRow('Estate Name', entry.estateName ?? 'N/A'),
-                      if (entry.plotNo != null) _buildReceiptRow('Plot/Form #', entry.plotNo!),
-                      if (entry.block != null) _buildReceiptRow('Block', entry.block!),
-                      _buildReceiptRow('Transaction Type', entry.type == TradingType.buy ? 'BUY' : 'SELL'),
-                      _buildReceiptRow('Entry Type', entry.entryType == TradingEntryType.file ? 'FILE' : 'FORM'),
+                      _buildReceiptRow('Mobile', entry.mobileNo),
+                      _buildReceiptRow('Estate Name', entry.estateName),
+                      _buildReceiptRow('Quantity', entry.quantity.toString()),
+                      _buildReceiptRow('Entry Type', entry.entryType),
                       _buildReceiptRow('Date', DateFormat('dd MMM yyyy').format(entry.date)),
-                      _buildReceiptRow('Status', entry.status),
-                      if (entry.comments != null && entry.comments!.isNotEmpty)
-                        _buildReceiptRow('Comments', entry.comments!),
                     ],
                   ),
                 ),
@@ -172,11 +164,9 @@ class PdfService {
                         ),
                       ),
                       pw.SizedBox(height: 10),
-                      if (entry.rate != null) _buildReceiptRow('Rate', 'Rs. ${NumberFormat('#,###').format(entry.rate)}'),
-                      if (entry.commission != null) _buildReceiptRow('Commission', 'Rs. ${NumberFormat('#,###').format(entry.commission)}'),
-                      if (entry.tax != null) _buildReceiptRow('Tax', 'Rs. ${NumberFormat('#,###').format(entry.tax)}'),
-                      if (entry.netAmount != null) _buildReceiptRow('Net Amount', 'Rs. ${NumberFormat('#,###').format(entry.netAmount)}'),
-                      if (entry.totalAmount != null) _buildReceiptRow('Total Amount', 'Rs. ${NumberFormat('#,###').format(entry.totalAmount)}'),
+                      _buildReceiptRow('Unit Price', 'Rs. ${entry.unitPrice.toStringAsFixed(2)}'),
+                      _buildReceiptRow('Quantity', entry.quantity.toString()),
+                      _buildReceiptRow('Total Price', 'Rs. ${entry.totalPrice.toStringAsFixed(2)}'),
                     ],
                   ),
                 ),

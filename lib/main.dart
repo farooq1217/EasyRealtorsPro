@@ -29,6 +29,49 @@ void main() async {
       return openAppExecutor(dbFile.path);
     });
 
+    // Development mode: Reset database if schema issues detected
+    if (kDebugMode) {
+      try {
+        // Try to access the database to check if it's working
+        final db = await AppDatabase.instance();
+        
+        // Check table schema directly to detect all missing columns
+        try {
+          final tableInfo = await db.customSelect('PRAGMA table_info(trading_entries)').get();
+          final columns = tableInfo.map((row) => row.data['name'] as String).toSet();
+          
+          print('[MAIN] Current trading_entries columns: ${columns.toList()}');
+          
+          final requiredColumns = {
+            'id', 'entry_type', 'date', 'person_name', 'mobile_no', 
+            'estate_name', 'quantity', 'unit_price', 'image_path',
+            'company_id', 'is_active', 'is_synced', 'created_at', 'updated_at', 'status'
+          };
+          
+          final missingColumns = requiredColumns.where((col) => !columns.contains(col));
+          
+          if (missingColumns.isNotEmpty) {
+            print('[MAIN] Missing columns detected: $missingColumns');
+            print('[MAIN] Resetting database in development mode...');
+            await AppDatabase.closeInstance();
+            await AppDatabase.resetDatabaseInDevMode();
+          } else {
+            print('[MAIN] Database schema validation passed');
+          }
+        } catch (e) {
+          // If schema check fails, reset the database
+          print('[MAIN] Database schema check failed: $e');
+          print('[MAIN] Resetting database in development mode...');
+          await AppDatabase.closeInstance();
+          await AppDatabase.resetDatabaseInDevMode();
+        }
+      } catch (e) {
+        print('[MAIN] Database initialization failed: $e');
+        print('[MAIN] Resetting database in development mode...');
+        await AppDatabase.resetDatabaseInDevMode();
+      }
+    }
+
     // 2. Firebase Initialization - Wrapped in postFrame callback to avoid threading issues
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await runZonedGuarded(() async {

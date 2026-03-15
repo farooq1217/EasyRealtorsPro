@@ -7,7 +7,7 @@ import '../login_page.dart';
 import '../offline_sync_service.dart';
 import '../shimmer_widgets.dart';
 import 'services/app_storage.dart' show AppStorage;
-import '../modules/rental/rental_page_original.dart' show HomeScreen;
+import '../features/rental/rental_page.dart' show HomeScreen;
 import 'services/auth_service.dart';
 import 'services/permission_helper.dart';
 import 'services/background_sync_manager.dart';

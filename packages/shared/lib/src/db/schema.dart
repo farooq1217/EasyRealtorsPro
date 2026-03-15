@@ -1,4 +1,8 @@
+import 'dart:io';
 import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 part 'schema.g.dart';
 
@@ -390,8 +394,49 @@ class AppDatabase extends _$AppDatabase {
     await db?.close();
   }
 
+  /// Development mode: Reset database to ensure fresh schema
+  /// WARNING: This will delete all local data. Use only in development!
+  static Future<void> resetDatabaseInDevMode() async {
+    try {
+      // Check if we're in debug mode
+      bool isDebugMode = false;
+      assert(isDebugMode = true);
+      
+      if (!isDebugMode) {
+        print('[DB] Database reset only allowed in debug mode');
+        return;
+      }
+      
+      print('[DB] Resetting database in development mode...');
+      
+      // Close existing instance
+      await closeInstance();
+      
+      // Get the database file path using path_provider
+      try {
+        final appDir = await getApplicationSupportDirectory();
+        final dbFile = File(p.join(appDir.path, 'data.sqlite'));
+        print('[DB] Deleting database file: ${dbFile.path}');
+        
+        // Delete the database file
+        if (await dbFile.exists()) {
+          await dbFile.delete();
+          print('[DB] Database file deleted successfully');
+        } else {
+          print('[DB] Database file not found, no deletion needed');
+        }
+      } catch (e) {
+        print('[DB] Error accessing database file: $e');
+      }
+      
+      print('[DB] Database reset completed. Next app start will create fresh database.');
+    } catch (e) {
+      print('[DB] Error resetting database: $e');
+    }
+  }
+
   @override
-  int get schemaVersion => 28;
+  int get schemaVersion => 29;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -804,6 +849,59 @@ class AppDatabase extends _$AppDatabase {
               // Column might already exist, ignore error
             }
           }
+          if (from < 29) {
+            // Schema version 29: Ensure trading_entries table has all required columns
+            print('[MIGRATION] Version 29: Ensuring trading_entries table has all required columns');
+            try {
+              // Add missing columns to trading_entries table if they don't exist
+              final columnsToAdd = [
+                'ALTER TABLE trading_entries ADD COLUMN person_name TEXT NOT NULL DEFAULT \'\'',
+                'ALTER TABLE trading_entries ADD COLUMN mobile_no TEXT NOT NULL DEFAULT \'\'',
+                'ALTER TABLE trading_entries ADD COLUMN estate_name TEXT NOT NULL DEFAULT \'\'',
+                'ALTER TABLE trading_entries ADD COLUMN unit_price REAL NOT NULL DEFAULT 0',
+                'ALTER TABLE trading_entries ADD COLUMN image_path TEXT',
+                'ALTER TABLE trading_entries ADD COLUMN company_id TEXT NOT NULL DEFAULT \'\'',
+                'ALTER TABLE trading_entries ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+                'ALTER TABLE trading_entries ADD COLUMN is_synced INTEGER NOT NULL DEFAULT 1',
+                'ALTER TABLE trading_entries ADD COLUMN created_at TEXT NOT NULL DEFAULT \'\'',
+                'ALTER TABLE trading_entries ADD COLUMN updated_at TEXT NOT NULL DEFAULT \'\'',
+              ];
+              
+              for (final stmt in columnsToAdd) {
+                try {
+                  await m.database.customStatement(stmt);
+                  print('[MIGRATION] Added column: ${stmt.split('ADD COLUMN')[1]}');
+                } catch (e) {
+                  // Column might already exist, ignore error
+                  print('[MIGRATION] Column already exists: ${stmt.split('ADD COLUMN')[1]}');
+                }
+              }
+              
+              // Backfill existing records with default values
+              try {
+                final now = DateTime.now().toIso8601String();
+                await m.database.customStatement('''
+                  UPDATE trading_entries SET 
+                    person_name = COALESCE(person_name, ''),
+                    mobile_no = COALESCE(mobile_no, ''),
+                    estate_name = COALESCE(estate_name, ''),
+                    unit_price = COALESCE(unit_price, 0),
+                    image_path = COALESCE(image_path, ''),
+                    company_id = COALESCE(company_id, ''),
+                    is_active = COALESCE(is_active, 1),
+                    is_synced = COALESCE(is_synced, 1),
+                    created_at = COALESCE(created_at, '$now'),
+                    updated_at = COALESCE(updated_at, '$now')
+                  WHERE person_name IS NULL OR mobile_no IS NULL OR estate_name IS NULL OR unit_price IS NULL
+                ''');
+                print('[MIGRATION] Backfilled trading_entries table with default values');
+              } catch (e) {
+                print('[MIGRATION] Error backfilling trading_entries: $e');
+              }
+            } catch (e) {
+              print('[MIGRATION] Error in version 29 migration: $e');
+            }
+          }
         },
       );
 }
@@ -821,30 +919,24 @@ Future<void> _ensureBusinessTables(dynamic db) async {
     }
   }
 
-  // Trading entries - UNIFIED TABLE WITH TYPE DISCRIMINATION
+  // Trading entries - SIMPLIFIED TABLE WITH SPECIFIC FIELDS
   await run('''
     CREATE TABLE IF NOT EXISTS trading_entries (
       id TEXT PRIMARY KEY,
-      company_id TEXT,
-      created_by TEXT,
-      entry_type TEXT NOT NULL, -- 'file' or 'form' - NEW FIELD
-      type TEXT NOT NULL, -- 'buy' or 'sell'
+      entry_type TEXT NOT NULL, -- HP, KP, MP, NMP, NNMP, BOP, SOP, AEMP
       date TEXT NOT NULL,
-      mobile TEXT,
-      person_name TEXT,
-      estate_name TEXT,
-      plot_no TEXT, -- Only for form entries, nullable for file entries
-      block TEXT, -- Only for form entries, nullable for file entries
-      commission REAL, -- Only for form entries, nullable for file entries
-      tax REAL, -- Only for form entries, nullable for file entries
-      quantity INTEGER,
-      rate REAL, -- Only for form entries, nullable for file entries
-      total_amount REAL, -- For file entries, use as payment
-      status TEXT NOT NULL DEFAULT 'Pending',
+      person_name TEXT NOT NULL,
+      mobile_no TEXT NOT NULL,
+      estate_name TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      unit_price REAL NOT NULL DEFAULT 0, -- Unit price for calculation
+      image_path TEXT,
+      company_id TEXT NOT NULL,
       is_active INTEGER NOT NULL DEFAULT 1,
       is_synced INTEGER NOT NULL DEFAULT 1,
-      comments TEXT,
-      updated_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' -- Status field for filtering
     )
   ''');
 
@@ -933,7 +1025,8 @@ Future<void> _safeAddIsActiveColumnsToBusinessTables(GeneratedDatabase db) async
     'ALTER TABLE trading_entries ADD COLUMN block TEXT',  
     'ALTER TABLE trading_entries ADD COLUMN commission REAL', 
     'ALTER TABLE trading_entries ADD COLUMN tax REAL', 
-    'ALTER TABLE trading_entries ADD COLUMN rate REAL', 
+    'ALTER TABLE trading_entries ADD COLUMN rate REAL',
+    'ALTER TABLE trading_entries ADD COLUMN unit_price REAL NOT NULL DEFAULT 0', // Unit price for calculation
     // Note: trading_file_entries table is now created with is_active and is_synced columns
     // No need to drop it - it's maintained for backward compatibility
   ]) {
@@ -949,6 +1042,7 @@ Future<void> _safeAddIsActiveColumnsToBusinessTables(GeneratedDatabase db) async
   // Backfill to active so existing records are considered active
   for (final stmt in [
     'UPDATE trading_entries SET is_active = 1 WHERE is_active IS NULL',
+    'UPDATE trading_entries SET unit_price = 0 WHERE unit_price IS NULL', // Set default unit price
     'UPDATE trading_file_entries SET is_active = 1 WHERE is_active IS NULL',
     'UPDATE expenditures SET is_active = 1 WHERE is_active IS NULL',
     'UPDATE expenditure_projects SET is_active = 1 WHERE is_active IS NULL',

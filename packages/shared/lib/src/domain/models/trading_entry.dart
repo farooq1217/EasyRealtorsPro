@@ -1,79 +1,82 @@
 // domain/models/trading_entry.dart
 
-enum TradingType { buy, sell }
-enum TradingEntryType { file, form }
-
 class TradingEntry {
   final String id;
-  final TradingType type; // Buy ya Sell
-  final TradingEntryType entryType; // 'file' ya 'form'
+  final String entryType; // HP, KP, MP, NMP, NNMP, BOP, SOP, AEMP
   final DateTime date;
   final String personName;
-  final String mobile;
-  final String? estateName; // Form entries mein estate name, file entries mein null
-  final String? plotNo; // Form entries mein plot number, file entries mein null
-  final String? block; // Form entries mein block, file entries mein null
-  final int quantity;
-  final double? rate; // Form entries mein rate, file entries mein null
-  final double? totalAmount; // Form entries mein total_amount, file entries mein null
-  final double? commission; // Sirf form entries mein commission
-  final double? tax; // Sirf form entries mein tax
-  final double? netAmount; // Calculated field
-  final String status;
-  final String? comments;
-  final String? companyId; // Company ID for role-based access
-  final String? createdBy; // User ID who created this entry
-  final bool? isActive; // Database field
-  final bool? isSynced; // Database field
+  final String mobileNo;
+  final String estateName;
+  final double quantity;
+  final double unitPrice; // Unit price for calculation
+  final String? imagePath;
+  final String companyId;
+  final bool isActive;
+  final bool isSynced;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String status; // Status field for filtering
 
   const TradingEntry({
     required this.id,
-    required this.type,
     required this.entryType,
     required this.date,
     required this.personName,
-    required this.mobile,
-    this.estateName,
-    this.plotNo,
-    this.block,
+    required this.mobileNo,
+    required this.estateName,
     required this.quantity,
-    this.rate,
-    this.totalAmount,
-    this.commission,
-    this.tax,
-    this.netAmount,
-    this.status = 'Pending',
-    this.comments,
-    this.companyId,
-    this.createdBy,
-    this.isActive,
-    this.isSynced,
+    required this.unitPrice,
+    this.imagePath,
+    required this.companyId,
+    this.isActive = true,
+    this.isSynced = true,
+    required this.createdAt,
+    required this.updatedAt,
+    this.status = 'active', // Default status
   });
 
-  // Data save karne ke liye Map mein convert karna (Duplication khatam karne ke liye)
+  // Getter for calculated total price
+  double get totalPrice => quantity * unitPrice;
+
+  // Data save karne ke liye Map mein convert karna
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'company_id': companyId, // Will be set by repository
-      'created_by': createdBy, // Will be set by repository
-      'type': type == TradingType.buy ? 'buy' : 'sell',
-      'entry_type': entryType == TradingEntryType.file ? 'file' : 'form',
+      'entry_type': entryType,
       'date': date.toIso8601String(),
       'person_name': personName,
-      'mobile': mobile,
+      'mobile_no': mobileNo,
       'estate_name': estateName,
-      'plot_no': plotNo,
-      'block': block,
       'quantity': quantity,
-      'rate': rate,
-      'total_amount': totalAmount,
-      'status': status,
-      'comments': comments,
-      'commission': commission,
-      'tax': tax,
-      'net_amount': netAmount,
-      'is_active': isActive,
-      'is_synced': isSynced,
+      'unit_price': unitPrice,
+      'image_path': imagePath,
+      'company_id': companyId,
+      'is_active': isActive ? 1 : 0,
+      'is_synced': isSynced ? 1 : 0,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+      'status': status, // Status field
     };
+  }
+
+  // Database se data read karne ke liye Map se TradingEntry banana
+  factory TradingEntry.fromMap(Map<String, dynamic> map) {
+    return TradingEntry(
+      id: map['id']?.toString() ?? '',
+      entryType: map['entry_type']?.toString() ?? '',
+      date: DateTime.tryParse(map['date']?.toString() ?? '') ?? DateTime.now(),
+      personName: map['person_name']?.toString() ?? '',
+      mobileNo: map['mobile_no']?.toString() ?? '',
+      estateName: map['estate_name']?.toString() ?? '',
+      quantity: double.tryParse(map['quantity']?.toString() ?? '0') ?? 0.0,
+      unitPrice: double.tryParse(map['unit_price']?.toString() ?? '0') ?? 0.0,
+      imagePath: map['image_path']?.toString(),
+      companyId: map['company_id']?.toString() ?? '',
+      isActive: (map['is_active'] as int? ?? 1) == 1,
+      isSynced: (map['is_synced'] as int? ?? 1) == 1,
+      createdAt: DateTime.tryParse(map['created_at']?.toString() ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse(map['updated_at']?.toString() ?? '') ?? DateTime.now(),
+      status: map['status']?.toString() ?? 'active', // Status field
+    );
   }
 }

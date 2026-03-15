@@ -78,8 +78,15 @@ class FirebaseThreadingHandler {
         stream.listen(
           (data) => controller.add(data),
           onError: (error) {
-            // Enhanced error filtering for comprehensive platform warning silence
-            final criticalPatterns = [
+            // Enhanced error filtering for comprehensive platform warning
+            if (error.toString().contains('unknown-error')) {
+              debugPrint('FirebaseThreadingHandler: UNKNOWN ERROR DETECTED in ${streamName ?? 'stream'}: $error');
+              debugPrint('FirebaseThreadingHandler: This might be a issue affecting umershahzad596@gmail.com and shakeelahmed2161083@gmail.com');
+              debugPrint('FirebaseThreadingHandler: Error type: ${error.runtimeType}');
+              debugPrint('FirebaseThreadingHandler: Full error details: $error');
+              // Still pass error to controller for proper handling
+              controller.addError(error);
+            } else if ([
               'channel sent a message',
               'non-platform thread',
               'Platform channel',
@@ -91,24 +98,16 @@ class FirebaseThreadingHandler {
               'shared_preferences',
               'firebase_auth_plugin',
               'id-token',
-            ];
-            
-            // CRITICAL: Add enhanced logging for unknown errors
-            if (error.toString().contains('unknown-error')) {
-              debugPrint('FirebaseThreadingHandler: UNKNOWN ERROR DETECTED in ${streamName ?? 'stream'}: $error');
-              debugPrint('FirebaseThreadingHandler: This might be the issue affecting umershahzad596@gmail.com and shakeelahmed2161083@gmail.com');
-              debugPrint('FirebaseThreadingHandler: Error type: ${error.runtimeType}');
-              debugPrint('FirebaseThreadingHandler: Full error details: $error');
-              // Still pass the error to controller for proper handling
-              controller.addError(error);
-            } else if (criticalPatterns.any((pattern) => error.toString().contains(pattern))) {
+            ].any((pattern) => error.toString().contains(pattern))) {
               debugPrint('FirebaseThreadingHandler: Stream platform thread warning silenced for ${streamName ?? 'stream'}: ${error.runtimeType}');
             } else {
               debugPrint('FirebaseThreadingHandler: Stream error in ${streamName ?? 'stream'}: $error');
               controller.addError(error);
             }
           },
-          onDone: () => controller.close(),
+          onDone: () {
+            controller.close();
+          },
         );
       });
     }, (error, stack) {
