@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 import '../models/inventory_item.dart';
-import '../inventory_view_model.dart';
+import '../view_models/inventory_view_model.dart';
 import '../../../core/app_utils.dart' show pickAndCompressImage, showImageSourceDialog, uploadImageToFirebaseStorage, imageUrlsToJson;
 import 'package:shared/shared.dart' show RoleUtils;
 import '../../../core/services/app_storage.dart' show AppStorage;
@@ -252,20 +252,21 @@ class _InventoryFormState extends State<InventoryForm> {
             
             // Block Dropdown - with proper ValueKey for cascading sync
             Container(
-            key: ValueKey('sync_blk_${viewModel.selectedSocietyId}_${viewModel.blocks.length}'),
-            child: _buildDropdown(
-              'Block', 
-              viewModel.blocks, 
-              validBlockId, // Use the validated block ID
-              (v) {
-                if (!mounted) return;
-                // No local setState - let ViewModel handle state
-                viewModel.setSelectedBlock(v);
-              },
-              isLoading: viewModel.isLoadingBlocks,
-              hintText: viewModel.selectedSocietyId == null ? 'Select a Society first' : 'Select Block',
+              key: ValueKey('sync_blk_${viewModel.selectedSocietyId}_${viewModel.blocks.length}'),
+              child: _buildDropdown(
+                'Block', 
+                viewModel.blocks, 
+                validBlockId, // Use validated block ID
+                (v) {
+                  if (!mounted) return;
+                  // No local setState - let ViewModel handle state
+                  viewModel.setSelectedBlock(v);
+                },
+                isLoading: viewModel.isLoadingBlocks,
+                hintText: viewModel.selectedSocietyId == null ? 'Select a Society first' : 'Select Block',
+                enabled: viewModel.selectedSocietyId != null, // Disable until society is selected
+              ),
             ),
-          ),
 
             _buildSectionHeader('Property Information', Icons.home_work_outlined),
             Row(children: [
@@ -358,15 +359,16 @@ class _InventoryFormState extends State<InventoryForm> {
     );
   }
 
-  Widget _buildDropdown(String label, List<Map<String, String>> items, String? currentValue, Function(String?) onChange, {bool isLoading = false, String? hintText}) {
+  Widget _buildDropdown(String label, List<Map<String, String>> items, String? currentValue, Function(String?) onChange, {bool isLoading = false, String? hintText, bool enabled = true}) {
     final hasItems = items.isNotEmpty && !isLoading;
+    final isEnabled = enabled && hasItems;
     
     // Niche wali line ko dhyan se dekhein:
     final displayItems = hasItems 
         ? items 
         : [{'id': '__loading__', 'name': isLoading ? 'Loading...' : (hintText ?? 'No data found')}];
     
-    // Dropdown Item Matching: Double-check that the value is being set correctly
+    // Dropdown Item Matching: Double-check that value is being set correctly
     final validValue = (items.any((i) => i['id'] == currentValue)) ? currentValue : null;
     
     return DropdownButtonFormField<String>(
@@ -374,7 +376,7 @@ class _InventoryFormState extends State<InventoryForm> {
       // Ye check karti hai ke jo purani 'currentValue' hai wo naye 'items' mein mojood hai ya nahi
       value: validValue,
       
-      onChanged: hasItems ? onChange : null,
+      onChanged: isEnabled ? onChange : null,
       decoration: InputDecoration(
         labelText: label, 
         prefixIcon: isLoading 
@@ -386,16 +388,26 @@ class _InventoryFormState extends State<InventoryForm> {
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
                 ),
               )
-            : const Icon(Icons.list), 
+            : Icon(
+                isEnabled ? Icons.list : Icons.block,
+                color: isEnabled ? null : Colors.grey,
+              ), 
         border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
         hintText: hasItems ? null : (hintText ?? (isLoading ? 'Loading...' : 'No data found')),
+        filled: !isEnabled,
+        fillColor: !isEnabled ? Colors.grey.shade100 : null,
       ),
      // _buildDropdown function ke andar ye line check karein
     items: displayItems.map((i) => DropdownMenuItem(
       value: i['id']?.toString(), // Ensure id is string
-      child: Text(i['name'] ?? ''),
+      child: Text(
+        i['name'] ?? '',
+        style: TextStyle(
+          color: isEnabled ? null : Colors.grey,
+        ),
+      ),
     )).toList(),
-      validator: (v) => hasItems && v == null ? 'Required' : null,
+      validator: (v) => isEnabled && v == null ? 'Required' : null,
     );
   }
 

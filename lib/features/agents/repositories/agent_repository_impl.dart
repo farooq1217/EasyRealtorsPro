@@ -92,6 +92,10 @@ class AgentRepositoryImpl implements AgentRepository {
           transferDate: data['transfer_date'] as String?,
           nextWorkingDate: data['next_working_date'] as String?,
           category: data['category'] as String?,
+          plotNo: data['plot_no'] as String?,
+          registryNumber: data['registry_number'] as String?,
+          size: data['size'] as String?,
+          clientMobile: data['client_mobile'] as String?,
           isActive: (data['is_active'] as int? ?? 1) == 1,
           updatedAt: data['updated_at'] as String,
           isSynced: (data['is_synced'] as int? ?? 1) == 1,
@@ -183,6 +187,10 @@ class AgentRepositoryImpl implements AgentRepository {
     required String transferDate,
     String? nextWorkingDate,
     String? category,
+    String? plotNo,
+    String? registryNumber,
+    String? size,
+    String? clientMobile,
     List<String>? images,
   }) async {
     try {
@@ -201,6 +209,10 @@ class AgentRepositoryImpl implements AgentRepository {
           transferDate: d.Value(transferDate),
           nextWorkingDate: nextWorkingDate != null ? d.Value(nextWorkingDate) : const d.Value.absent(),
           category: category != null && category.isNotEmpty ? d.Value(category) : const d.Value.absent(),
+          plotNo: plotNo != null && plotNo.isNotEmpty ? d.Value(plotNo) : const d.Value.absent(),
+          registryNumber: registryNumber != null && registryNumber.isNotEmpty ? d.Value(registryNumber) : const d.Value.absent(),
+          size: size != null && size.isNotEmpty ? d.Value(size) : const d.Value.absent(),
+          clientMobile: clientMobile != null && clientMobile.isNotEmpty ? d.Value(clientMobile) : const d.Value.absent(),
           updatedAt: nowIso,
           isSynced: const d.Value(false), // Mark as not synced
         ),
@@ -218,6 +230,10 @@ class AgentRepositoryImpl implements AgentRepository {
           'transferDate': transferDate,
           if (nextWorkingDate != null) 'nextWorkingDate': nextWorkingDate,
           if (category != null && category.isNotEmpty) 'category': category,
+          if (plotNo != null && plotNo.isNotEmpty) 'plotNo': plotNo,
+          if (registryNumber != null && registryNumber.isNotEmpty) 'registryNumber': registryNumber,
+          if (size != null && size.isNotEmpty) 'size': size,
+          if (clientMobile != null && clientMobile.isNotEmpty) 'clientMobile': clientMobile,
           'type': 'transfer', // Explicitly mark as transfer
           'updatedAt': nowIso,
           'createdAt': nowIso,

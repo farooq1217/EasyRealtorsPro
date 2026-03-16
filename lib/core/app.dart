@@ -7,7 +7,7 @@ import '../login_page.dart';
 import '../offline_sync_service.dart';
 import '../shimmer_widgets.dart';
 import 'services/app_storage.dart' show AppStorage;
-import '../features/rental/rental_page.dart' show HomeScreen;
+import '../features/navigation/main_navigation_page.dart' show MainNavigationPage;
 import 'services/auth_service.dart';
 import 'services/permission_helper.dart';
 import 'services/background_sync_manager.dart';
@@ -354,17 +354,13 @@ class _GuardedEntryState extends State<_GuardedEntry> {
         return;
       }
 
-      
       // Authorized: proceed to Home with target nav
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (_) => HomeScreen(
-            storage: AppStorage(),
-            initialCreds: null,
-            folderId: 'LOCAL',
-            bypassDrive: true,
-            initialNavIndex: widget.targetNavIndex,
+          builder: (_) => MainNavigationPage(
+            db: AppDatabase.instanceIfInitialized!,
+            initialIndex: widget.targetNavIndex ?? 0,
           ),
         ),
         (route) => false,
@@ -423,12 +419,9 @@ class _RedirectToHomeState extends State<_RedirectToHome> {
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
-              builder: (_) => HomeScreen(
-                storage: AppStorage(),
-                initialCreds: null,
-                folderId: 'LOCAL',
-                bypassDrive: true,
-                initialNavIndex: widget.targetNavIndex,
+              builder: (_) => MainNavigationPage(
+                db: AppDatabase.instanceIfInitialized!,
+                initialIndex: widget.targetNavIndex,
               ),
             ),
           );

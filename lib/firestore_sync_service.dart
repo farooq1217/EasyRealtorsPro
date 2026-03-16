@@ -332,21 +332,17 @@ class FirestoreSyncService {
     }
     
     try {
-      // CRITICAL: Wrap token refresh in platform thread safety
-      await runZonedGuarded(() async {
-        await FirebaseAuth.instance.currentUser?.getIdToken(true);
-        debugPrint('FirestoreSyncService: ID token refreshed successfully');
-      }, (error, stack) {
-        // Filter platform thread warnings
-        if (error.toString().contains('channel sent a message') || 
-            error.toString().contains('non-platform thread')) {
-          debugPrint('FirestoreSyncService: Platform thread warning silenced: ${error.runtimeType}');
-        } else {
-          debugPrint('FirestoreSyncService: Failed to refresh ID token: $error');
-        }
-      });
+      // CRITICAL: Use thread-safe ID token refresh
+      await FirebaseThreadingHandler.executeIdTokenRefreshWithThreadSafety();
+      debugPrint('FirestoreSyncService: ID token refreshed successfully');
     } catch (e) {
-      debugPrint('FirestoreSyncService: Token refresh wrapper error: $e');
+      // Filter platform thread warnings
+      if (e.toString().contains('channel sent a message') || 
+            e.toString().contains('non-platform thread')) {
+        debugPrint('FirestoreSyncService: Platform thread warning silenced: ${e.runtimeType}');
+      } else {
+        debugPrint('FirestoreSyncService: Failed to refresh ID token: $e');
+      }
     }
   }
 }

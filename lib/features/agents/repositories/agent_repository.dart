@@ -24,6 +24,10 @@ abstract class AgentRepository {
     required String transferDate,
     String? nextWorkingDate,
     String? category,
+    String? plotNo,
+    String? registryNumber,
+    String? size,
+    String? clientMobile,
     List<String>? images,
   });
   

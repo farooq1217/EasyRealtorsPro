@@ -1,14 +1,54 @@
 import 'dart:async';
 import 'package:drift/drift.dart' as d;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/widgets.dart' show WidgetsBinding;
+import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:shared/shared.dart' show AppDatabase;
+import '../../../core/services/firebase_threading_handler.dart';
 import 'rental_repository.dart';
 
 /// Implementation of RentalRepository using Drift/SQLite
 class RentalRepositoryImpl implements RentalRepository {
   late final AppDatabase _database;
 
+  // SQLite-only flag - disables all Firestore operations
+  static const bool _sqliteOnlyMode = true;
+
+  // Platform detection for thread safety
+  static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
+
   RentalRepositoryImpl([AppDatabase? database]) {
     _database = database ?? AppDatabase.instanceIfInitialized!;
+  }
+
+  // Helper method to wrap streams with platform thread safety
+  Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
+    if (_isWindows) {
+      debugPrint('RentalRepository: Wrapping $streamName with Windows thread safety');
+      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+        stream,
+        streamName: 'RentalRepository $streamName',
+      );
+    }
+    return stream;
+  }
+
+  // Helper method to disable Firestore operations in SQLite-only mode
+  bool _isFirestoreOperationAllowed() {
+    return !_sqliteOnlyMode;
+  }
+
+  // Helper method to execute Firestore operations only if allowed
+  Future<void> _executeFirestoreOperation(Future<void> Function() operation) async {
+    if (_isFirestoreOperationAllowed()) {
+      try {
+        await operation();
+      } catch (e) {
+        debugPrint('Firestore operation failed (non-critical in SQLite-only mode): $e');
+      }
+    } else {
+      debugPrint('Firestore operation skipped in SQLite-only mode');
+    }
   }
 
   @override
@@ -18,7 +58,7 @@ class RentalRepositoryImpl implements RentalRepository {
     String? searchQuery,
     RentalStatus? statusFilter,
   }) {
-    return _database
+    final stream = _database
         .customSelect(
           _buildQuery(
             companyId: companyId,
@@ -38,6 +78,9 @@ class RentalRepositoryImpl implements RentalRepository {
         .map((rows) => rows
             .map((row) => Map<String, dynamic>.from(row.data))
             .toList());
+    
+    // CRITICAL: Wrap stream with platform thread safety for Windows
+    return _wrapStreamWithThreadSafety(stream, 'watchRentalItems');
   }
 
   @override
@@ -80,33 +123,43 @@ class RentalRepositoryImpl implements RentalRepository {
 
   @override
   Future<String> addRentalItem(Map<String, dynamic> item) async {
-    final id = item['id']?.toString() ?? _generateId();
-    final now = DateTime.now().toIso8601String();
+    try {
+      final id = item['id']?.toString() ?? _generateId();
+      final now = DateTime.now().toIso8601String();
 
-    await _database.customStatement(
-      '''INSERT INTO rental_items 
-         (id, created_by, name, location, owner_name, contact_no, cnic, 
-          price, security, sale_status, remarks, company_id, is_active, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-      [
-        id,
-        item['created_by'],
-        item['name'],
-        item['location'],
-        item['owner_name'],
-        item['contact_no'],
-        item['cnic'],
-        item['price'],
-        item['security'],
-        item['sale_status'],
-        item['remarks'],
-        item['company_id'],
-        item['is_active'] ?? 1,
-        now,
-      ],
-    );
-
-    return id;
+      await _database.customStatement(
+        '''INSERT INTO rental_items 
+           (id, created_by, name, location, owner_name, contact_no, cnic, 
+            price, security, sale_status, remarks, company_id, is_active, updated_at) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        [
+          id,
+          item['created_by'],
+          item['name'],
+          item['location'],
+          item['owner_name'],
+          item['contact_no'],
+          item['cnic'],
+          item['price'],
+          item['security'],
+          item['sale_status'],
+          item['remarks'],
+          item['company_id'],
+          item['is_active'] ?? 1,
+          now,
+        ],
+      );
+      
+      // Mark as unsynced for Firestore sync
+      if (!_sqliteOnlyMode) {
+        await markRentalItemAsUnsynced(id);
+      }
+      
+      return id;
+    } catch (e) {
+      debugPrint('Error adding rental item: $e');
+      rethrow;
+    }
   }
 
   @override
@@ -346,5 +399,19 @@ class RentalRepositoryImpl implements RentalRepository {
   /// Generate unique ID for new rental items
   String _generateId() {
     return DateTime.now().millisecondsSinceEpoch.toString();
+  }
+
+  Future<void> markRentalItemAsUnsynced(String id) async {
+    await _database.customStatement('''
+      UPDATE rental_items SET is_synced = 0, updated_at = ? 
+      WHERE id = ?
+    ''', [DateTime.now().toIso8601String(), id]);
+  }
+
+  Future<void> markRentalItemAsSynced(String id) async {
+    await _database.customStatement('''
+      UPDATE rental_items SET is_synced = 1, updated_at = ? 
+      WHERE id = ?
+    ''', [DateTime.now().toIso8601String(), id]);
   }
 }

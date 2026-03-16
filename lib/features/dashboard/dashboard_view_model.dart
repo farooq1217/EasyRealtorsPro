@@ -111,19 +111,41 @@ class DashboardViewModel extends ChangeNotifier {
 
   /// Initialize dashboard data and set up real-time streams
   Future<void> initialize() async {
-    if (_isLoading) return; // Prevent multiple initializations
+    if (!_isLoading) return; // Already initialized, prevent multiple initializations
     
-    await Future.wait([
-      _loadUsersData(),
-      _loadCompaniesData(),
-      _loadExpenditureData(),
-      _loadRentalsData(),
-      _loadTradingData(),
-      _loadInventoryData(),
-    ]);
+    try {
+      await Future.wait([
+        _loadUsersData(),
+        _loadCompaniesData(),
+        _loadExpenditureData(),
+        _loadRentalsData(),
+        _loadTradingData(),
+        _loadInventoryData(),
+      ]);
 
-    // Check if all data is loaded
-    _updateOverallLoadingState();
+      // Check if all data is loaded
+      _updateOverallLoadingState();
+      
+      // Fallback: Ensure loading completes after 5 seconds even if streams don't emit
+      Timer(const Duration(seconds: 5), () {
+        if (_mounted && _isLoading) {
+          debugPrint('DashboardViewModel: Loading timeout - forcing completion');
+          _isLoading = false;
+          _usersLoading = false;
+          _companiesLoading = false;
+          _expenditureLoading = false;
+          _rentalsLoading = false;
+          _tradingLoading = false;
+          _inventoryLoading = false;
+          notifyListeners();
+        }
+      });
+    } catch (e) {
+      debugPrint('DashboardViewModel: Initialization error: $e');
+      _error = 'Failed to initialize dashboard: $e';
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   /// Refresh all dashboard data
@@ -324,17 +346,25 @@ class DashboardViewModel extends ChangeNotifier {
       // Set up stream for real-time updates
       _tradingSubscription = _tradingRepository.watchEntries().listen(
         (entries) {
-          if (!mounted) return;
+          if (!_mounted) return;
           
           // Calculate trading performance metrics
           _totalClosedDeals = entries.where((e) => e.isActive).length;
           _totalTradingEntries = entries;
+          
+          // Calculate profit from closed deals (using unitPrice * quantity)
+          _totalTradingProfit = entries.where((e) => e.isActive).fold(0.0, (sum, entry) {
+            // Using totalPrice which is quantity * unitPrice
+            return sum + entry.totalPrice;
+          });
+          
           _tradingLoading = false;
+          _tradingError = null;
           _updateOverallLoadingState();
           notifyListeners();
         },
         onError: (e) {
-          if (!mounted) return;
+          if (!_mounted) return;
           _tradingError = 'Failed to load trading data: $e';
           _tradingLoading = false;
           _updateOverallLoadingState();

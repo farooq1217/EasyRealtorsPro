@@ -3,11 +3,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
-import '../../../../core/font_utils.dart';
-import '../../../../core/services/app_storage.dart' show AppStorage;
-import '../../../../core/services/auth_service.dart';
-import '../../../../core/services/standardized_pdf_service.dart';
-import '../rental_receipt_generator.dart';
+import '../../../../../core/font_utils.dart';
+import '../../../../../core/services/app_storage.dart' show AppStorage;
+import '../../../../../core/services/auth_service.dart';
+import '../../../../../core/services/standardized_pdf_service.dart';
+import 'rental_receipt_generator.dart' show RentalReceiptGenerator;
 
 class RentalDetailsModal extends StatefulWidget {
   final Map<String, dynamic> rentalItem;

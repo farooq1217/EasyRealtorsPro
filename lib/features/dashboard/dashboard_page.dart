@@ -61,7 +61,7 @@ class _DashboardPageState extends State<DashboardPage> {
             backgroundColor: const Color(0xFFF8F9FA),
             appBar: AppBar(
               title: Text(
-                'Analytics Dashboard',
+                'Dashboard',
                 style: AppFonts.poppins(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
@@ -78,45 +78,150 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ],
             ),
-            body: RefreshIndicator(
-              onRefresh: viewModel.refreshAll,
-              child: SingleChildScrollView(
+            body: Container(
+              height: MediaQuery.of(context).size.height - 
+                       MediaQuery.of(context).padding.top - 
+                       kToolbarHeight,
+              child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
-                    Text(
-                      'Live Analytics Overview',
-                      style: AppFonts.poppins(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF2D3748),
+                    // Header with Gradient
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            const Color(0xFFFF6B35), // Orange
+                            const Color(0xFF805AD5), // Purple
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Analytics Dashboard',
+                            style: AppFonts.poppins(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Real-time insights into your business performance',
+                            style: AppFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Real-time insights into your business performance',
-                      style: AppFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        color: const Color(0xFF718096),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Dashboard Cards Grid - Takes remaining space
+                    Expanded(
+                      child: GridView.count(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: 1.4,
+                        children: [
+                          // Trading Card - Purple Theme
+                          _buildDashboardCard(
+                            title: 'Total Closed Deals',
+                            value: viewModel.totalClosedDeals.toString(),
+                            subtitle: 'Completed transactions',
+                            icon: Icons.trending_up,
+                            color: const Color(0xFF805AD5),
+                            backgroundColor: const Color(0xFFF3E8FF),
+                            loading: viewModel.tradingLoading,
+                            error: viewModel.tradingError,
+                            viewModel: viewModel,
+                          ),
+                          
+                          // Trading Profit Card - Orange Theme
+                          _buildDashboardCard(
+                            title: 'Trading Profit',
+                            value: 'Rs ${viewModel.totalTradingProfit.toStringAsFixed(0)}',
+                            subtitle: 'Net profit from deals',
+                            icon: Icons.attach_money,
+                            color: const Color(0xFFED8936),
+                            backgroundColor: const Color(0xFFFFFAF0),
+                            loading: viewModel.tradingLoading,
+                            error: viewModel.tradingError,
+                            viewModel: viewModel,
+                          ),
+                          
+                          // Users Card - Blue Theme
+                          _buildDashboardCard(
+                            title: 'Active Agents',
+                            value: viewModel.totalUsers.toString(),
+                            subtitle: 'Active team members',
+                            icon: Icons.people,
+                            color: const Color(0xFF3182CE),
+                            backgroundColor: const Color(0xFFEBF8FF),
+                            loading: viewModel.usersLoading,
+                            error: viewModel.usersError,
+                            viewModel: viewModel,
+                          ),
+                          
+                          // Expense Card - Red Theme
+                          _buildDashboardCard(
+                            title: "This Month's Expenses",
+                            value: viewModel.formattedMonthlyExpenditure,
+                            subtitle: 'Current month spending',
+                            icon: Icons.account_balance_wallet,
+                            color: const Color(0xFFE53E3E),
+                            backgroundColor: const Color(0xFFFFF5F5),
+                            loading: viewModel.expenditureLoading,
+                            error: viewModel.expenditureError,
+                            viewModel: viewModel,
+                          ),
+                          
+                          // Inventory Card - Green Theme
+                          _buildDashboardCard(
+                            title: 'Available Properties',
+                            value: viewModel.availableProperties.toString(),
+                            subtitle: 'Properties for sale/rent',
+                            icon: Icons.home,
+                            color: const Color(0xFF38A169),
+                            backgroundColor: const Color(0xFFF0FFF4),
+                            loading: viewModel.inventoryLoading,
+                            error: viewModel.inventoryError,
+                            viewModel: viewModel,
+                          ),
+                          
+                          // Companies Card - Teal Theme
+                          _buildDashboardCard(
+                            title: 'Total Companies',
+                            value: viewModel.totalCompanies.toString(),
+                            subtitle: 'Business entities',
+                            icon: Icons.business,
+                            color: const Color(0xFF319795),
+                            backgroundColor: const Color(0xFFE6FFFA),
+                            loading: viewModel.companiesLoading,
+                            error: viewModel.companiesError,
+                            viewModel: viewModel,
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 24),
-
-                    // Dashboard Cards Grid
-                    _buildDashboardGrid(viewModel),
                     
-                    const SizedBox(height: 32),
-                    
-                    // Revenue vs Expenses Chart
-                    _buildRevenueChartNew(viewModel),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // Error Message (if any)
-                    if (viewModel.hasError) _buildErrorMessage(viewModel),
+                    // Error Message (if any) - Fixed at bottom
+                    if (viewModel.hasError)
+                      Container(
+                        margin: const EdgeInsets.only(top: 16),
+                        child: _buildErrorMessage(viewModel),
+                      ),
                   ],
                 ),
               ),
@@ -127,95 +232,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildDashboardGrid(DashboardViewModel viewModel) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
-      childAspectRatio: 1.4,
-      children: [
-        // Trading Card - Purple Theme
-        _buildDashboardCard(
-          title: 'Total Closed Deals',
-          value: viewModel.totalClosedDeals.toString(),
-          subtitle: 'Completed transactions',
-          icon: Icons.trending_up,
-          color: const Color(0xFF805AD5),
-          backgroundColor: const Color(0xFFF3E8FF),
-          loading: viewModel.tradingLoading,
-          error: viewModel.tradingError,
-          viewModel: viewModel,
-        ),
-        
-        // Trading Profit Card - Orange Theme
-        _buildDashboardCard(
-          title: 'Trading Profit',
-          value: 'Rs ${viewModel.totalTradingProfit.toStringAsFixed(0)}',
-          subtitle: 'Net profit from deals',
-          icon: Icons.attach_money,
-          color: const Color(0xFFED8936),
-          backgroundColor: const Color(0xFFFFFAF0),
-          loading: viewModel.tradingLoading,
-          error: viewModel.tradingError,
-          viewModel: viewModel,
-        ),
-        
-        // Users Card - Blue Theme
-        _buildDashboardCard(
-          title: 'Active Agents',
-          value: viewModel.totalUsers.toString(),
-          subtitle: 'Active team members',
-          icon: Icons.people,
-          color: const Color(0xFF3182CE),
-          backgroundColor: const Color(0xFFEBF8FF),
-          loading: viewModel.usersLoading,
-          error: viewModel.usersError,
-          viewModel: viewModel,
-        ),
-        
-        // Expense Card - Red Theme
-        _buildDashboardCard(
-          title: "This Month's Expenses",
-          value: viewModel.formattedMonthlyExpenditure,
-          subtitle: 'Current month spending',
-          icon: Icons.account_balance_wallet,
-          color: const Color(0xFFE53E3E),
-          backgroundColor: const Color(0xFFFFF5F5),
-          loading: viewModel.expenditureLoading,
-          error: viewModel.expenditureError,
-          viewModel: viewModel,
-        ),
-        
-        // Inventory Card - Green Theme
-        _buildDashboardCard(
-          title: 'Available Properties',
-          value: viewModel.availableProperties.toString(),
-          subtitle: 'Properties for sale/rent',
-          icon: Icons.home,
-          color: const Color(0xFF38A169),
-          backgroundColor: const Color(0xFFF0FFF4),
-          loading: viewModel.inventoryLoading,
-          error: viewModel.inventoryError,
-          viewModel: viewModel,
-        ),
-        
-        // Companies Card - Teal Theme
-        _buildDashboardCard(
-          title: 'Total Companies',
-          value: viewModel.totalCompanies.toString(),
-          subtitle: 'Business entities',
-          icon: Icons.business,
-          color: const Color(0xFF319795),
-          backgroundColor: const Color(0xFFE6FFFA),
-          loading: viewModel.companiesLoading,
-          error: viewModel.companiesError,
-          viewModel: viewModel,
-        ),
-      ],
-    );
-  }
 
   Widget _buildDashboardCard({
     required String title,
@@ -410,126 +426,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildRevenueChartNew(DashboardViewModel viewModel) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Monthly Revenue vs Expenses',
-            style: AppFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF2D3748),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Last 6 months performance',
-            style: AppFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              color: const Color(0xFF718096),
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            height: 300,
-            child: SfCartesianChart(
-              primaryXAxis: CategoryAxis(
-                majorGridLines: const MajorGridLines(width: 0),
-                labelStyle: AppFonts.poppins(fontSize: 12),
-                labelRotation: -45,
-              ),
-              primaryYAxis: NumericAxis(
-                majorGridLines: const MajorGridLines(
-                  width: 1,
-                  color: Color(0xFFE2E8F0),
-                ),
-                labelStyle: AppFonts.poppins(fontSize: 12),
-                numberFormat: NumberFormat.compactCurrency(
-                  decimalDigits: 0,
-                  symbol: 'Rs',
-                ),
-              ),
-              tooltipBehavior: TooltipBehavior(
-                enable: true,
-                format: 'point.x: point.y',
-                textStyle: AppFonts.poppins(fontSize: 12),
-              ),
-              legend: Legend(
-                isVisible: true,
-                position: LegendPosition.bottom,
-                textStyle: AppFonts.poppins(fontSize: 12),
-              ),
-              series: <CartesianSeries<ChartData, String>>[
-                // Revenue Series
-                ColumnSeries<ChartData, String>(
-                  dataSource: _getRevenueData(),
-                  xValueMapper: (ChartData data, _) => data.month,
-                  yValueMapper: (ChartData data, _) => data.value,
-                  name: 'Revenue',
-                  color: const Color(0xFF805AD5),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(8),
-                    topRight: Radius.circular(8),
-                  ),
-                ),
-                // Expenses Series
-                ColumnSeries<ChartData, String>(
-                  dataSource: _getExpenseData(),
-                  xValueMapper: (ChartData data, _) => data.month,
-                  yValueMapper: (ChartData data, _) => data.value,
-                  name: 'Expenses',
-                  color: const Color(0xFFED8936),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(8),
-                    topRight: Radius.circular(8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<ChartData> _getRevenueData() {
-    // Sample data - in real app, this would come from repository
-    return [
-      ChartData('Oct', 450000),
-      ChartData('Nov', 520000),
-      ChartData('Dec', 480000),
-      ChartData('Jan', 590000),
-      ChartData('Feb', 620000),
-      ChartData('Mar', 680000),
-    ];
-  }
-
-  List<ChartData> _getExpenseData() {
-    // Sample data - in real app, this would come from repository
-    return [
-      ChartData('Oct', 320000),
-      ChartData('Nov', 380000),
-      ChartData('Dec', 350000),
-      ChartData('Jan', 410000),
-      ChartData('Feb', 440000),
-      ChartData('Mar', 480000),
-    ];
-  }
 }
 
 /// Custom shimmer widget for dashboard cards

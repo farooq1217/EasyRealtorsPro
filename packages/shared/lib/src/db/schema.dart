@@ -179,6 +179,7 @@ class WorkingProgress extends Table {
   TextColumn get transferDate => text().nullable()();
   TextColumn get nextWorkingDate => text().nullable()();
   TextColumn get category => text().nullable()();
+  TextColumn get source => text().nullable()(); // NEW: Source of the working progress entry
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get updatedAt => text()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
@@ -436,7 +437,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 29;
+  int get schemaVersion => 31;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -900,6 +901,29 @@ class AppDatabase extends _$AppDatabase {
               }
             } catch (e) {
               print('[MIGRATION] Error in version 29 migration: $e');
+            }
+          }
+          if (from < 31) {
+            // Schema version 31: Add extended fields to working_progress table
+            print('[MIGRATION] Version 31: Adding extended fields to working_progress table');
+            try {
+              final columnsToAdd = [
+                'ALTER TABLE working_progress ADD COLUMN plot_no TEXT',
+                'ALTER TABLE working_progress ADD COLUMN registry_number TEXT',
+                'ALTER TABLE working_progress ADD COLUMN size TEXT',
+                'ALTER TABLE working_progress ADD COLUMN client_mobile TEXT',
+              ];
+              
+              for (final stmt in columnsToAdd) {
+                try {
+                  await m.database.customStatement(stmt);
+                  print('[MIGRATION] Added column: ${stmt.split(' ').last}');
+                } catch (e) {
+                  print('[MIGRATION] Column already exists or failed: $stmt - $e');
+                }
+              }
+            } catch (e) {
+              print('[MIGRATION] Failed to add extended fields to working_progress table: $e');
             }
           }
         },

@@ -281,9 +281,9 @@ class UserRepositoryImpl implements UserRepository {
       String query;
       List<d.Variable> variables = [];
       
-      // CRITICAL FIX: Check if user is Super Admin, not just if companyId is null
-      // Super Admins have role == 'super_admin' OR company_id == 'GLOBAL_ADMIN'
+      // CRITICAL FIX: Enhanced Super Admin detection for GLOBAL_ADMIN support
       final isSuperAdmin = companyId == 'GLOBAL_ADMIN' || 
+                           companyId == null ||
                            (AuthService.currentUser?['permissions']?.toString().contains('super_admin') ?? false) ||
                            (RoleUtils.isSuperAdmin(AuthService.currentUser));
       

@@ -11,7 +11,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../widgets/primary_gradient_button.dart' show PrimaryGradientButton;
 import '../reports/report_view_model.dart';
 import 'repositories/report_repository_impl.dart';
-import '../../../features/agent_working/agent_working_detail_page.dart';
+import '../../../features/agent_working/pages/agent_working_detail_page.dart' show AgentWorkingDetailPage;
 import 'package:shared/shared.dart' show WorkingProgressData, Expenditure, RentalItem, TradingEntry, Reminder, RoleUtils, AppDatabase;
 
 class ReportsPage extends StatefulWidget {

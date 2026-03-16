@@ -4,7 +4,7 @@ import '../../../../core/font_utils.dart';
 
 import 'package:provider/provider.dart';
 import '../models/inventory_item.dart';
-import '../inventory_view_model.dart';
+import '../view_models/inventory_view_model.dart';
 import 'inventory_detail_page.dart';
 import 'inventory_details_modal.dart';
 import '../../../core/phone_actions.dart' show showPhoneActionSheet;

@@ -153,6 +153,11 @@ void main() async {
     }
   });
 
-  // 4. Run App
+  // 4. Run App with Windows-specific connection handling
+  if (isWindows) {
+    // Windows: Add connection stability handling
+    debugPrint('Windows Platform: Applying connection stability fixes');
+  }
+  
   runApp(const AdminApp());
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 /// Comprehensive Firebase Threading Handler for Windows compatibility
 /// Ensures all Firebase operations communicate with the Flutter UI thread
@@ -10,51 +11,57 @@ class FirebaseThreadingHandler {
   
   /// Execute Firebase operations with proper thread safety
   /// Enhanced with comprehensive Windows compatibility and error filtering
+  /// CRITICAL: Always ensure operations happen on main UI thread on Windows
   static Future<T> executeWithThreadSafety<T>(
     Future<T> Function() operation, {
     String? operationName,
   }) async {
     if (_isWindows) {
-      // On Windows, ensure we're on main thread for Firebase operations
-      // Enhanced: Multiple layers of thread safety
+      // CRITICAL: On Windows, Firebase operations MUST be on main thread
+      debugPrint('FirebaseThreadingHandler: Starting ${operationName ?? 'operation'} on main thread');
+      
+      // Step 1: Wait for any pending UI operations
       await WidgetsBinding.instance.endOfFrame;
       
-      // Additional safety: wait for next frame to ensure UI thread
-      Completer<void> completer = Completer<void>();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        completer.complete();
+      // Step 2: Execute on main thread with frame boundary
+      final result = await runZonedGuarded(() async {
+        return await operation();
+      }, (error, stack) {
+        debugPrint('FirebaseThreadingHandler: Error in ${operationName ?? 'operation'}: $error');
+        throw error;
       });
-      await completer.future;
       
-      // Final safety: Small delay to ensure native thread readiness
-      await Future.delayed(const Duration(milliseconds: 50));
-    }
-    
-    try {
-      return await operation();
-    } catch (e) {
-      // Enhanced error filtering for comprehensive platform warning silence
-      final criticalPatterns = [
-        'channel sent a message',
-        'non-platform thread',
-        'Platform channel',
-        'background_fetch',
-        'flutter_background_fetch',
-        'connectivity_plus',
-        'path_provider',
-        'sqflite',
-        'shared_preferences',
-        'firebase_auth_plugin',
-        'id-token',
-      ];
-      
-      if (criticalPatterns.any((pattern) => e.toString().contains(pattern))) {
-        debugPrint('FirebaseThreadingHandler: Platform thread warning silenced for ${operationName ?? 'operation'}: ${e.runtimeType}');
-        // Don't rethrow platform thread warnings - they're non-critical
-        return Future.error(e);
-      } else {
-        debugPrint('FirebaseThreadingHandler: Error in ${operationName ?? 'operation'}: $e');
-        rethrow;
+      debugPrint('FirebaseThreadingHandler: ${operationName ?? 'operation'} completed on main thread');
+      return result as T;
+    } else {
+      // Non-Windows: Execute directly
+      debugPrint('FirebaseThreadingHandler: ${operationName ?? 'operation'} on non-Windows platform');
+      try {
+        return await operation();
+      } catch (e) {
+        // Enhanced error filtering for comprehensive platform warning silence
+        final criticalPatterns = [
+          'channel sent a message',
+          'non-platform thread',
+          'Platform channel',
+          'background_fetch',
+          'flutter_background_fetch',
+          'connectivity_plus',
+          'path_provider',
+          'sqflite',
+          'shared_preferences',
+          'firebase_auth_plugin',
+          'id-token',
+        ];
+        
+        if (criticalPatterns.any((pattern) => e.toString().contains(pattern))) {
+          debugPrint('FirebaseThreadingHandler: Platform thread warning silenced for ${operationName ?? 'operation'}: ${e.runtimeType}');
+          // Don't rethrow platform thread warnings - they're non-critical
+          return await operation();
+        } else {
+          debugPrint('FirebaseThreadingHandler: Error in ${operationName ?? 'operation'}: $e');
+          rethrow;
+        }
       }
     }
   }
@@ -141,13 +148,44 @@ class FirebaseThreadingHandler {
   }
   
   /// Execute Auth operations with proper thread safety
-  static Future<T?> executeAuthOperation<T>(
-    Future<T?> Function() authOperation, {
-    String? operationName,
-  }) async {
-    return await executeWithThreadSafety(
-      authOperation,
-      operationName: operationName ?? 'Auth operation',
-    );
+  /// CRITICAL: ID token refreshes must be on main thread
+  static Future<String?> executeIdTokenRefreshWithThreadSafety() async {
+    if (_isWindows) {
+      // CRITICAL: ID token refreshes MUST be on main thread on Windows
+      debugPrint('FirebaseThreadingHandler: Starting ID token refresh on main thread');
+      
+      // Step 1: Wait for any pending UI operations
+      await WidgetsBinding.instance.endOfFrame;
+      
+      // Step 2: Execute on main thread with frame boundary
+      final result = await runZonedGuarded(() async {
+        if (FirebaseAuth.instance.currentUser != null) {
+          final idToken = await FirebaseAuth.instance.currentUser!.getIdToken(true);
+          debugPrint('FirebaseThreadingHandler: ID token refreshed successfully');
+          return idToken;
+        }
+        return null;
+      }, (error, stack) {
+        debugPrint('FirebaseThreadingHandler: ID token refresh error: $error');
+        return null;
+      });
+      
+      debugPrint('FirebaseThreadingHandler: ID token refresh completed on main thread');
+      return result;
+    } else {
+      // Non-Windows: Execute directly
+      debugPrint('FirebaseThreadingHandler: ID token refresh on non-Windows platform');
+      try {
+        if (FirebaseAuth.instance.currentUser != null) {
+          final idToken = await FirebaseAuth.instance.currentUser!.getIdToken(true);
+          debugPrint('FirebaseThreadingHandler: ID token refreshed successfully');
+          return idToken;
+        }
+        return null;
+      } catch (e) {
+        debugPrint('FirebaseThreadingHandler: ID token refresh error: $e');
+        return null;
+      }
+    }
   }
 }

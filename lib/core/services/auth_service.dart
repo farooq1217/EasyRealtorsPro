@@ -312,30 +312,14 @@ class AuthService {
         if (FirebaseAuth.instance.currentUser != null) {
           debugPrint('AuthService: Windows - Firebase Auth ready, attempting safe token refresh');
           
-          // Use FirebaseThreadingHandler for safe token refresh on Windows
+          // CRITICAL: Use specialized thread-safe ID token refresh
           try {
-            await FirebaseThreadingHandler.executeWithThreadSafety(
-              () async {
-                if (FirebaseAuth.instance.currentUser != null) {
-                  final idToken = await FirebaseAuth.instance.currentUser!.getIdToken(true);
-                  debugPrint('AuthService: Windows - Token refresh successful');
-                  return idToken;
-                }
-                return null;
-              },
-              operationName: 'AuthService Windows _ensureFirebaseAuthReady token refresh',
-            );
-            return true;
-          } catch (tokenError) {
-            // Filter platform thread warnings but log other errors
-            if (tokenError.toString().contains('channel sent a message') || 
-                tokenError.toString().contains('non-platform thread')) {
-              debugPrint('AuthService: Windows - Token refresh platform thread warning silenced: ${tokenError.runtimeType}');
-            } else {
-              debugPrint('AuthService: Windows - Token refresh failed: $tokenError');
-            }
-            // Still return true because user is authenticated
-            return true;
+            final idToken = await FirebaseThreadingHandler.executeIdTokenRefreshWithThreadSafety();
+            debugPrint('AuthService: Windows - Token refresh successful');
+            return idToken != null;
+          } catch (e) {
+            debugPrint('AuthService: Windows - Token refresh failed: $e');
+            return false;
           }
         }
         return false;
@@ -347,20 +331,12 @@ class AuthService {
     
     // On non-Windows platforms, safely refresh token with platform thread handling
     try {
-      await runZonedGuarded(() async {
-        await FirebaseAuth.instance.currentUser?.getIdToken(true);
-      }, (error, stack) {
-        // Silence platform thread warnings but log other errors
-        if (error.toString().contains('channel sent a message') || 
-            error.toString().contains('non-platform thread')) {
-          debugPrint('AuthService: Platform thread warning silenced: ${error.runtimeType}');
-        } else {
-          debugPrint('AuthService: ID token refresh error: $error');
-        }
-      });
-      return true;
+      // Use specialized thread-safe ID token refresh
+      final idToken = await FirebaseThreadingHandler.executeIdTokenRefreshWithThreadSafety();
+      debugPrint('AuthService: Non-Windows - Token refresh successful');
+      return idToken != null;
     } catch (e) {
-      debugPrint('AuthService: Failed to refresh ID token: $e');
+      debugPrint('AuthService: Non-Windows - Token refresh error: $e');
       return false;
     }
   }

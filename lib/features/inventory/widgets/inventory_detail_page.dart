@@ -6,7 +6,7 @@ import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../models/inventory_item.dart';
-import '../inventory_view_model.dart';
+import '../view_models/inventory_view_model.dart';
 import '../repositories/inventory_repository.dart';
 import '../repositories/inventory_repository_impl.dart';
 import '../../../core/professional_pdf_generator.dart';

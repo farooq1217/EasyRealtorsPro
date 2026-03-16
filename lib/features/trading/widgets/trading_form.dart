@@ -67,7 +67,8 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
       } else if (lowerLabel.contains('quantity')) {
         fieldIcon = Icons.inventory_2_outlined;
       } else if (lowerLabel.contains('unit price') || lowerLabel.contains('price')) {
-        fieldIcon = Icons.attach_money_outlined;
+        // Don't show icon for Unit Price - will use prefixText instead
+        fieldIcon = null;
       } else {
         fieldIcon = Icons.edit_outlined;
       }
@@ -372,7 +373,29 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                 Expanded(
                   child: TextFormField(
                     controller: _unitPriceController,
-                    decoration: _fieldDecoration('Unit Price', isRequired: true),
+                    decoration: InputDecoration(
+                      labelText: 'Unit Price *',
+                      labelStyle: AppFonts.poppins(color: Colors.grey.shade700),
+                      prefixText: 'Rs ',
+                      prefixStyle: AppFonts.poppins(color: Colors.grey.shade700),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+                      ),
+                      filled: true,
+                      fillColor: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF23272E)
+                          : Colors.grey.shade50,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
                     validator: (value) {

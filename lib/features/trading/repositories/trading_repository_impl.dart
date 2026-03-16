@@ -1,15 +1,61 @@
 // data/repositories/trading_repository_impl.dart
 import 'dart:async';
-import 'package:shared/shared.dart' show TradingEntry;
-import 'trading_repository.dart';
 import 'package:drift/drift.dart' as d;
-import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/widgets.dart' show WidgetsBinding;
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
+import '../../trading/models/trading_models.dart';
+import 'trading_repository.dart';
 import 'package:shared/shared.dart';
+import '../../../core/services/sync_database_helper.dart';
+import '../../../firestore_sync_service.dart';
+import '../../../core/services/app_storage.dart';
+import '../../../core/app_utils.dart';
+import '../../../core/services/firebase_threading_handler.dart';
 
 class TradingRepositoryImpl implements TradingRepository {
   final AppDatabase db;
+  final SyncDatabaseHelper _syncHelper = SyncDatabaseHelper();
+  final FirestoreSyncService _firestoreSync = FirestoreSyncService();
+  
+  // SQLite-only flag - disables all Firestore operations
+  static const bool _sqliteOnlyMode = true;
+
+  // Platform detection for thread safety
+  static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
 
   TradingRepositoryImpl(this.db);
+
+  // Helper method to wrap streams with platform thread safety
+  Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
+    if (_isWindows) {
+      debugPrint('TradingRepository: Wrapping $streamName with Windows thread safety');
+      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+        stream,
+        streamName: 'TradingRepository $streamName',
+      );
+    }
+    return stream;
+  }
+
+  // Helper method to disable Firestore operations in SQLite-only mode
+  bool _isFirestoreOperationAllowed() {
+    return !_sqliteOnlyMode;
+  }
+
+  // Helper method to execute Firestore operations only if allowed
+  Future<void> _executeFirestoreOperation(Future<void> Function() operation) async {
+    if (_isFirestoreOperationAllowed()) {
+      try {
+        await operation();
+      } catch (e) {
+        debugPrint('Firestore operation failed (non-critical in SQLite-only mode): $e');
+      }
+    } else {
+      debugPrint('Firestore operation skipped in SQLite-only mode');
+    }
+  }
 
   @override
   Future<List<TradingEntry>> getAllEntries({String? companyId}) async {
@@ -73,13 +119,16 @@ class TradingRepositoryImpl implements TradingRepository {
     final whereClause = companyId != null ? 'AND company_id = ?' : '';
     final vars = companyId != null ? [d.Variable.withString(companyId)] : [];
     
-    return db.customSelect('''
+    final stream = db.customSelect('''
       SELECT * FROM trading_entries 
       WHERE is_active = 1 $whereClause
       ORDER BY date DESC
     ''', variables: vars.map((v) => d.Variable.withString(v.value ?? '')).toList()).watch().map((rows) => 
       rows.map((row) => _mapRowToTradingEntry(row.data)).toList()
     );
+    
+    // CRITICAL: Wrap stream with platform thread safety for Windows
+    return _wrapStreamWithThreadSafety(stream, 'watchEntries');
   }
 
   @override
@@ -90,13 +139,16 @@ class TradingRepositoryImpl implements TradingRepository {
       if (companyId != null) d.Variable.withString(companyId),
     ];
     
-    return db.customSelect('''
+    final stream = db.customSelect('''
       SELECT * FROM trading_entries 
       WHERE is_active = 1 AND entry_type = ? $whereClause
       ORDER BY date DESC
     ''', variables: vars.map((v) => d.Variable.withString(v.value ?? '')).toList()).watch().map((rows) => 
       rows.map((row) => _mapRowToTradingEntry(row.data)).toList()
     );
+    
+    // CRITICAL: Wrap stream with platform thread safety for Windows
+    return _wrapStreamWithThreadSafety(stream, 'watchEntriesByType');
   }
 
   @override
@@ -312,31 +364,40 @@ class TradingRepositoryImpl implements TradingRepository {
 
   @override
   Future<void> addEntry(TradingEntry entry) async {
-    final map = entry.toMap();
-    final now = DateTime.now().toIso8601String();
+    try {
+      final map = entry.toMap();
+      final now = DateTime.now().toIso8601String();
 
-    const sql = '''INSERT INTO trading_entries (
+      const sql = '''INSERT INTO trading_entries (
         id, entry_type, date, person_name, mobile_no, estate_name, 
         quantity, unit_price, image_path, company_id, is_active, is_synced, created_at, updated_at, status
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''';
 
-    await db.customStatement(sql, [
-      map['id'],
-      map['entry_type'],
-      map['date'],
-      map['person_name'],
-      map['mobile_no'],
-      map['estate_name'],
-      map['quantity'],
-      map['unit_price'],
-      map['image_path'],
-      map['company_id'],
-      map['is_active'],
-      map['is_synced'],
-      map['created_at'],
-      now, // updated_at
-      map['status'] ?? 'active', // status
-    ]);
+      await db.customStatement(sql, [
+        map['id'],
+        map['entry_type'],
+        map['date'],
+        map['person_name'],
+        map['mobile_no'],
+        map['estate_name'],
+        map['quantity'],
+        map['unit_price'],
+        map['image_path'],
+        map['company_id'],
+        map['is_active'],
+        map['is_synced'],
+        map['created_at'],
+        now, // updated_at
+        map['status'] ?? 'active', // status
+      ]);
+      
+      // Mark as unsynced for Firestore sync
+      if (!_sqliteOnlyMode) {
+        await markEntryAsUnsynced(map['id']);
+      }
+    } catch (e) {
+      debugPrint('Error adding trading entry: $e');
+    }
   }
 
   @override

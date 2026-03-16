@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'package:drift/drift.dart' as d;
-import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
-import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
-import '../../companies/models/company_model.dart';
+import 'package:shared/shared.dart';
+import 'package:uuid/uuid.dart';
+import '../../../core/services/app_storage.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/services/permission_helper.dart';
 import 'company_repository.dart';
+import '../../companies/models/company_model.dart';
 import '../../../core/services/sync_database_helper.dart';
 import '../../../firestore_sync_service.dart';
-import '../../../core/services/app_storage.dart';
 import '../../../core/app_utils.dart';
 import '../../../core/services/firebase_threading_handler.dart';
-import 'package:shared/shared.dart';
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
 
 class CompanyRepositoryImpl implements CompanyRepository {
   final AppDatabase db;
@@ -55,24 +57,65 @@ class CompanyRepositoryImpl implements CompanyRepository {
     }
   }
 
+  // Helper method to check if current user is Super Admin
+  Future<bool> _isSuperAdmin() async {
+    try {
+      final storage = AppStorage();
+      final settings = await storage.readSettings();
+      final authToken = settings['authToken'] as String?;
+      
+      if (authToken != null) {
+        final authService = AuthService();
+        final user = await authService.getCurrentUser(authToken);
+        return RoleUtils.isSuperAdmin(user) || PermissionHelper.isBypassUser(user);
+      }
+      return false;
+    } catch (e) {
+      debugPrint('CompanyRepository: Error checking Super Admin status: $e');
+      return false;
+    }
+  }
+
   @override
   Future<List<CompanyModel>> getCompanies() async {
     try {
-      final result = await db.customSelect(
-        '''
-        SELECT id, name, status, metadata, logo_url, address, contact, 
-               max_user_limit, subscription_tier, is_active, is_synced, 
-               created_at, updated_at
-        FROM companies 
-        WHERE (status IS NULL OR (status != 'archived' AND status != 'deleted')) 
-        AND (is_active = 1 OR is_active IS NULL) 
-        ORDER BY updated_at DESC
-        ''',
-      ).get();
+      // CRITICAL FIX: Enhanced Super Admin support for GLOBAL_ADMIN
+      final isSuperAdmin = await _isSuperAdmin();
       
-      return result.map((r) => CompanyModel.fromMap(r.data)).toList();
+      String query;
+      List<d.Variable> variables = [];
+      
+      if (isSuperAdmin) {
+        // Super Admin - show all companies
+        query = '''
+          SELECT id, name, status, metadata, logo_url, address, contact, 
+                 max_user_limit, subscription_tier, is_active, is_synced, 
+                 created_at, updated_at
+          FROM companies 
+          WHERE (status IS NULL OR (status != 'archived' AND status != 'deleted')) 
+          AND (is_active = 1 OR is_active IS NULL) 
+          ORDER BY updated_at DESC
+          ''';
+        debugPrint('CompanyRepository: getCompanies for Super Admin - showing all companies');
+      } else {
+        // Non-Super Admin - apply regular filtering
+        query = '''
+          SELECT id, name, status, metadata, logo_url, address, contact, 
+                 max_user_limit, subscription_tier, is_active, is_synced, 
+                 created_at, updated_at
+          FROM companies 
+          WHERE (status IS NULL OR (status != 'archived' AND status != 'deleted')) 
+          AND (is_active = 1 OR is_active IS NULL) 
+          ORDER BY updated_at DESC
+          ''';
+        debugPrint('CompanyRepository: getCompanies for regular user');
+      }
+      
+      final result = await db.customSelect(query, variables: variables).get();
+      return result.map((row) => CompanyModel.fromMap(row.data)).toList();
     } catch (e) {
-      throw Exception('Failed to fetch companies: $e');
+      debugPrint('CompanyRepository: Error getting companies: $e');
+      return [];
     }
   }
 

@@ -5733,6 +5733,10 @@ class WorkingProgressData extends DataClass
   final String? transferDate;
   final String? nextWorkingDate;
   final String? category;
+  final String? plotNo;
+  final String? registryNumber;
+  final String? size;
+  final String? clientMobile;
   final bool isActive;
   final String updatedAt;
   final bool isSynced;
@@ -5747,6 +5751,10 @@ class WorkingProgressData extends DataClass
       this.transferDate,
       this.nextWorkingDate,
       this.category,
+      this.plotNo,
+      this.registryNumber,
+      this.size,
+      this.clientMobile,
       required this.isActive,
       required this.updatedAt,
       required this.isSynced});
@@ -5778,6 +5786,18 @@ class WorkingProgressData extends DataClass
     }
     if (!nullToAbsent || category != null) {
       map['category'] = Variable<String>(category);
+    }
+    if (!nullToAbsent || plotNo != null) {
+      map['plot_no'] = Variable<String>(plotNo);
+    }
+    if (!nullToAbsent || registryNumber != null) {
+      map['registry_number'] = Variable<String>(registryNumber);
+    }
+    if (!nullToAbsent || size != null) {
+      map['size'] = Variable<String>(size);
+    }
+    if (!nullToAbsent || clientMobile != null) {
+      map['client_mobile'] = Variable<String>(clientMobile);
     }
     map['is_active'] = Variable<bool>(isActive);
     map['updated_at'] = Variable<String>(updatedAt);
@@ -5811,6 +5831,15 @@ class WorkingProgressData extends DataClass
       category: category == null && nullToAbsent
           ? const Value.absent()
           : Value(category),
+      plotNo:
+          plotNo == null && nullToAbsent ? const Value.absent() : Value(plotNo),
+      registryNumber: registryNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(registryNumber),
+      size:
+          size == null && nullToAbsent ? const Value.absent() : Value(size),
+      clientMobile:
+          clientMobile == null && nullToAbsent ? const Value.absent() : Value(clientMobile),
       isActive: Value(isActive),
       updatedAt: Value(updatedAt),
       isSynced: Value(isSynced),
@@ -5975,6 +6004,10 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
   final Value<String?> transferDate;
   final Value<String?> nextWorkingDate;
   final Value<String?> category;
+  final Value<String?> plotNo;
+  final Value<String?> registryNumber;
+  final Value<String?> size;
+  final Value<String?> clientMobile;
   final Value<bool> isActive;
   final Value<String> updatedAt;
   final Value<bool> isSynced;
@@ -5990,6 +6023,10 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
     this.transferDate = const Value.absent(),
     this.nextWorkingDate = const Value.absent(),
     this.category = const Value.absent(),
+    this.plotNo = const Value.absent(),
+    this.registryNumber = const Value.absent(),
+    this.size = const Value.absent(),
+    this.clientMobile = const Value.absent(),
     this.isActive = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.isSynced = const Value.absent(),
@@ -6006,6 +6043,10 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
     this.transferDate = const Value.absent(),
     this.nextWorkingDate = const Value.absent(),
     this.category = const Value.absent(),
+    this.plotNo = const Value.absent(),
+    this.registryNumber = const Value.absent(),
+    this.size = const Value.absent(),
+    this.clientMobile = const Value.absent(),
     this.isActive = const Value.absent(),
     required String updatedAt,
     this.isSynced = const Value.absent(),
@@ -6024,6 +6065,10 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
     Expression<String>? transferDate,
     Expression<String>? nextWorkingDate,
     Expression<String>? category,
+    Expression<String>? plotNo,
+    Expression<String>? registryNumber,
+    Expression<String>? size,
+    Expression<String>? clientMobile,
     Expression<bool>? isActive,
     Expression<String>? updatedAt,
     Expression<bool>? isSynced,
@@ -6040,6 +6085,10 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
       if (transferDate != null) 'transfer_date': transferDate,
       if (nextWorkingDate != null) 'next_working_date': nextWorkingDate,
       if (category != null) 'category': category,
+      if (plotNo != null) 'plot_no': plotNo,
+      if (registryNumber != null) 'registry_number': registryNumber,
+      if (size != null) 'size': size,
+      if (clientMobile != null) 'client_mobile': clientMobile,
       if (isActive != null) 'is_active': isActive,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (isSynced != null) 'is_synced': isSynced,
@@ -6047,21 +6096,26 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
     });
   }
 
-  WorkingProgressCompanion copyWith(
-      {Value<String>? id,
-      Value<String?>? companyId,
-      Value<String>? name,
-      Value<String?>? status,
-      Value<String?>? remarks,
-      Value<String?>? fromUser,
-      Value<String?>? toUser,
-      Value<String?>? transferDate,
-      Value<String?>? nextWorkingDate,
-      Value<String?>? category,
-      Value<bool>? isActive,
-      Value<String>? updatedAt,
-      Value<bool>? isSynced,
-      Value<int>? rowid}) {
+  WorkingProgressCompanion copyWith({
+    Value<String>? id,
+    Value<String?>? companyId,
+    Value<String>? name,
+    Value<String?>? status,
+    Value<String?>? remarks,
+    Value<String?>? fromUser,
+    Value<String?>? toUser,
+    Value<String?>? transferDate,
+    Value<String?>? nextWorkingDate,
+    Value<String?>? category,
+    Value<String?>? plotNo,
+    Value<String?>? registryNumber,
+    Value<String?>? size,
+    Value<String?>? clientMobile,
+    Value<bool>? isActive,
+    Value<String>? updatedAt,
+    Value<bool>? isSynced,
+    Value<int>? rowid,
+  }) {
     return WorkingProgressCompanion(
       id: id ?? this.id,
       companyId: companyId ?? this.companyId,
@@ -6073,6 +6127,10 @@ class WorkingProgressCompanion extends UpdateCompanion<WorkingProgressData> {
       transferDate: transferDate ?? this.transferDate,
       nextWorkingDate: nextWorkingDate ?? this.nextWorkingDate,
       category: category ?? this.category,
+      plotNo: plotNo ?? this.plotNo,
+      registryNumber: registryNumber ?? this.registryNumber,
+      size: size ?? this.size,
+      clientMobile: clientMobile ?? this.clientMobile,
       isActive: isActive ?? this.isActive,
       updatedAt: updatedAt ?? this.updatedAt,
       isSynced: isSynced ?? this.isSynced,
