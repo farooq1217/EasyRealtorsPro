@@ -467,7 +467,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     }
   }
 
-  // Save expense method with enhanced real-time refresh
+  // Save expense method with enhanced real-time refresh and debugging
   Future<bool> _saveExpense(ExpenditureViewModel viewModel) async {
     try {
       final amountText = _amountController.text.trim();
@@ -494,9 +494,20 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
         return false;
       }
       
+      // CRITICAL DEBUGGING: Print expenditure data before saving
+      final expenseData = {
+        'type': _currentFormType,
+        'category': _selectedCategory,
+        'description': _selectedCategory!, // Use category as description
+        'amount': amount,
+        'date': DateFormat('yyyy-MM-dd').format(_selectedDate!),
+        'categoryType': _currentFormType == 'office' ? 'office_expense' : 'project_expense',
+      };
+      print("Expenditure Save Attempt: $expenseData");
+      
       // Use ViewModel's saveExpenseWithCategory method with validated data
       final success = await viewModel.saveExpenseWithCategory(
-        _currentFormType,
+        _currentFormType == 'office' ? 'office_expense' : 'project_expense', // CRITICAL: Ensure proper category type
         _selectedCategory,
         description: _selectedCategory!, // Use category as description
         amount: amount,
@@ -784,36 +795,31 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                                 final success = await _saveExpense(viewModel);
                                 
                                 if (success && dialogContext.mounted) {
-                                  // CRITICAL: Wait for stream updates to propagate
-                                  await Future.delayed(const Duration(milliseconds: 500));
+                                  // CRITICAL: Auto-close dialog immediately on success
+                                  Navigator.of(dialogContext).pop();
                                   
-                                  // Ensure the dialog context is still valid before closing
-                                  if (dialogContext.mounted) {
-                                    Navigator.of(dialogContext).pop();
-                                    
-                                    // CRITICAL: Force immediate UI refresh after dialog close
-                                    if (mounted) {
-                                      setState(() {});
-                                    }
-                                    
-                                    // Show success message with Windows compatibility
-                                    if (context.mounted) {
-                                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                '${type == 'office' ? 'Office Expense' : 'Project'} added successfully!',
-                                                style: AppFonts.poppins(),
-                                              ),
-                                              backgroundColor: const Color(0xFFFF6B35),
-                                              duration: const Duration(seconds: 2),
-                                              behavior: SnackBarBehavior.floating,
+                                  // CRITICAL: Show success message after dialog close
+                                  if (context.mounted) {
+                                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              '${type == 'office' ? 'Office Expense' : 'Project'} saved successfully!',
+                                              style: AppFonts.poppins(),
                                             ),
-                                          );
-                                        }
-                                      });
-                                    }
+                                            backgroundColor: const Color(0xFFFF6B35),
+                                            duration: const Duration(seconds: 2),
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      }
+                                    });
+                                  }
+                                  
+                                  // CRITICAL: Force immediate UI refresh after dialog close
+                                  if (mounted) {
+                                    setState(() {});
                                   }
                                 }
                               },

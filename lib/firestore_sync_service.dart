@@ -17,6 +17,9 @@ class FirestoreSyncService {
 
   bool get _isWindows => !kIsWeb && io.Platform.isWindows;
 
+  /// Public getter to check if running on Windows platform
+  bool get isWindows => _isWindows;
+
   /// Helper to ensure code runs on main thread for UI updates
   void _ensureMainThread(VoidCallback callback) {
     if (_isWindows) {

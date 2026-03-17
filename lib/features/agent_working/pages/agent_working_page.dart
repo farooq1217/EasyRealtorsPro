@@ -353,36 +353,72 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
 
   // Form submission delegates to view model
   Future<void> _submitTransfer({required String action, BuildContext? dialogContext}) async {
+    print("Save button clicked. Validating form...");
+    
     final success = await _viewModel.addTransfer();
     
     if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Transfer added successfully!', style: AppFonts.poppins()),
-          backgroundColor: const Color(0xFFFF6B35),
-        ),
-      );
+      // Close dialog immediately after successful save
+      if (dialogContext != null) {
+        Navigator.of(dialogContext).pop();
+      }
+      
+      // Show success message with error handling to prevent accessibility crashes
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Transfer added successfully!', style: AppFonts.poppins()),
+            backgroundColor: const Color(0xFFFF6B35),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } catch (e) {
+        print("Warning: Could not show success message: $e");
+      }
     } else if (_viewModel.error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_viewModel.error!), backgroundColor: Colors.red),
-      );
+      // Show error message with error handling
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_viewModel.error!), backgroundColor: Colors.red),
+        );
+      } catch (e) {
+        print("Warning: Could not show error message: $e");
+      }
     }
   }
 
   Future<void> _submitClientRequirement({required String action, BuildContext? dialogContext}) async {
+    print("Save button clicked for client requirement. Validating form...");
+    
     final success = await _viewModel.addClientRequirement();
     
     if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Client requirement added successfully!', style: AppFonts.poppins()),
-          backgroundColor: const Color(0xFFFF6B35),
-        ),
-      );
+      // Close dialog immediately after successful save
+      if (dialogContext != null) {
+        Navigator.of(dialogContext).pop();
+      }
+      
+      // Show success message with error handling to prevent accessibility crashes
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Client requirement added successfully!', style: AppFonts.poppins()),
+            backgroundColor: const Color(0xFFFF6B35),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } catch (e) {
+        print("Warning: Could not show success message: $e");
+      }
     } else if (_viewModel.error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_viewModel.error!), backgroundColor: Colors.red),
-      );
+      // Show error message with error handling
+      try {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_viewModel.error!), backgroundColor: Colors.red),
+        );
+      } catch (e) {
+        print("Warning: Could not show error message: $e");
+      }
     }
   }
 
@@ -423,6 +459,13 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   // Type selection delegates to view model
   void _onTypeChanged(String type) {
     _viewModel.setSelectedType(type);
+    
+    // Refresh data when switching tabs to ensure filters are applied correctly
+    if (type == 'Transfer') {
+      _viewModel.loadTransfers();
+    } else {
+      _viewModel.loadClientRequirements();
+    }
   }
 
   // Navigation to detail page
@@ -567,15 +610,31 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   }
 
   Widget _buildTransferContent() {
-    return _viewModel.transfers.isEmpty
+    // Filter transfers to only show entries with property categories (exact match with form dropdown)
+    final propertyCategories = ['Residential', 'Commercial', 'Plot', 'other'];
+    final filteredTransfers = _viewModel.transfers.where((entry) => 
+      entry.category != null && 
+      entry.category!.isNotEmpty && 
+      propertyCategories.contains(entry.category)
+    ).toList();
+    
+    return filteredTransfers.isEmpty
         ? _buildEmptyState('No transfers found')
-        : _buildTransfersList();
+        : _buildTransfersList(filteredTransfers);
   }
 
   Widget _buildClientRequirementContent() {
-    return _viewModel.clientRequirements.isEmpty
+    // Filter client requirements to only show entries with source categories (exact match with form dropdown)
+    final sourceCategories = ['Direct', 'Agent', 'Website', 'Social Media', 'Referral'];
+    final filteredRequirements = _viewModel.clientRequirements.where((entry) => 
+      entry.category != null && 
+      entry.category!.isNotEmpty && 
+      sourceCategories.contains(entry.category)
+    ).toList();
+    
+    return filteredRequirements.isEmpty
         ? _buildEmptyState('No client requirements found')
-        : _buildClientRequirementsList();
+        : _buildClientRequirementsList(filteredRequirements);
   }
 
   Widget _buildEmptyState(String message) {
@@ -601,23 +660,23 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     );
   }
 
-  Widget _buildTransfersList() {
+  Widget _buildTransfersList(List<WorkingProgressData> transfers) {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: _viewModel.transfers.length,
+      itemCount: transfers.length,
       itemBuilder: (context, index) {
-        final transfer = _viewModel.transfers[index];
+        final transfer = transfers[index];
         return _buildTransferCard(transfer);
       },
     );
   }
 
-  Widget _buildClientRequirementsList() {
+  Widget _buildClientRequirementsList(List<WorkingProgressData> requirements) {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: _viewModel.clientRequirements.length,
+      itemCount: requirements.length,
       itemBuilder: (context, index) {
-        final requirement = _viewModel.clientRequirements[index];
+        final requirement = requirements[index];
         return _buildRequirementCard(requirement);
       },
     );

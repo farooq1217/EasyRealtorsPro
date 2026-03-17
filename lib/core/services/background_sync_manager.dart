@@ -253,6 +253,17 @@ class BackgroundSyncManager {
     final status = _getSyncStatus(tableName);
     status.startSync();
     
+    // Check if we're in SQLite-only mode (Windows platform)
+    if (_firestoreSync.isWindows) {
+      // In SQLite-only mode, mark all records as synced to prevent sync failures
+      await db.customStatement(
+        'UPDATE $tableName SET is_synced = 1 WHERE is_synced = 0 AND is_active = 1'
+      );
+      status.completeSync(success: true);
+      debugPrint('[SYNC] SQLite-only mode: Marked all $tableName records as synced');
+      return;
+    }
+    
     // Get unsynced records
     final unsyncedRecords = await db.customSelect(
       'SELECT * FROM $tableName WHERE is_synced = 0 AND is_active = 1'
@@ -320,6 +331,17 @@ class BackgroundSyncManager {
   Future<void> _performSyncBusinessTableOperation(AppDatabase db, String tableName, String collectionName) async {
     final status = _getSyncStatus(tableName);
     status.startSync();
+    
+    // Check if we're in SQLite-only mode (Windows platform)
+    if (_firestoreSync.isWindows) {
+      // In SQLite-only mode, mark all records as synced to prevent sync failures
+      await db.customStatement(
+        'UPDATE $tableName SET is_synced = 1 WHERE is_synced = 0 AND is_active = 1'
+      );
+      status.completeSync(success: true);
+      debugPrint('[SYNC] SQLite-only mode: Marked all business $tableName records as synced');
+      return;
+    }
     
     // Get unsynced records
     final unsyncedRecords = await db.customSelect(

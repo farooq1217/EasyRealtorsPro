@@ -9,13 +9,25 @@ abstract class AgentRepository {
     String? searchQuery,
   });
   
+  Stream<List<WorkingProgressData>> watchTransfers({
+    String? companyId,
+    bool isSuperAdmin = false,
+    String? searchQuery,
+  });
+  
   Future<List<WorkingProgressData>> getClientRequirements({
     String? companyId,
     bool isSuperAdmin = false,
     String? searchQuery,
   });
   
-  Future<void> addTransfer({
+  Stream<List<WorkingProgressData>> watchClientRequirements({
+    String? companyId,
+    bool isSuperAdmin = false,
+    String? searchQuery,
+  });
+  
+  Future<bool> addTransfer({
     required String id,
     String? companyId,
     required String name,

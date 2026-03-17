@@ -105,7 +105,9 @@ class InventoryViewModel extends ChangeNotifier {
   // Load societies using Future-based approach for now
   Future<void> loadSocieties({String? companyId, bool? isSuper}) async {
     _isLoadingSocieties = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    
+    // Force immediate UI refresh with microtask
+    Future.microtask(() {
       if (!mounted) return;
       notifyListeners();
     });
@@ -129,22 +131,27 @@ class InventoryViewModel extends ChangeNotifier {
       debugPrint('InventoryViewModel: Final societies list: ${_societies.map((s) => '${s['id']}:${s['name']}').toList()}');
       
       // AUTO-SELECTION: If there is only one society and no society is currently selected, auto-select it
-      if (_societies.length == 1 && _selectedSocietyId == null) {
+      if (_societies.isNotEmpty && _societies.length == 1 && _selectedSocietyId == null) {
         final singleSociety = _societies.first;
         debugPrint('InventoryViewModel: Auto-selecting single society: ${singleSociety['name']} (${singleSociety['id']})');
         setSelectedSociety(singleSociety['id']);
       }
       
       _isLoadingSocieties = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      
+      // Force immediate UI refresh with microtask
+      Future.microtask(() {
         if (!mounted) return;
         notifyListeners();
+        debugPrint('InventoryViewModel: Societies loaded and UI refreshed');
       });
     } catch (e) {
       debugPrint('Error loading societies: $e');
       _societies = [];
       _isLoadingSocieties = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      
+      // Force immediate UI refresh with microtask
+      Future.microtask(() {
         if (!mounted) return;
         notifyListeners();
       });
@@ -154,7 +161,9 @@ class InventoryViewModel extends ChangeNotifier {
   // Load blocks using Future-based approach for now
   Future<void> loadBlocks({String? societyId}) async {
     _isLoadingBlocks = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    
+    // Force immediate UI refresh with microtask
+    Future.microtask(() {
       if (!mounted) return;
       notifyListeners();
     });
@@ -183,15 +192,20 @@ class InventoryViewModel extends ChangeNotifier {
       debugPrint('InventoryViewModel: Final blocks list: $_blocks');
       
       _isLoadingBlocks = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      
+      // Force immediate UI refresh with microtask
+      Future.microtask(() {
         if (!mounted) return;
         notifyListeners();
+        debugPrint('InventoryViewModel: Blocks loaded and UI refreshed');
       });
     } catch (e) {
       debugPrint('Error loading blocks: $e');
       _blocks = [];
       _isLoadingBlocks = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      
+      // Force immediate UI refresh with microtask
+      Future.microtask(() {
         if (!mounted) return;
         notifyListeners();
       });
@@ -261,7 +275,9 @@ class InventoryViewModel extends ChangeNotifier {
     debugPrint('InventoryViewModel: _loadBlocksForSociety called with societyId: $societyId');
     try {
       _isLoadingBlocks = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      
+      // Force immediate UI refresh with microtask
+      Future.microtask(() {
         if (!mounted) return;
         notifyListeners();
       });
@@ -283,16 +299,20 @@ class InventoryViewModel extends ChangeNotifier {
       debugPrint('InventoryViewModel: Final blocks list: $_blocks');
       
       _isLoadingBlocks = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      
+      // Force immediate UI refresh with microtask
+      Future.microtask(() {
         if (!mounted) return;
         notifyListeners();
+        debugPrint('InventoryViewModel: Blocks updated, notified listeners');
       });
-      debugPrint('InventoryViewModel: Blocks updated, notified listeners');
     } catch (e) {
       debugPrint('Error loading blocks for society $societyId: $e');
       _blocks = [];
       _isLoadingBlocks = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      
+      // Force immediate UI refresh with microtask
+      Future.microtask(() {
         if (!mounted) return;
         notifyListeners();
       });
@@ -384,7 +404,23 @@ class InventoryViewModel extends ChangeNotifier {
           }).toList();
     debugPrint('InventoryViewModel: getAvailableBlocks - selectedSocietyId: $_selectedSocietyId, total blocks: ${_blocks.length}, available blocks: ${availableBlocks.length}');
     debugPrint('InventoryViewModel: Available blocks: ${availableBlocks.map((b) => '${b['id']}:${b['name']}').toList()}');
+    
+    // Force UI refresh when blocks are accessed
+    Future.microtask(() {
+      if (!mounted) return;
+      notifyListeners();
+    });
+    
     return availableBlocks;
+  }
+
+  // Force refresh method for debugging
+  void forceRefresh() {
+    debugPrint('InventoryViewModel: Force refresh called');
+    Future.microtask(() {
+      if (!mounted) return;
+      notifyListeners();
+    });
   }
 
   // Check if any filters are active

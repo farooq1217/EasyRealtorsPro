@@ -335,12 +335,13 @@ class ExpenditureViewModel extends ChangeNotifier {
         return false;
       }
       
+      // CRITICAL DEBUGGING: Create expenditure with proper office_expense type
       final expenditure = domain.ExpenditureItem(
         id: const Uuid().v4(),
         date: DateFormat('yyyy-MM-dd').format(selectedDate),
         description: description,
         amount: amount,
-        categoryType: type, // 'office' or 'project'
+        categoryType: type, // 'office_expense' or 'project_expense' - CRITICAL for proper filtering
         category: category, // Category from dropdown
         companyId: companyId,
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
@@ -350,9 +351,14 @@ class ExpenditureViewModel extends ChangeNotifier {
         updatedAt: DateTime.now(),
       );
       
+      // CRITICAL DEBUGGING: Print expenditure data before database save
+      print("Expenditure Repository Save: ${expenditure.toMap()}");
+      
       await _repository.addExpenditure(expenditure);
-      // ENHANCED: Reduce console noise - only log success in debug mode
+      
+      // ENHANCED: Show success message for debugging
       if (kDebugMode) {
+        print('$type expense saved successfully with category: $category');
         _showSuccessSnackBar('$type expense added successfully');
       }
       

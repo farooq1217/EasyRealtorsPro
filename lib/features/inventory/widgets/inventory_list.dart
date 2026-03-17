@@ -21,6 +21,9 @@ class _InventoryListState extends State<InventoryList> {
   Widget build(BuildContext context) {
     return Consumer<InventoryViewModel>(
       builder: (context, viewModel, child) {
+        // Debug: Log the current state
+        debugPrint('InventoryList: Building UI - Societies: ${viewModel.societies.length}, Blocks: ${viewModel.blocks.length}, Loading: ${viewModel.isLoadingSocieties}/${viewModel.isLoadingBlocks}');
+        
         // Filter items by selected type
         final itemsForType = viewModel.filteredItems
             .where((item) => item.type == viewModel.selectedType)
@@ -110,6 +113,14 @@ class _InventoryListState extends State<InventoryList> {
                                 style: AppFonts.poppins(
                                   fontSize: 16,
                                   color: Colors.grey.shade600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Try adjusting your filters or add new items',
+                                style: AppFonts.poppins(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade500,
                                 ),
                               ),
                             ],

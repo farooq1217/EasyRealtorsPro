@@ -27,9 +27,10 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<List<domain.ExpenditureItem>> getOfficeExpenses(String companyId) async {
     try {
+      // CRITICAL: Query for office_expense type to match what we're saving
       final rows = await db.customSelect(
-        'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type IS NULL) ORDER BY date DESC',
-        variables: [d.Variable.withString(companyId), d.Variable.withString('office')],
+        'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ? OR category_type IS NULL) ORDER BY date DESC',
+        variables: [d.Variable.withString(companyId), d.Variable.withString('office_expense'), d.Variable.withString('office')],
       ).get();
       
       return rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList();
@@ -41,9 +42,10 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<List<domain.ExpenditureItem>> getProjectExpenses(String companyId) async {
     try {
+      // CRITICAL: Query for project_expense type to match what we're saving
       final rows = await db.customSelect(
-        'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND category_type = ? ORDER BY date DESC',
-        variables: [d.Variable.withString(companyId), d.Variable.withString('project')],
+        'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ?) ORDER BY date DESC',
+        variables: [d.Variable.withString(companyId), d.Variable.withString('project_expense'), d.Variable.withString('project')],
       ).get();
       
       return rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList();
@@ -90,8 +92,8 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
           expenditureWithTimestamp.categoryType ?? 'office',
           expenditureWithTimestamp.companyId,
           expenditureWithTimestamp.createdBy,
-          expenditureWithTimestamp.createdAt,
-          expenditureWithTimestamp.updatedAt,
+          expenditureWithTimestamp.createdAt.toIso8601String(), // CRITICAL: Convert DateTime to string
+          expenditureWithTimestamp.updatedAt.toIso8601String(), // CRITICAL: Convert DateTime to string
           expenditureWithTimestamp.isActive ? 1 : 0,
         ],
       );
@@ -117,7 +119,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
           updatedExpenditure.amount,
           updatedExpenditure.category,
           updatedExpenditure.categoryType,
-          updatedExpenditure.updatedAt,
+          updatedExpenditure.updatedAt.toIso8601String(), // CRITICAL: Convert DateTime to string
           updatedExpenditure.isActive ? 1 : 0,
           updatedExpenditure.id,
         ],
@@ -149,10 +151,11 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
 
   @override
   Stream<List<domain.ExpenditureItem>> watchOfficeExpenses(String companyId) {
+    // CRITICAL: Stream for office_expense type to match what we're saving
     return db
         .customSelect(
-          'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type IS NULL) ORDER BY date DESC',
-          variables: [d.Variable.withString(companyId), d.Variable.withString('office')],
+          'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ? OR category_type IS NULL) ORDER BY date DESC',
+          variables: [d.Variable.withString(companyId), d.Variable.withString('office_expense'), d.Variable.withString('office')],
         )
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
@@ -160,10 +163,11 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
 
   @override
   Stream<List<domain.ExpenditureItem>> watchProjectExpenses(String companyId) {
+    // CRITICAL: Stream for project_expense type to match what we're saving
     return db
         .customSelect(
-          'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND category_type = ? ORDER BY date DESC',
-          variables: [d.Variable.withString(companyId), d.Variable.withString('project')],
+          'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ?) ORDER BY date DESC',
+          variables: [d.Variable.withString(companyId), d.Variable.withString('project_expense'), d.Variable.withString('project')],
         )
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
@@ -327,11 +331,12 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<double> getTotalOfficeExpenses(String companyId) async {
     try {
+      // CRITICAL: Query for office_expense type to match what we're saving
       final rows = await db.customSelect(
         '''SELECT COALESCE(SUM(amount), 0) as total FROM Expenditures 
            WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) 
-           AND (category_type = ? OR category_type IS NULL)''',
-        variables: [d.Variable.withString(companyId), d.Variable.withString('office')],
+           AND (category_type = ? OR category_type = ? OR category_type IS NULL)''',
+        variables: [d.Variable.withString(companyId), d.Variable.withString('office_expense'), d.Variable.withString('office')],
       ).get();
       
       return double.tryParse(rows.first.data['total']?.toString() ?? '0') ?? 0;
@@ -343,10 +348,12 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<double> getTotalProjectExpenses(String companyId) async {
     try {
+      // CRITICAL: Query for project_expense type to match what we're saving
       final rows = await db.customSelect(
         '''SELECT COALESCE(SUM(amount), 0) as total FROM Expenditures 
-           WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND category_type = ?''',
-        variables: [d.Variable.withString(companyId), d.Variable.withString('project')],
+           WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) 
+           AND (category_type = ? OR category_type = ?)''',
+        variables: [d.Variable.withString(companyId), d.Variable.withString('project_expense'), d.Variable.withString('project')],
       ).get();
       
       return double.tryParse(rows.first.data['total']?.toString() ?? '0') ?? 0;

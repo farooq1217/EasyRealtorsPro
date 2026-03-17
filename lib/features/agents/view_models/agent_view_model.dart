@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:intl/intl.dart';
 import '../repositories/agent_repository.dart';
 import '../repositories/agent_repository_impl.dart';
@@ -29,6 +30,10 @@ class AgentViewModel extends ChangeNotifier {
   Map<String, dynamic>? _currentUser;
   String? _error;
 
+  // Stream subscriptions for real-time updates
+  StreamSubscription<List<WorkingProgressData>>? _transfersSubscription;
+  StreamSubscription<List<WorkingProgressData>>? _requirementsSubscription;
+
   // Form controllers
   final TextEditingController dateCtl = TextEditingController();
   final TextEditingController plotCtl = TextEditingController();
@@ -57,7 +62,7 @@ class AgentViewModel extends ChangeNotifier {
   String? _transferCategory;
   String? _transferSize;
   String? _requirementCategory;
-  String? _requirementSource;
+  String? _requirementSource = 'Direct'; // Set default value
   
   // New state variables for client requirement form
   String? _reqCategory;
@@ -137,7 +142,7 @@ class AgentViewModel extends ChangeNotifier {
     }
   }
 
-  // Load transfers
+  // Load transfers with stream-based real-time updates
   Future<void> loadTransfers() async {
     _loadingTransfers = true;
     _error = null;
@@ -147,21 +152,37 @@ class AgentViewModel extends ChangeNotifier {
       final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       
-      _transfers = await _repository.getTransfers(
+      // Cancel existing subscription
+      await _transfersSubscription?.cancel();
+      
+      // Set up new stream subscription
+      _transfersSubscription = _repository.watchTransfers(
         companyId: companyId,
         isSuperAdmin: isSuperAdmin,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+      ).listen(
+        (transfers) {
+          _transfers = transfers;
+          _loadingTransfers = false;
+          notifyListeners();
+          debugPrint('AgentViewModel: Transfers stream updated - ${transfers.length} items');
+        },
+        onError: (e) {
+          _error = 'Failed to load transfers: $e';
+          _loadingTransfers = false;
+          debugPrint('Error in transfers stream: $e');
+          notifyListeners();
+        },
       );
     } catch (e) {
       _error = 'Failed to load transfers: $e';
-      debugPrint('Error loading transfers: $e');
-    } finally {
       _loadingTransfers = false;
+      debugPrint('Error loading transfers: $e');
       notifyListeners();
     }
   }
 
-  // Load client requirements
+  // Load client requirements with stream-based real-time updates
   Future<void> loadClientRequirements() async {
     _loadingRequirements = true;
     _error = null;
@@ -171,16 +192,32 @@ class AgentViewModel extends ChangeNotifier {
       final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       
-      _clientRequirements = await _repository.getClientRequirements(
+      // Cancel existing subscription
+      await _requirementsSubscription?.cancel();
+      
+      // Set up new stream subscription
+      _requirementsSubscription = _repository.watchClientRequirements(
         companyId: companyId,
         isSuperAdmin: isSuperAdmin,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+      ).listen(
+        (requirements) {
+          _clientRequirements = requirements;
+          _loadingRequirements = false;
+          notifyListeners();
+          debugPrint('AgentViewModel: Client requirements stream updated - ${requirements.length} items');
+        },
+        onError: (e) {
+          _error = 'Failed to load client requirements: $e';
+          _loadingRequirements = false;
+          debugPrint('Error in client requirements stream: $e');
+          notifyListeners();
+        },
       );
     } catch (e) {
       _error = 'Failed to load client requirements: $e';
-      debugPrint('Error loading client requirements: $e');
-    } finally {
       _loadingRequirements = false;
+      debugPrint('Error loading client requirements: $e');
       notifyListeners();
     }
   }
@@ -255,6 +292,37 @@ class AgentViewModel extends ChangeNotifier {
     }
   }
 
+  @override
+  void dispose() {
+    // Cancel stream subscriptions to prevent memory leaks
+    _transfersSubscription?.cancel();
+    _requirementsSubscription?.cancel();
+    
+    // Dispose controllers
+    dateCtl.dispose();
+    plotCtl.dispose();
+    clientNameCtl.dispose();
+    clientMobileCtl.dispose();
+    timeCtl.dispose();
+    registryCtl.dispose();
+    commentsCtl.dispose();
+    reqDateCtl.dispose();
+    reqPlotCtl.dispose();
+    reqClientNameCtl.dispose();
+    reqClientMobileCtl.dispose();
+    reqTimeCtl.dispose();
+    reqRegistryCtl.dispose();
+    reqCommentsCtl.dispose();
+    nextWorkingDateCtl.dispose();
+    reqNextWorkingDateCtl.dispose();
+    transferOtherCategoryCtl.dispose();
+    transferOtherSizeCtl.dispose();
+    reqBudgetMinCtl.dispose();
+    reqBudgetMaxCtl.dispose();
+    
+    super.dispose();
+  }
+
   // Type selection
   void setSelectedType(String type) {
     _selectedType = type;
@@ -279,6 +347,7 @@ class AgentViewModel extends ChangeNotifier {
 
   void setRequirementSource(String? source) {
     _requirementSource = source;
+    debugPrint('AgentViewModel: setRequirementSource called with: $source');
     notifyListeners();
   }
 
@@ -363,6 +432,8 @@ class AgentViewModel extends ChangeNotifier {
 
   // Add transfer
   Future<bool> addTransfer() async {
+    print("AgentViewModel: addTransfer() called. Starting validation...");
+    
     if (!PermissionHelper.canAddModule(_currentUser, 'agent_working')) {
       _error = 'Permission Denied';
       notifyListeners();
@@ -375,6 +446,28 @@ class AgentViewModel extends ChangeNotifier {
       return false;
     }
 
+    // Validate category requirement
+    if (_transferCategory == null || _transferCategory!.isEmpty) {
+      _error = 'Please select a category';
+      notifyListeners();
+      return false;
+    }
+
+    // Validate "Other" category field
+    if (_transferCategory == 'other' && transferOtherCategoryCtl.text.trim().isEmpty) {
+      _error = 'Please specify the category when "Other" is selected';
+      notifyListeners();
+      return false;
+    }
+
+    // Validate "Other" size field
+    if (_transferSize == 'other' && transferOtherSizeCtl.text.trim().isEmpty) {
+      _error = 'Please specify the size when "Other" is selected';
+      notifyListeners();
+      return false;
+    }
+
+    print("AgentViewModel: Validation passed. Proceeding with save...");
     _loading = true;
     _error = null;
     notifyListeners();
@@ -399,7 +492,10 @@ class AgentViewModel extends ChangeNotifier {
           ? transferOtherSizeCtl.text.trim()
           : _transferSize;
 
-      await _repository.addTransfer(
+      print("AgentViewModel: About to save transfer with ID: $id");
+      print("AgentViewModel: Category: $categoryToSave, Size: $sizeToSave");
+
+      final success = await _repository.addTransfer(
         id: id,
         companyId: RoleUtils.getUserCompanyId(_currentUser),
         name: clientNameCtl.text.trim(),
@@ -415,6 +511,13 @@ class AgentViewModel extends ChangeNotifier {
         images: _transferImages,
       );
 
+      if (!success) {
+        throw Exception('Failed to save transfer to database');
+      }
+
+      print("AgentViewModel: Transfer saved successfully");
+      debugPrint('AgentViewModel: Transfer saved successfully - ID: $id');
+
       // Clear form
       _clearTransferForm();
       
@@ -423,6 +526,7 @@ class AgentViewModel extends ChangeNotifier {
       
       return true;
     } catch (e) {
+      print("AgentViewModel: Error saving transfer: $e");
       _error = 'Failed to add transfer: $e';
       debugPrint('Error adding transfer: $e');
       return false;
@@ -434,6 +538,8 @@ class AgentViewModel extends ChangeNotifier {
 
   // Add client requirement
   Future<bool> addClientRequirement() async {
+    print("AgentViewModel: addClientRequirement() called. Starting validation...");
+    
     if (!PermissionHelper.canAddModule(_currentUser, 'agent_working')) {
       _error = 'Permission Denied';
       notifyListeners();
@@ -446,6 +552,13 @@ class AgentViewModel extends ChangeNotifier {
       return false;
     }
 
+    if (_requirementSource == null || _requirementSource!.isEmpty) {
+      _error = 'Please select a source (Direct, Agent, Website, Social Media, or Referral)';
+      notifyListeners();
+      return false;
+    }
+
+    print("AgentViewModel: Validation passed. Proceeding with save...");
     _loading = true;
     _error = null;
     notifyListeners();
@@ -471,6 +584,8 @@ class AgentViewModel extends ChangeNotifier {
         source: _requirementSource,
         images: _clientRequirementImages,
       );
+      
+      debugPrint('AgentViewModel: Client requirement saved successfully - Source: $_requirementSource');
 
       // Clear form
       _clearRequirementForm();
@@ -649,23 +764,17 @@ class AgentViewModel extends ChangeNotifier {
   }
 
   void _clearRequirementForm() {
-    reqDateCtl.clear();
-    reqPlotCtl.clear();
     reqClientNameCtl.clear();
-    reqClientMobileCtl.clear();
-    reqTimeCtl.clear();
-    reqRegistryCtl.clear();
     reqCommentsCtl.clear();
     reqNextWorkingDateCtl.clear();
     
     _requirementCategory = null;
-    _requirementSource = null;
+    _requirementSource = 'Direct'; // Set default value
     _reqSelectedDate = null;
     _reqSelectedTime = null;
     _reqNextWorkingDate = null;
     _clientRequirementImages = [];
-    
-    notifyListeners();
+    _error = null;
   }
 
   // Get filtered entries based on selected type and search
@@ -677,29 +786,4 @@ class AgentViewModel extends ChangeNotifier {
     }
   }
 
-  // Dispose
-  @override
-  void dispose() {
-    // Dispose controllers
-    dateCtl.dispose();
-    plotCtl.dispose();
-    clientNameCtl.dispose();
-    clientMobileCtl.dispose();
-    timeCtl.dispose();
-    registryCtl.dispose();
-    commentsCtl.dispose();
-    reqDateCtl.dispose();
-    reqPlotCtl.dispose();
-    reqClientNameCtl.dispose();
-    reqClientMobileCtl.dispose();
-    reqTimeCtl.dispose();
-    reqRegistryCtl.dispose();
-    reqCommentsCtl.dispose();
-    nextWorkingDateCtl.dispose();
-    reqNextWorkingDateCtl.dispose();
-    transferOtherCategoryCtl.dispose();
-    transferOtherSizeCtl.dispose();
-    
-    super.dispose();
-  }
 }

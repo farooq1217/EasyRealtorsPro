@@ -67,8 +67,8 @@ class AgentRepositoryImpl implements AgentRepository {
         ]);
       }
       
-      // Filter for transfers only (type='transfer' or has category but no source)
-      clauses.add('(category IS NOT NULL OR source IS NULL OR source = "")');
+      // Remove category filtering - fetch all entries for UI filtering
+      // The UI will handle filtering by category values
       
       final where = clauses.join(' AND ');
       
@@ -111,6 +111,77 @@ class AgentRepositoryImpl implements AgentRepository {
   }
 
   @override
+  Stream<List<WorkingProgressData>> watchTransfers({
+    String? companyId,
+    bool isSuperAdmin = false,
+    String? searchQuery,
+  }) {
+    try {
+      // Build query with explicit type-safe mapping
+      final clauses = <String>['1=1']; // Start with true clause
+      final vars = <d.Variable<String>>[];
+      
+      // Add company filter for non-super users
+      if (!isSuperAdmin && companyId != null) {
+        clauses.add('company_id = ?');
+        vars.add(d.Variable.withString(companyId));
+      }
+      
+      // Add search filter if provided
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        clauses.add('(name LIKE ? OR category LIKE ? OR remarks LIKE ?)');
+        final searchPattern = '%$searchQuery%';
+        vars.addAll([
+          d.Variable.withString(searchPattern),
+          d.Variable.withString(searchPattern),
+          d.Variable.withString(searchPattern),
+        ]);
+      }
+      
+      final where = clauses.join(' AND ');
+      
+      return db
+          .customSelect(
+            'SELECT * FROM working_progress WHERE $where ORDER BY updated_at DESC',
+            variables: vars,
+          )
+          .watch()
+          .map((result) {
+            // Explicit type-safe mapping
+            final List<WorkingProgressData> transfers = [];
+            for (final row in result) {
+              final data = row.data;
+              final transfer = WorkingProgressData(
+                id: data['id'] as String,
+                companyId: data['company_id'] as String?,
+                name: data['name'] as String,
+                status: data['status'] as String?,
+                remarks: data['remarks'] as String?,
+                fromUser: data['from_user'] as String?,
+                toUser: data['to_user'] as String?,
+                transferDate: data['transfer_date'] as String?,
+                nextWorkingDate: data['next_working_date'] as String?,
+                category: data['category'] as String?,
+                plotNo: data['plot_no'] as String?,
+                registryNumber: data['registry_number'] as String?,
+                size: data['size'] as String?,
+                clientMobile: data['client_mobile'] as String?,
+                isActive: (data['is_active'] as int? ?? 1) == 1,
+                updatedAt: data['updated_at'] as String,
+                isSynced: (data['is_synced'] as int? ?? 1) == 1,
+              );
+              transfers.add(transfer);
+            }
+            return transfers;
+          });
+    } catch (e) {
+      debugPrint('Error setting up transfers stream: $e');
+      // Return empty stream in case of error
+      return Stream.value([]);
+    }
+  }
+
+  @override
   Future<List<WorkingProgressData>> getClientRequirements({
     String? companyId,
     bool isSuperAdmin = false,
@@ -129,7 +200,7 @@ class AgentRepositoryImpl implements AgentRepository {
       
       // Add search filter if provided
       if (searchQuery != null && searchQuery.isNotEmpty) {
-        clauses.add('(name LIKE ? OR source LIKE ? OR remarks LIKE ?)');
+        clauses.add('(name LIKE ? OR category LIKE ? OR remarks LIKE ?)');
         final searchPattern = '%$searchQuery%';
         vars.addAll([
           d.Variable.withString(searchPattern),
@@ -138,8 +209,8 @@ class AgentRepositoryImpl implements AgentRepository {
         ]);
       }
       
-      // Filter for client requirements only (source is not null and not empty)
-      clauses.add('(source IS NOT NULL AND source != "")');
+      // Remove category filtering - fetch all entries for UI filtering
+      // The UI will handle filtering by category values
       
       final where = clauses.join(' AND ');
       
@@ -178,7 +249,78 @@ class AgentRepositoryImpl implements AgentRepository {
   }
 
   @override
-  Future<void> addTransfer({
+  Stream<List<WorkingProgressData>> watchClientRequirements({
+    String? companyId,
+    bool isSuperAdmin = false,
+    String? searchQuery,
+  }) {
+    try {
+      // Build query with explicit type-safe mapping
+      final clauses = <String>['1=1']; // Start with true clause
+      final vars = <d.Variable<String>>[];
+      
+      // Add company filter for non-super users
+      if (!isSuperAdmin && companyId != null) {
+        clauses.add('company_id = ?');
+        vars.add(d.Variable.withString(companyId));
+      }
+      
+      // Add search filter if provided
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        clauses.add('(name LIKE ? OR category LIKE ? OR remarks LIKE ?)');
+        final searchPattern = '%$searchQuery%';
+        vars.addAll([
+          d.Variable.withString(searchPattern),
+          d.Variable.withString(searchPattern),
+          d.Variable.withString(searchPattern),
+        ]);
+      }
+      
+      final where = clauses.join(' AND ');
+      
+      return db
+          .customSelect(
+            'SELECT * FROM working_progress WHERE $where ORDER BY updated_at DESC',
+            variables: vars,
+          )
+          .watch()
+          .map((result) {
+            // Explicit type-safe mapping
+            final List<WorkingProgressData> requirements = [];
+            for (final row in result) {
+              final data = row.data;
+              final requirement = WorkingProgressData(
+                id: data['id'] as String,
+                companyId: data['company_id'] as String?,
+                name: data['name'] as String,
+                status: data['status'] as String?,
+                remarks: data['remarks'] as String?,
+                fromUser: data['from_user'] as String?,
+                toUser: data['to_user'] as String?,
+                transferDate: data['transfer_date'] as String?,
+                nextWorkingDate: data['next_working_date'] as String?,
+                category: data['category'] as String?,
+                plotNo: data['plot_no'] as String?,
+                registryNumber: data['registry_number'] as String?,
+                size: data['size'] as String?,
+                clientMobile: data['client_mobile'] as String?,
+                isActive: (data['is_active'] as int? ?? 1) == 1,
+                updatedAt: data['updated_at'] as String,
+                isSynced: (data['is_synced'] as int? ?? 1) == 1,
+              );
+              requirements.add(requirement);
+            }
+            return requirements;
+          });
+    } catch (e) {
+      debugPrint('Error setting up client requirements stream: $e');
+      // Return empty stream in case of error
+      return Stream.value([]);
+    }
+  }
+
+  @override
+  Future<bool> addTransfer({
     required String id,
     String? companyId,
     required String name,
@@ -195,6 +337,8 @@ class AgentRepositoryImpl implements AgentRepository {
   }) async {
     try {
       final nowIso = DateTime.now().toUtc().toIso8601String();
+      
+      debugPrint('AgentRepository: Adding transfer with ID: $id');
       
       // Save to SQLite first
       await db.into(db.workingProgress).insertOnConflictUpdate(
@@ -218,42 +362,57 @@ class AgentRepositoryImpl implements AgentRepository {
         ),
       );
       
+      debugPrint('AgentRepository: SQLite insert successful for ID: $id');
+      
       // Sync to Firestore if allowed
-      await _executeFirestoreOperation(() async {
-        final firestore = FirebaseFirestore.instance;
-        await firestore.collection('working_progress').doc(id).set({
-          'id': id,
-          if (companyId != null) 'companyId': companyId,
-          'name': name,
-          'status': status,
-          if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
-          'transferDate': transferDate,
-          if (nextWorkingDate != null) 'nextWorkingDate': nextWorkingDate,
-          if (category != null && category.isNotEmpty) 'category': category,
-          if (plotNo != null && plotNo.isNotEmpty) 'plotNo': plotNo,
-          if (registryNumber != null && registryNumber.isNotEmpty) 'registryNumber': registryNumber,
-          if (size != null && size.isNotEmpty) 'size': size,
-          if (clientMobile != null && clientMobile.isNotEmpty) 'clientMobile': clientMobile,
-          'type': 'transfer', // Explicitly mark as transfer
-          'updatedAt': nowIso,
-          'createdAt': nowIso,
-        }, SetOptions(merge: true));
-        
-        // Mark as synced
+      if (_isFirestoreOperationAllowed()) {
+        await _executeFirestoreOperation(() async {
+          final firestore = FirebaseFirestore.instance;
+          await firestore.collection('working_progress').doc(id).set({
+            'id': id,
+            if (companyId != null) 'companyId': companyId,
+            'name': name,
+            'status': status,
+            if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
+            'transferDate': transferDate,
+            if (nextWorkingDate != null) 'nextWorkingDate': nextWorkingDate,
+            if (category != null && category.isNotEmpty) 'category': category,
+            if (plotNo != null && plotNo.isNotEmpty) 'plotNo': plotNo,
+            if (registryNumber != null && registryNumber.isNotEmpty) 'registryNumber': registryNumber,
+            if (size != null && size.isNotEmpty) 'size': size,
+            if (clientMobile != null && clientMobile.isNotEmpty) 'clientMobile': clientMobile,
+            'type': 'transfer', // Explicitly mark as transfer
+            'updatedAt': nowIso,
+            'createdAt': nowIso,
+          }, SetOptions(merge: true));
+          
+          // Mark as synced
+          await db.customStatement(
+            'UPDATE working_progress SET is_synced = 1 WHERE id = ?',
+            [id],
+          );
+          debugPrint('AgentRepository: Firestore sync successful for ID: $id');
+        });
+      } else {
+        debugPrint('AgentRepository: SQLite-only mode, skipping Firestore sync for ID: $id');
+        // In SQLite-only mode, mark as synced immediately
         await db.customStatement(
           'UPDATE working_progress SET is_synced = 1 WHERE id = ?',
           [id],
         );
-      });
+        debugPrint('AgentRepository: Marked as synced in SQLite-only mode for ID: $id');
+      }
       
       // Save images if provided
       if (images != null && images.isNotEmpty) {
         await _saveImages(id, images);
       }
       
+      debugPrint('AgentRepository: Transfer added successfully - ID: $id');
+      return true;
     } catch (e) {
-      debugPrint('Error adding transfer: $e');
-      rethrow;
+      debugPrint('AgentRepository: Error adding transfer: $e');
+      return false;
     }
   }
 

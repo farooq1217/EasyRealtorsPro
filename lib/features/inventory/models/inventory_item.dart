@@ -242,6 +242,7 @@ class InventoryItem {
 
     if (type == InventoryType.file) {
       baseMap.addAll({
+        'name': clientName, // Use clientName as the legacy name field for backward compatibility
         'file_no': fileNo,
         'mobile_no': mobileNo,
         'path': path,
