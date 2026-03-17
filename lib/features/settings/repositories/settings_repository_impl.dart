@@ -526,21 +526,21 @@ class SettingsRepositoryImpl implements SettingsRepository {
     try {
       final users = await db.customSelect(
         isSuperAdmin ? 'SELECT * FROM users' : 'SELECT * FROM users WHERE company_id = ? OR companyId = ?',
-        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? ''), d.Variable.withString(companyId ?? '')],
+        variables: isSuperAdmin ? <d.Variable<Object>>[] : <d.Variable<Object>>[d.Variable.withString(companyId ?? ''), d.Variable.withString(companyId ?? '')],
       ).get();
 
       final trades = await db.customSelect(
         isSuperAdmin
             ? 'SELECT * FROM trading_entries'
             : 'SELECT * FROM trading_entries WHERE company_id = ?',
-        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
+        variables: isSuperAdmin ? <d.Variable<Object>>[] : <d.Variable<Object>>[d.Variable.withString(companyId ?? '')],
       ).get();
 
       final tradeFiles = await db.customSelect(
         isSuperAdmin
             ? 'SELECT * FROM trading_file_entries'
             : 'SELECT * FROM trading_file_entries WHERE company_id = ?',
-        variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
+        variables: isSuperAdmin ? <d.Variable<Object>>[] : <d.Variable<Object>>[d.Variable.withString(companyId ?? '')],
       ).get();
 
       final ts = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');

@@ -104,27 +104,59 @@ class _CompaniesPageState extends State<CompaniesPage> {
           }
 
           return Scaffold(
-            appBar: AppBar(
-              title: Text('Companies Management', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
-              actions: [
-                // Add button - enhanced with mayof286@gmail.com fallback
-                if (_shouldShowAddButton(viewModel))
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: _shouldEnableAddButton(viewModel)
-                        ? () => _showAddCompanyDialog(context, viewModel)
-                        : null,
-                    tooltip: _getAddButtonTooltip(viewModel),
-                  ),
-                // Global Search
-                TopRightSearch(
-                  onChanged: (query) => viewModel.setSearchQuery(query),
-                  hintText: 'Search companies...',
-                ),
-              ],
-            ),
+            floatingActionButton: _shouldShowAddButton(viewModel) ? _buildFloatingActionButton(viewModel) : null,
             body: Column(
               children: [
+                // Header Separation Gap
+                const SizedBox(height: 12),
+                
+                // Module Header as Separate Floating Pill with Gradient
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        const Color(0xFFFF6B35), // Orange
+                        const Color(0xFF4A90E2), // Blue
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(25),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      // Centered Companies Title
+                      Expanded(
+                        child: Center(
+                          child: Text(
+                            'Companies',
+                            style: AppFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      
+                      // Global Search
+                      TopRightSearch(
+                        onChanged: (query) => viewModel.setSearchQuery(query),
+                        hintText: 'Search companies...',
+                      ),
+                    ],
+                  ),
+                ),
+                
                 // Statistics Cards
                 _buildStatisticsCards(context, viewModel),
                 
@@ -264,6 +296,25 @@ class _CompaniesPageState extends State<CompaniesPage> {
             ),
         ],
       ),
+    );
+  }
+  
+  // Floating Action Button
+  Widget _buildFloatingActionButton(CompanyViewModel viewModel) {
+    return FloatingActionButton(
+      onPressed: _shouldEnableAddButton(viewModel)
+          ? () => _showAddCompanyDialog(context, viewModel)
+          : null,
+      backgroundColor: _shouldEnableAddButton(viewModel) 
+          ? const Color(0xFFFF6B35) 
+          : Colors.grey.shade300,
+      elevation: 6,
+      child: const Icon(
+        Icons.add,
+        color: Colors.white,
+        size: 24,
+      ),
+      tooltip: _getAddButtonTooltip(viewModel),
     );
   }
 

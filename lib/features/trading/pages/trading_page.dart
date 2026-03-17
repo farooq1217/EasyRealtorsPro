@@ -48,239 +48,249 @@ class _TradingPageState extends State<TradingPage> {
       value: viewModel,
       child: Consumer<TradingViewModel>(
         builder: (context, viewModel, child) {
-          return Scaffold(
-            backgroundColor: const Color(0xFFF8F9FA),
-            appBar: AppBar(
-              title: Text(
-                'Trading', 
-                style: AppFonts.poppins(
-                  color: Colors.white, 
-                  fontWeight: FontWeight.w600
-                )
-              ),
-              centerTitle: true,
-              backgroundColor: Colors.transparent,
-              flexibleSpace: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      const Color(0xFFFF6B35),
-                      const Color(0xFF4A90E2),
+          return Column(
+            children: [
+              // Vertical Separator "Cut" - Creates the separation line between main header and module
+              const SizedBox(height: 12),
+              
+              // Trading Module Content
+              Expanded(
+                child: Scaffold(
+                  backgroundColor: const Color(0xFFF8F9FA),
+                  appBar: AppBar(
+                    title: Text(
+                      'Trading', 
+                      style: AppFonts.poppins(
+                        color: Colors.white, 
+                        fontWeight: FontWeight.w600
+                      )
+                    ),
+                    centerTitle: true,
+                    backgroundColor: Colors.transparent,
+                    flexibleSpace: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            const Color(0xFFFF6B35),
+                            const Color(0xFF4A90E2),
+                          ],
+                        ),
+                      ),
+                    ),
+                    elevation: 0,
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.refresh, color: Colors.white),
+                        onPressed: () => viewModel.refresh(),
+                        tooltip: 'Refresh',
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        child: TopRightSearch(
+                          onChanged: (value) {
+                            _searchQuery = value;
+                            viewModel.searchEntries(value);
+                          },
+                        ),
+                      ),
                     ],
                   ),
-                ),
-              ),
-              elevation: 0,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.white),
-                  onPressed: () => viewModel.refresh(),
-                  tooltip: 'Refresh',
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: TopRightSearch(
-                    onChanged: (value) {
-                      _searchQuery = value;
-                      viewModel.searchEntries(value);
-                    },
-                  ),
-                ),
-              ],
-            ),
-            body: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFFFF6B35).withOpacity(0.03), // Very subtle orange
-                    const Color(0xFF4A90E2).withOpacity(0.03), // Very subtle blue
-                  ],
-                ),
-              ),
-              child: Column(
-                children: [
-                // Filters Only
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  color: Colors.white,
-                  child: Column(
-                    children: [
-                      // Professional Dropdown Filters - First Row
-                      Row(
-                        children: [
-                          // Date Range Dropdown
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _dateRangeFilter,
-                              decoration: InputDecoration(
-                                labelText: 'Date Range',
-                                prefixIcon: const Icon(Icons.calendar_today, color: Color(0xFFFF6B35)),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              ),
-                              items: const [
-                                DropdownMenuItem(value: 'All', child: Text('All')),
-                                DropdownMenuItem(value: 'Today', child: Text('Today')),
-                                DropdownMenuItem(value: 'This Week', child: Text('This Week')),
-                                DropdownMenuItem(value: 'This Month', child: Text('This Month')),
-                                DropdownMenuItem(value: 'This Year', child: Text('This Year')),
-                              ],
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() {
-                                    _dateRangeFilter = value;
-                                    viewModel.filterByDateRange(value);
-                                  });
-                                }
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          
-                          // Entry Type Dropdown
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _entryTypeFilter,
-                              decoration: InputDecoration(
-                                labelText: 'Entry Type',
-                                prefixIcon: const Icon(Icons.category, color: Color(0xFFFF6B35)),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              ),
-                              items: const [
-                                DropdownMenuItem(value: 'All', child: Text('All Types')),
-                                DropdownMenuItem(value: 'HP', child: Text('HP')),
-                                DropdownMenuItem(value: 'KP', child: Text('KP')),
-                                DropdownMenuItem(value: 'MP', child: Text('MP')),
-                                DropdownMenuItem(value: 'NMP', child: Text('NMP')),
-                                DropdownMenuItem(value: 'NNMP', child: Text('NNMP')),
-                                DropdownMenuItem(value: 'BOP', child: Text('BOP')),
-                                DropdownMenuItem(value: 'SOP', child: Text('SOP')),
-                                DropdownMenuItem(value: 'AEMP', child: Text('AEMP')),
-                              ],
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() {
-                                    _entryTypeFilter = value;
-                                    // filterByType method removed - using simple string filters
-                                  });
-                                }
-                              },
-                            ),
-                          ),
+                  body: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          const Color(0xFFFF6B35).withOpacity(0.03), // Very subtle orange
+                          const Color(0xFF4A90E2).withOpacity(0.03), // Very subtle blue
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      
-                      // Status Dropdown
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _statusFilter,
-                              decoration: InputDecoration(
-                                labelText: 'Status',
-                                prefixIcon: const Icon(Icons.info_outline, color: Color(0xFFFF6B35)),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              ),
-                              items: const [
-                                DropdownMenuItem(value: 'All', child: Text('All Status')),
-                                DropdownMenuItem(value: 'Pending', child: Text('Pending')),
-                                DropdownMenuItem(value: 'Completed', child: Text('Completed')),
-                                DropdownMenuItem(value: 'Cancelled', child: Text('Cancelled')),
-                              ],
-                              onChanged: (value) {
-                                if (value != null) {
-                                  viewModel.filterByStatus(value);
-                                }
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      // Clear Filters Row
-                      if (_dateRangeFilter != 'All' || 
-                          _entryTypeFilter != 'All' ||
-                          _statusFilter != 'All')
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                    ),
+                    child: Column(
+                      children: [
+                        // Filters Only
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          color: Colors.white,
+                          child: Column(
                             children: [
-                              TextButton.icon(
-                                onPressed: () {
-                                  setState(() {
-                                    _dateRangeFilter = 'All';
-                                    _entryTypeFilter = 'All';
-                                    _statusFilter = 'All';
-                                    viewModel.clearFilters();
-                                  });
-                                },
-                                icon: const Icon(Icons.clear, size: 16),
-                                label: const Text('Clear Filters'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: const Color(0xFFFF6B35),
-                                ),
+                              // Professional Dropdown Filters - First Row
+                              Row(
+                                children: [
+                                  // Date Range Dropdown
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: _dateRangeFilter,
+                                      decoration: InputDecoration(
+                                        labelText: 'Date Range',
+                                        prefixIcon: const Icon(Icons.calendar_today, color: Color(0xFFFF6B35)),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide(color: Colors.grey.shade300),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(value: 'All', child: Text('All')),
+                                        DropdownMenuItem(value: 'Today', child: Text('Today')),
+                                        DropdownMenuItem(value: 'This Week', child: Text('This Week')),
+                                        DropdownMenuItem(value: 'This Month', child: Text('This Month')),
+                                        DropdownMenuItem(value: 'This Year', child: Text('This Year')),
+                                      ],
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setState(() {
+                                            _dateRangeFilter = value;
+                                            viewModel.filterByDateRange(value);
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  
+                                  // Entry Type Dropdown
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: _entryTypeFilter,
+                                      decoration: InputDecoration(
+                                        labelText: 'Entry Type',
+                                        prefixIcon: const Icon(Icons.category, color: Color(0xFFFF6B35)),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide(color: Colors.grey.shade300),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(value: 'All', child: Text('All Types')),
+                                        DropdownMenuItem(value: 'HP', child: Text('HP')),
+                                        DropdownMenuItem(value: 'KP', child: Text('KP')),
+                                        DropdownMenuItem(value: 'MP', child: Text('MP')),
+                                        DropdownMenuItem(value: 'NMP', child: Text('NMP')),
+                                        DropdownMenuItem(value: 'NNMP', child: Text('NNMP')),
+                                        DropdownMenuItem(value: 'BOP', child: Text('BOP')),
+                                        DropdownMenuItem(value: 'SOP', child: Text('SOP')),
+                                        DropdownMenuItem(value: 'AEMP', child: Text('AEMP')),
+                                      ],
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setState(() {
+                                            _entryTypeFilter = value;
+                                            // filterByType method removed - using simple string filters
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ],
                               ),
+                              const SizedBox(height: 12),
+                              
+                              // Status Dropdown
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: _statusFilter,
+                                      decoration: InputDecoration(
+                                        labelText: 'Status',
+                                        prefixIcon: const Icon(Icons.info_outline, color: Color(0xFFFF6B35)),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: BorderSide(color: Colors.grey.shade300),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                          borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(value: 'All', child: Text('All Status')),
+                                        DropdownMenuItem(value: 'Pending', child: Text('Pending')),
+                                        DropdownMenuItem(value: 'Completed', child: Text('Completed')),
+                                        DropdownMenuItem(value: 'Cancelled', child: Text('Cancelled')),
+                                      ],
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          viewModel.filterByStatus(value);
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              
+                              // Clear Filters Row
+                              if (_dateRangeFilter != 'All' || 
+                                  _entryTypeFilter != 'All' ||
+                                  _statusFilter != 'All')
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      TextButton.icon(
+                                        onPressed: () {
+                                          setState(() {
+                                            _dateRangeFilter = 'All';
+                                            _entryTypeFilter = 'All';
+                                            _statusFilter = 'All';
+                                            viewModel.clearFilters();
+                                          });
+                                        },
+                                        icon: const Icon(Icons.clear, size: 16),
+                                        label: const Text('Clear Filters'),
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: const Color(0xFFFF6B35),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                             ],
                           ),
                         ),
+                        
+                        // Entries List
+                        Expanded(
+                          child: _buildEntriesList(viewModel),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Floating Action Button
+                  floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+                  floatingActionButton: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Add Entry Button
+                      FloatingActionButton.extended(
+                        onPressed: () => _showTradingFormDialog(),
+                        backgroundColor: const Color(0xFFFF6B35),
+                        foregroundColor: Colors.white,
+                        icon: const Icon(Icons.add),
+                        label: Text(
+                          'Add Entry',
+                          style: AppFonts.poppins(fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                
-                // Entries List
-                Expanded(
-                  child: _buildEntriesList(viewModel),
-                ),
-                ],
               ),
-            ),
-            // Floating Action Button
-            floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-            floatingActionButton: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Add Entry Button
-                FloatingActionButton.extended(
-                  onPressed: () => _showTradingFormDialog(),
-                  backgroundColor: const Color(0xFFFF6B35),
-                  foregroundColor: Colors.white,
-                  icon: const Icon(Icons.add),
-                  label: Text(
-                    'Add Entry',
-                    style: AppFonts.poppins(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
+            ],
           );
         },
       ),
@@ -451,6 +461,4 @@ class _TradingPageState extends State<TradingPage> {
       ),
     );
   }
-
-  
-  }
+}

@@ -104,140 +104,150 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
             );
           }
 
-          return Scaffold(
-            backgroundColor: Colors.grey.shade50,
-            appBar: AppBar(
-              automaticallyImplyLeading: false,
-              centerTitle: true,
-              elevation: 0,
-              title: Text(
-                'Expenditures',
-                style: AppFonts.poppins(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-              backgroundColor: Colors.transparent,
-              flexibleSpace: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFFFF6B35), // Orange
-                      Color(0xFF4A90E2), // Blue
+          return Column(
+            children: [
+              // Vertical Separator "Cut" - Creates the separation line between main header and module
+              const SizedBox(height: 12),
+              
+              // Expenditure Module Content
+              Expanded(
+                child: Scaffold(
+                  backgroundColor: Colors.grey.shade50,
+                  appBar: AppBar(
+                    automaticallyImplyLeading: false,
+                    centerTitle: true,
+                    elevation: 0,
+                    title: Text(
+                      'Expenditures',
+                      style: AppFonts.poppins(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    backgroundColor: Colors.transparent,
+                    flexibleSpace: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFFF6B35), // Orange
+                            Color(0xFF4A90E2), // Blue
+                          ],
+                        ),
+                      ),
+                    ),
+                    bottom: TabBar(
+                      controller: _tabController,
+                      indicatorColor: const Color(0xFFFF6B35),
+                      indicatorWeight: 3,
+                      labelColor: Colors.white,
+                      unselectedLabelColor: Colors.white70,
+                      labelStyle: AppFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                      unselectedLabelStyle: AppFonts.poppins(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                      ),
+                      tabs: const [
+                        Tab(text: 'Office Expense'),
+                        Tab(text: 'Projects'),
+                      ],
+                    ),
+                    actions: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        child: TopRightSearch(
+                          onChanged: (query) => viewModel.setSearchQuery(query),
+                          hintText: 'Search...',
+                        ),
+                      ),
                     ],
                   ),
-                ),
-              ),
-              bottom: TabBar(
-                controller: _tabController,
-                indicatorColor: const Color(0xFFFF6B35),
-                indicatorWeight: 3,
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white70,
-                labelStyle: AppFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-                unselectedLabelStyle: AppFonts.poppins(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                ),
-                tabs: const [
-                  Tab(text: 'Office Expense'),
-                  Tab(text: 'Projects'),
-                ],
-              ),
-              actions: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: TopRightSearch(
-                    onChanged: (query) => viewModel.setSearchQuery(query),
-                    hintText: 'Search...',
-                  ),
-                ),
-              ],
-            ),
-            body: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFFFF6B35).withOpacity(0.03),
-                    const Color(0xFF4A90E2).withOpacity(0.03),
-                  ],
-                ),
-                border: Border.all(
-                  color: Colors.grey.shade300.withOpacity(0.5),
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                children: [
-                  // Tab Content with StreamBuilder for real-time updates
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
+                  body: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          const Color(0xFFFF6B35).withOpacity(0.03),
+                          const Color(0xFF4A90E2).withOpacity(0.03),
+                        ],
+                      ),
+                      border: Border.all(
+                        color: Colors.grey.shade300.withOpacity(0.5),
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
                       children: [
-                        // Office Expenses Tab with StreamBuilder
-                        StreamBuilder<List<domain.ExpenditureItem>>(
-                          stream: _viewModel.repository.watchOfficeExpenses(
-                            RoleUtils.getUserCompanyId(_viewModel.user) ?? ''
-                          ),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState == ConnectionState.waiting) {
-                              return const Center(child: CircularProgressIndicator());
-                            }
-                            if (snapshot.hasError) {
-                              return Center(
-                                child: Text(
-                                  'Error loading office expenses',
-                                  style: AppFonts.poppins(color: Colors.red),
+                        // Tab Content with StreamBuilder for real-time updates
+                        Expanded(
+                          child: TabBarView(
+                            controller: _tabController,
+                            children: [
+                              // Office Expenses Tab with StreamBuilder
+                              StreamBuilder<List<domain.ExpenditureItem>>(
+                                stream: _viewModel.repository.watchOfficeExpenses(
+                                  RoleUtils.getUserCompanyId(_viewModel.user) ?? ''
                                 ),
-                              );
-                            }
-                            final officeExpenses = snapshot.data ?? [];
-                            return _buildListView(context, officeExpenses, "Office");
-                          },
-                        ),
-                        // Project Expenses Tab with StreamBuilder
-                        StreamBuilder<List<domain.ExpenditureItem>>(
-                          stream: _viewModel.repository.watchProjectExpenses(
-                            RoleUtils.getUserCompanyId(_viewModel.user) ?? ''
-                          ),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState == ConnectionState.waiting) {
-                              return const Center(child: CircularProgressIndicator());
-                            }
-                            if (snapshot.hasError) {
-                              return Center(
-                                child: Text(
-                                  'Error loading project expenses',
-                                  style: AppFonts.poppins(color: Colors.red),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return const Center(child: CircularProgressIndicator());
+                                  }
+                                  if (snapshot.hasError) {
+                                    return Center(
+                                      child: Text(
+                                        'Error loading office expenses',
+                                        style: AppFonts.poppins(color: Colors.red),
+                                      ),
+                                    );
+                                  }
+                                  final officeExpenses = snapshot.data ?? [];
+                                  return _buildListView(context, officeExpenses, "Office");
+                                },
+                              ),
+                              // Project Expenses Tab with StreamBuilder
+                              StreamBuilder<List<domain.ExpenditureItem>>(
+                                stream: _viewModel.repository.watchProjectExpenses(
+                                  RoleUtils.getUserCompanyId(_viewModel.user) ?? ''
                                 ),
-                              );
-                            }
-                            final projectExpenses = snapshot.data ?? [];
-                            return _buildListView(context, projectExpenses, "Project");
-                          },
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return const Center(child: CircularProgressIndicator());
+                                  }
+                                  if (snapshot.hasError) {
+                                    return Center(
+                                      child: Text(
+                                        'Error loading project expenses',
+                                        style: AppFonts.poppins(color: Colors.red),
+                                      ),
+                                    );
+                                  }
+                                  final projectExpenses = snapshot.data ?? [];
+                                  return _buildListView(context, projectExpenses, "Project");
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
-                ],
+                  floatingActionButton: FloatingActionButton.extended(
+                    onPressed: () => _showExpenseDialog(context, viewModel, 
+                      _tabController.index == 0 ? 'office' : 'project'),
+                    label: Text('ADD'),
+                    icon: const Icon(Icons.add),
+                    backgroundColor: const Color(0xFFFF6B35),
+                    foregroundColor: Colors.white,
+                  ),
+                ),
               ),
-            ),
-            floatingActionButton: FloatingActionButton.extended(
-              onPressed: () => _showExpenseDialog(context, viewModel, 
-                _tabController.index == 0 ? 'office' : 'project'),
-              label: Text('ADD'),
-              icon: const Icon(Icons.add),
-              backgroundColor: const Color(0xFFFF6B35),
-              foregroundColor: Colors.white,
-            ),
+            ],
           );
         },
       ),

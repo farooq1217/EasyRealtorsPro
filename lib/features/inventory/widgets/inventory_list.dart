@@ -46,18 +46,6 @@ class _InventoryListState extends State<InventoryList> {
                   _buildFilterChip('Available', 'Not Sold', viewModel),
                   const SizedBox(width: 8),
                   _buildFilterChip('Sold', 'Sold', viewModel),
-                  // Clear Filters button - only show when any filter is active
-                  if (viewModel.hasActiveFilters)
-                    TextButton(
-                      onPressed: () {
-                        viewModel.clearAllFilters();
-                      },
-                      style: TextButton.styleFrom(
-                        backgroundColor: Theme.of(context).primaryColor,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      child: const Text('Clear Filters'),
-                    ),
                 ],
               ),
             ),

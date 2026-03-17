@@ -51,7 +51,7 @@ import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../widgets/stat_card.dart' show StatCard;
 import '../../../widgets/performance_chart_card.dart' show PerformanceChartCard;
 import '../../../core/app.dart' show AdminApp;
-import '../../../core/shared_utils.dart' show TopRightSearch, buildResponsiveInfoRow, InfoEntry, validatePassword, normalizeSubscriptionTier, subscriptionLimitForTier, showCustomTimePicker;
+import '../../../core/shared_utils.dart' show TopRightSearch;
 import '../../../features/inventory/pages/inventory_page.dart' show InventoryPage;
 import '../../../features/todo/pages/todo_page.dart' show ToDoPage;
 import '../../../features/trading/pages/trading_page.dart' show TradingPage;

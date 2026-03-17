@@ -140,12 +140,16 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
         companyId: '',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
-        status: 'active', // Add status field
+        status: 'active',
       );
     }
 
     final quantity = double.tryParse(_quantityController.text) ?? 0.0;
-    final unitPrice = double.tryParse(_unitPriceController.text) ?? 0.0;
+    // Clean unit price by removing any currency symbols and whitespace
+    final unitPriceText = _unitPriceController.text.trim();
+    final cleanUnitPriceText = unitPriceText.replaceAll(RegExp(r'[^\d.]'), ''); // Remove non-numeric characters except decimal
+    final unitPrice = double.tryParse(cleanUnitPriceText) ?? 0.0;
+    
     final now = DateTime.now();
 
     return TradingEntry(
@@ -156,12 +160,12 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
       mobileNo: _mobileController.text,
       estateName: _estateController.text,
       quantity: quantity,
-      unitPrice: unitPrice,
+      unitPrice: unitPrice, // Save clean numeric value only
       imagePath: _imagePath,
       companyId: '', // Will be set by repository
       createdAt: now,
       updatedAt: now,
-      status: 'active', // Add status field
+      status: 'active',
     );
   }
 

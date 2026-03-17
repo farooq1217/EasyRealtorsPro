@@ -103,49 +103,89 @@ class _UsersPageState extends State<UsersPage> {
           }
 
           return Scaffold(
-            appBar: AppBar(
-              title: Text('Users Management', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
-              actions: [
-                // Backfill User IDs button - enhanced with mayof286@gmail.com fallback
-                if (_shouldShowSuperAdminFeatures(viewModel.currentUser))
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert),
-                    onSelected: (value) {
-                      if (value == 'backfill_ids') {
-                        viewModel.backfillUserIds();
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'backfill_ids',
-                        child: Row(
-                          children: [
-                            Icon(Icons.format_list_numbered),
-                            SizedBox(width: 8),
-                            Text('Backfill User IDs'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                // Add button - enhanced with mayof286@gmail.com fallback
-                if (_shouldShowAddButton(viewModel))
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: _shouldEnableAddButton(viewModel)
-                        ? () => _showAddUserDialog(context, viewModel)
-                        : null,
-                    tooltip: _getAddButtonTooltip(viewModel),
-                  ),
-                // Global Search
-                TopRightSearch(
-                  onChanged: (query) => viewModel.setSearchQuery(query),
-                  hintText: 'Search users...',
-                ),
-              ],
-            ),
+            floatingActionButton: _shouldShowAddButton(viewModel) ? _buildFloatingActionButton(viewModel) : null,
             body: Column(
               children: [
+                // Vertical Separator "Cut" - Creates the separation line between main header and module
+                const SizedBox(height: 12),
+                
+                // User Management Module Header with Gradient Pill
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          const Color(0xFFFF6B35), // Orange
+                          const Color(0xFF4A90E2), // Blue
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        // Centered Title
+                        Expanded(
+                          child: Center(
+                            child: Text(
+                              'User Management',
+                              style: AppFonts.poppins(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        
+                        // Action Buttons Group
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Options Menu
+                            if (_shouldShowSuperAdminFeatures(viewModel.currentUser))
+                              PopupMenuButton<String>(
+                                icon: const Icon(Icons.more_vert, color: Colors.white, size: 20),
+                                onSelected: (value) {
+                                  if (value == 'backfill_ids') {
+                                    viewModel.backfillUserIds();
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: 'backfill_ids',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.format_list_numbered),
+                                        SizedBox(width: 8),
+                                        Text('Backfill User IDs'),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            
+                            // Search Bar
+                            TopRightSearch(
+                              onChanged: (query) => viewModel.setSearchQuery(query),
+                              hintText: 'Search users...',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 // Statistics Cards
                 _buildStatisticsCards(context, viewModel),
                 
@@ -320,6 +360,25 @@ class _UsersPageState extends State<UsersPage> {
         final user = viewModel.filteredUsers[index];
         return _buildUserCard(context, user, viewModel);
       },
+    );
+  }
+
+  // Floating Action Button
+  Widget _buildFloatingActionButton(UserViewModel viewModel) {
+    return FloatingActionButton(
+      onPressed: _shouldEnableAddButton(viewModel)
+          ? () => _showAddUserDialog(context, viewModel)
+          : null,
+      backgroundColor: _shouldEnableAddButton(viewModel) 
+          ? const Color(0xFFFF6B35) 
+          : Colors.grey.shade300,
+      elevation: 6,
+      child: const Icon(
+        Icons.add,
+        color: Colors.white,
+        size: 24,
+      ),
+      tooltip: _getAddButtonTooltip(viewModel),
     );
   }
 

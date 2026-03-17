@@ -341,59 +341,35 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
     return ChangeNotifierProvider.value(
       value: _viewModel!,
       child: Scaffold(
-        appBar: AppBar(
-          title: Text('Settings', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          flexibleSpace: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFFF6B35), // Orange
-                  Color(0xFF4A90E2), // Blue
-                ],
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Export button
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                child: ElevatedButton.icon(
+                  onPressed: _exportData,
+                  icon: const Icon(Icons.download),
+                  label: const Text('Export Data'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF6B35),
+                    foregroundColor: Colors.white,
+                  ),
+                ),
               ),
-            ),
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.download, color: Colors.white),
-              onPressed: _exportData,
-              tooltip: 'Export Data',
-            ),
-          ],
-        ),
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFFFF6B35).withOpacity(0.03), // Very subtle orange
-                const Color(0xFF4A90E2).withOpacity(0.03), // Very subtle blue
-              ],
-            ),
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Profile Section
-                _buildProfileSection(),
-                const SizedBox(height: 24),
-                
-                // Societies Section
-                _buildSocietiesSection(),
-                const SizedBox(height: 24),
-                
-                // Blocks Section
-                _buildBlocksSection(),
-              ],
-            ),
+              // Profile Section
+              _buildProfileSection(),
+              const SizedBox(height: 24),
+              
+              // Societies Section
+              _buildSocietiesSection(),
+              const SizedBox(height: 24),
+              
+              // Blocks Section
+              _buildBlocksSection(),
+            ],
           ),
         ),
       ),

@@ -192,9 +192,9 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
       value: _viewModel!,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('Inventory', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+          automaticallyImplyLeading: false,
           centerTitle: true,
-          elevation: 0,
+          title: Text('Inventory', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
           backgroundColor: Colors.transparent,
           flexibleSpace: Container(
             decoration: const BoxDecoration(
@@ -210,6 +210,12 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
           ),
           bottom: TabBar(
             controller: _tabController,
+            indicatorColor: Colors.purple,
+            indicatorWeight: 3,
+            labelColor: Colors.purple,
+            unselectedLabelColor: Colors.white.withOpacity(0.7),
+            labelStyle: AppFonts.poppins(fontWeight: FontWeight.w600),
+            unselectedLabelStyle: AppFonts.poppins(fontWeight: FontWeight.w400),
             tabs: const [
               Tab(text: 'Files'),
               Tab(text: 'Property'),
@@ -218,11 +224,30 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
           actions: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              child: TopRightSearch(onChanged: (q) {
-                _viewModel?.setSearchQuery(q);
+              child: TopRightSearch(onChanged: (value) {
+                // Search functionality will be handled in InventoryList
               }),
             ),
           ],
+        ),
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFFFF6B35).withOpacity(0.03),
+                const Color(0xFF4A90E2).withOpacity(0.03),
+              ],
+            ),
+          ),
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              const InventoryList(),
+              const InventoryList(),
+            ],
+          ),
         ),
         floatingActionButton: Consumer<InventoryViewModel>(
           builder: (context, viewModel, child) {
@@ -232,19 +257,6 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
               icon: const Icon(Icons.add),
             );
           },
-        ),
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFFFF6B35).withOpacity(0.03), // Very subtle orange
-                const Color(0xFF4A90E2).withOpacity(0.03), // Very subtle blue
-              ],
-            ),
-          ),
-          child: const InventoryList(),
         ),
       ),
     );

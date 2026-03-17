@@ -127,9 +127,20 @@ class CompanyViewModel extends ChangeNotifier {
       _error = '';
       notifyListeners();
       
-      await _loadCurrentUser();
-      await _repository.ensureCompanyTableColumns();
-      await _setupStreams();
+      await _loadCurrentUser().timeout(const Duration(seconds: 5), onTimeout: () {
+        debugPrint('CompanyViewModel: User loading timed out, using default');
+        _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com'};
+      });
+      
+      await _repository.ensureCompanyTableColumns().timeout(const Duration(seconds: 3), onTimeout: () {
+        debugPrint('CompanyViewModel: Table columns check timed out');
+      });
+      
+      await _setupStreams().timeout(const Duration(seconds: 5), onTimeout: () {
+        debugPrint('CompanyViewModel: Stream setup timed out, setting loading to false');
+        _loading = false;
+        notifyListeners();
+      });
     } catch (e) {
       _error = 'Failed to initialize: $e';
       debugPrint('Error initializing CompanyViewModel: $e');
@@ -142,16 +153,21 @@ class CompanyViewModel extends ChangeNotifier {
   Future<void> _loadCurrentUser() async {
     try {
       final storage = AppStorage();
-      final settings = await storage.readSettings();
+      final settings = await storage.readSettings().timeout(const Duration(seconds: 3));
       final authToken = settings['authToken'] as String?;
       
       if (authToken != null) {
         final authService = AuthService();
-        _currentUser = await authService.getCurrentUser(authToken);
+        _currentUser = await authService.getCurrentUser(authToken).timeout(const Duration(seconds: 3), onTimeout: () {
+          debugPrint('CompanyViewModel: getCurrentUser timed out');
+          return <String, dynamic>{'name': 'Unknown', 'email': 'unknown@example.com'};
+        });
         AuthService.currentUser = _currentUser;
       }
     } catch (e) {
       debugPrint('Error loading current user: $e');
+      // Set default user to prevent complete failure
+      _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com'};
     }
   }
 
@@ -168,40 +184,50 @@ class CompanyViewModel extends ChangeNotifier {
     debugPrint('CompanyViewModel: Setting up stream subscription...');
     
     // Setup new stream
-    _companiesSubscription = _repository.watchCompanies().listen(
-      (data) {
-        debugPrint('CompanyViewModel: RAW STREAM DATA RECEIVED - ${data.length} companies');
-        debugPrint('CompanyViewModel: Widget mounted state in stream: $mounted');
-        
-        // Process data immediately without waiting for postFrameCallback
-        if (!mounted) {
-          debugPrint('CompanyViewModel: Widget not mounted, storing data for later');
-          // Store data for when widget becomes mounted
+    try {
+      _companiesSubscription = _repository.watchCompanies().listen(
+        (data) {
+          debugPrint('CompanyViewModel: RAW STREAM DATA RECEIVED - ${data.length} companies');
+          debugPrint('CompanyViewModel: Widget mounted state in stream: $mounted');
+          
+          // CRITICAL: Set loading to false when stream data arrives
+          if (_loading) {
+            _loading = false;
+            debugPrint('CompanyViewModel: Loading set to false - stream data received');
+          }
+          
+          // Process data immediately
           _companies = data;
-          return;
-        }
-        
-        debugPrint('CompanyViewModel: Received ${data.length} companies from repository');
-        _companies = data;
-        _applySearchFilter();
-        
-        debugPrint('CompanyViewModel: notifyListeners called');
-        notifyListeners();
-      },
-      onError: (e) {
-        debugPrint('CompanyViewModel: STREAM ERROR - $e');
-        if (mounted) {
-          _error = 'Error loading companies: $e';
-          debugPrint('CompanyViewModel: Stream error - $e');
-          notifyListeners();
-        }
-      },
-      onDone: () {
-        debugPrint('CompanyViewModel: Stream completed');
-      },
-    );
-    
-    debugPrint('CompanyViewModel: Stream subscription setup complete');
+          _applySearchFilter();
+          
+          debugPrint('CompanyViewModel: notifyListeners called');
+          if (mounted) {
+            notifyListeners();
+          }
+        },
+        onError: (e) {
+          debugPrint('CompanyViewModel: STREAM ERROR - $e');
+          if (_loading) {
+            _loading = false;
+            debugPrint('CompanyViewModel: Loading set to false - stream error');
+          }
+          if (mounted) {
+            _error = 'Error loading companies: $e';
+            debugPrint('CompanyViewModel: Stream error - $e');
+            notifyListeners();
+          }
+        },
+        onDone: () {
+          debugPrint('CompanyViewModel: Stream completed');
+        },
+      );
+      
+      debugPrint('CompanyViewModel: Stream subscription setup complete');
+    } catch (e) {
+      debugPrint('CompanyViewModel: Error setting up streams: $e');
+      _error = 'Failed to setup streams: $e';
+      notifyListeners();
+    }
   }
 
   // Search functionality

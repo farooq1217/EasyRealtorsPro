@@ -39,13 +39,23 @@ class SettingsViewModel extends ChangeNotifier {
     try {
       // Run operations in parallel with timeout protection
       await Future.wait([
-        _loadCurrentUser().timeout(const Duration(seconds: 10)),
-        _loadSocieties().timeout(const Duration(seconds: 10)),
+        _loadCurrentUser().timeout(const Duration(seconds: 5), onTimeout: () {
+          debugPrint('SettingsViewModel: Current user loading timed out');
+          // Set default user to prevent complete failure
+          _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com'};
+        }),
+        _loadSocieties().timeout(const Duration(seconds: 5), onTimeout: () {
+          debugPrint('SettingsViewModel: Societies loading timed out');
+          _societies = [];
+        }),
       ]);
       
       // Load blocks only after societies are loaded and if a society is selected
       if (_selectedSocietyId != null) {
-        await _loadBlocksForSociety(_selectedSocietyId!).timeout(const Duration(seconds: 10));
+        await _loadBlocksForSociety(_selectedSocietyId!).timeout(const Duration(seconds: 5), onTimeout: () {
+          debugPrint('SettingsViewModel: Blocks loading timed out');
+          _blocks = [];
+        });
       }
     } catch (e) {
       debugPrint('Settings initialization error: $e');
@@ -59,7 +69,7 @@ class SettingsViewModel extends ChangeNotifier {
   // User profile methods
   Future<void> _loadCurrentUser() async {
     try {
-      _currentUser = await _repository.getCurrentUser().timeout(const Duration(seconds: 5));
+      _currentUser = await _repository.getCurrentUser().timeout(const Duration(seconds: 3));
       
       if (_currentUser != null) {
         _profileImagePath = _currentUser!['profile_picture_path']?.toString();
@@ -156,7 +166,7 @@ class SettingsViewModel extends ChangeNotifier {
   // Societies methods
   Future<void> _loadSocieties() async {
     try {
-      final rawData = await _repository.getSocieties().timeout(const Duration(seconds: 5));
+      final rawData = await _repository.getSocieties().timeout(const Duration(seconds: 3));
       debugPrint('SettingsViewModel: Repository returned ${rawData.length} raw societies: $rawData');
       
       // Fix "Non-subtype" Error: Use type-safe mapping logic
@@ -248,7 +258,7 @@ class SettingsViewModel extends ChangeNotifier {
       _isLoadingBlocks = true;
       notifyListeners();
       
-      final rawData = await _repository.getBlocksBySociety(societyId).timeout(const Duration(seconds: 5));
+      final rawData = await _repository.getBlocksBySociety(societyId).timeout(const Duration(seconds: 3));
       debugPrint('SettingsViewModel: Repository returned ${rawData.length} raw blocks: $rawData');
       
       // Fix "Non-subtype" Error: Use type-safe mapping logic

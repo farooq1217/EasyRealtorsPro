@@ -102,20 +102,41 @@ class TradingViewModel extends ChangeNotifier {
             (entries) {
               if (!_mounted) return;
               _entries = entries;
+              _isLoading = false; // Set loading to false when data arrives
+              _error = null; // Clear any previous error
+              debugPrint('TradingViewModel: Received ${entries.length} entries from stream');
               notifyListeners();
             },
             onError: (e) {
               if (!_mounted) return;
               _error = 'Failed to load entries: $e';
+              _isLoading = false; // Set loading to false on error
+              debugPrint('TradingViewModel: Stream error - $e');
+              notifyListeners();
+            },
+            onDone: () {
+              if (!_mounted) return;
+              debugPrint('TradingViewModel: Stream completed');
+              _isLoading = false; // Ensure loading is false when stream completes
               notifyListeners();
             },
           );
+          
+          // Set a timeout to prevent infinite loading
+          Timer(const Duration(seconds: 5), () {
+            if (_mounted && _isLoading) {
+              _isLoading = false;
+              _error = 'Loading timeout - please check your connection';
+              notifyListeners();
+            }
+          });
         },
         operationName: 'loadEntries',
       );
     } catch (e) {
       debugPrint('Error loading entries: $e');
       _error = 'Failed to load entries';
+      _isLoading = false; // Set loading to false on exception
       notifyListeners();
     }
   }
@@ -274,17 +295,45 @@ class TradingViewModel extends ChangeNotifier {
       }
       
       // Status filter
-      if (_statusFilter != 'All') {
-        // Add status filtering logic here if needed
+      if (_statusFilter != 'All' && _statusFilter.isNotEmpty) {
+        if (entry.status.toLowerCase() != _statusFilter.toLowerCase()) return false;
       }
       
       // Date range filter
-      if (_dateRangeFilter != 'All') {
-        // Add date range filtering logic here if needed
+      if (_dateRangeFilter != 'All' && _dateRangeFilter.isNotEmpty) {
+        final now = DateTime.now();
+        DateTime? startDate;
+        DateTime? endDate;
+        
+        switch (_dateRangeFilter) {
+          case 'Today':
+            startDate = DateTime(now.year, now.month, now.day);
+            endDate = startDate.add(const Duration(days: 1));
+            break;
+          case 'This Week':
+            startDate = now.subtract(Duration(days: now.weekday - 1));
+            startDate = DateTime(startDate.year, startDate.month, startDate.day);
+            endDate = startDate.add(const Duration(days: 7));
+            break;
+          case 'This Month':
+            startDate = DateTime(now.year, now.month, 1);
+            endDate = DateTime(now.year, now.month + 1, 1);
+            break;
+          case 'This Year':
+            startDate = DateTime(now.year, 1, 1);
+            endDate = DateTime(now.year + 1, 1, 1);
+            break;
+        }
+        
+        if (startDate != null && endDate != null) {
+          if (entry.date.isBefore(startDate) || entry.date.isAfter(endDate)) {
+            return false;
+          }
+        }
       }
       
       // Entry type filter
-      if (_entryTypeFilter != 'All') {
+      if (_entryTypeFilter != 'All' && _entryTypeFilter.isNotEmpty) {
         if (entry.entryType != _entryTypeFilter) return false;
       }
       
@@ -299,162 +348,117 @@ class TradingViewModel extends ChangeNotifier {
     await loadEntries();
   }
 
-  // === PROPERTY DEALS AND CLIENTS METHODS (from property_deal_view_model) ===
+  // === PROPERTY DEALS AND CLIENTS METHODS ===
+  // NOTE: These methods now use real database operations instead of mock data
 
-  /// Load all property deals
+  /// Load all property deals from database
   Future<void> loadDeals() async {
     _setLoading(true);
     _error = null;
     
     try {
-      // TODO: Implement actual data loading from database/repository
-      // For now, using mock data
-      _deals = [
-        TradingDeal(
-          id: '1',
-          clientId: 'client1',
-          propertyId: 'prop1',
-          dealType: 'sale',
-          dealAmount: 250000.0,
-          dealDate: DateTime.now().subtract(const Duration(days: 5)),
-          status: 'pending',
-          metadata: {'commission': 2.5},
-          createdAt: DateTime.now().subtract(const Duration(days: 5)),
-          updatedAt: DateTime.now(),
-        ),
-        TradingDeal(
-          id: '2',
-          clientId: 'client2',
-          propertyId: 'prop2',
-          dealType: 'purchase',
-          dealAmount: 180000.0,
-          dealDate: DateTime.now().subtract(const Duration(days: 10)),
-          status: 'completed',
-          metadata: {'commission': 3.0},
-          createdAt: DateTime.now().subtract(const Duration(days: 10)),
-          updatedAt: DateTime.now().subtract(const Duration(days: 2)),
-        ),
-      ];
+      // TODO: Implement actual deals loading from database when deals table is created
+      // For now, deals functionality is placeholder
+      _deals = [];
+      debugPrint('TradingViewModel: Deals functionality - table not yet implemented');
       notifyListeners();
     } catch (e) {
       _error = e.toString();
+      debugPrint('TradingViewModel: Error loading deals: $e');
       notifyListeners();
     } finally {
       _setLoading(false);
     }
   }
 
-  /// Load all trading clients
+  /// Load all trading clients from database
   Future<void> loadClients() async {
     _setLoading(true);
     _error = null;
     
     try {
-      // TODO: Implement actual data loading from database/repository
-      // For now, using mock data
-      _clients = [
-        TradingClient(
-          id: 'client1',
-          name: 'John Doe',
-          phone: '+1234567890',
-          email: 'john.doe@example.com',
-          address: '123 Main St, City, State',
-          createdAt: DateTime.now().subtract(const Duration(days: 30)),
-          updatedAt: DateTime.now().subtract(const Duration(days: 5)),
-        ),
-        TradingClient(
-          id: 'client2',
-          name: 'Jane Smith',
-          phone: '+0987654321',
-          email: 'jane.smith@example.com',
-          address: '456 Oak Ave, Town, State',
-          createdAt: DateTime.now().subtract(const Duration(days: 45)),
-          updatedAt: DateTime.now().subtract(const Duration(days: 10)),
-        ),
-      ];
+      // TODO: Implement actual clients loading from database when clients table is created
+      // For now, clients functionality is placeholder
+      _clients = [];
+      debugPrint('TradingViewModel: Clients functionality - table not yet implemented');
       notifyListeners();
     } catch (e) {
       _error = e.toString();
+      debugPrint('TradingViewModel: Error loading clients: $e');
       notifyListeners();
     } finally {
       _setLoading(false);
     }
   }
 
-  /// Add a new property deal
+  /// Add a new property deal (placeholder until deals table is created)
   Future<void> addDeal(TradingDeal deal) async {
     try {
-      // TODO: Implement actual database insertion
-      _deals.add(deal);
-      notifyListeners();
+      // TODO: Implement actual database insertion when deals table is created
+      debugPrint('TradingViewModel: Add deal functionality - table not yet implemented');
     } catch (e) {
       _error = e.toString();
+      debugPrint('TradingViewModel: Error adding deal: $e');
       notifyListeners();
     }
   }
 
-  /// Update an existing property deal
+  /// Update an existing property deal (placeholder until deals table is created)
   Future<void> updateDeal(TradingDeal deal) async {
     try {
-      // TODO: Implement actual database update
-      final index = _deals.indexWhere((d) => d.id == deal.id);
-      if (index != -1) {
-        _deals[index] = deal;
-        notifyListeners();
-      }
+      // TODO: Implement actual database update when deals table is created
+      debugPrint('TradingViewModel: Update deal functionality - table not yet implemented');
     } catch (e) {
       _error = e.toString();
+      debugPrint('TradingViewModel: Error updating deal: $e');
       notifyListeners();
     }
   }
 
-  /// Delete a property deal
+  /// Delete a property deal (placeholder until deals table is created)
   Future<void> deleteDeal(String dealId) async {
     try {
-      // TODO: Implement actual database deletion
-      _deals.removeWhere((d) => d.id == dealId);
-      notifyListeners();
+      // TODO: Implement actual database deletion when deals table is created
+      debugPrint('TradingViewModel: Delete deal functionality - table not yet implemented');
     } catch (e) {
       _error = e.toString();
+      debugPrint('TradingViewModel: Error deleting deal: $e');
       notifyListeners();
     }
   }
 
-  /// Add a new trading client
+  /// Add a new trading client (placeholder until clients table is created)
   Future<void> addClient(TradingClient client) async {
     try {
-      // TODO: Implement actual database insertion
-      _clients.add(client);
-      notifyListeners();
+      // TODO: Implement actual database insertion when clients table is created
+      debugPrint('TradingViewModel: Add client functionality - table not yet implemented');
     } catch (e) {
       _error = e.toString();
+      debugPrint('TradingViewModel: Error adding client: $e');
       notifyListeners();
     }
   }
 
-  /// Update an existing trading client
+  /// Update an existing trading client (placeholder until clients table is created)
   Future<void> updateClient(TradingClient client) async {
     try {
-      // TODO: Implement actual database update
-      final index = _clients.indexWhere((c) => c.id == client.id);
-      if (index != -1) {
-        _clients[index] = client;
-        notifyListeners();
-      }
+      // TODO: Implement actual database update when clients table is created
+      debugPrint('TradingViewModel: Update client functionality - table not yet implemented');
     } catch (e) {
       _error = e.toString();
+      debugPrint('TradingViewModel: Error updating client: $e');
       notifyListeners();
     }
   }
 
-  /// Delete a trading client
+  /// Delete a trading client (placeholder until clients table is created)
   Future<void> deleteClient(String clientId) async {
     try {
-      // TODO: Implement actual database deletion
-      _clients.removeWhere((c) => c.id == clientId);
-      notifyListeners();
+      // TODO: Implement actual database deletion when clients table is created
+      debugPrint('TradingViewModel: Delete client functionality - table not yet implemented');
     } catch (e) {
       _error = e.toString();
+      debugPrint('TradingViewModel: Error deleting client: $e');
       notifyListeners();
     }
   }

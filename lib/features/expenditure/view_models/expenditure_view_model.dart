@@ -131,18 +131,50 @@ class ExpenditureViewModel extends ChangeNotifier {
     // Setup new streams
     _officeExpensesSubscription = _repository.watchOfficeExpenses(companyId).listen(
       (data) {
+        // CRITICAL: Set loading to false when stream data arrives
+        if (_loading) {
+          _loading = false;
+          debugPrint('ExpenditureViewModel: Loading set to false - office expenses stream data received');
+        }
+        
         _officeExpenses = data;
         _applySearchFilter();
+        
+        debugPrint('ExpenditureViewModel: Office expenses stream updated - notifyListeners called');
+        notifyListeners();
       },
-      onError: (e) => debugPrint('Error in office expenses stream: $e'),
+      onError: (e) {
+        if (_loading) {
+          _loading = false;
+          debugPrint('ExpenditureViewModel: Loading set to false - office expenses stream error');
+        }
+        debugPrint('Error in office expenses stream: $e');
+        notifyListeners();
+      },
     );
 
     _projectExpensesSubscription = _repository.watchProjectExpenses(companyId).listen(
       (data) {
+        // CRITICAL: Set loading to false when stream data arrives
+        if (_loading) {
+          _loading = false;
+          debugPrint('ExpenditureViewModel: Loading set to false - project expenses stream data received');
+        }
+        
         _projectExpenses = data;
         _applySearchFilter();
+        
+        debugPrint('ExpenditureViewModel: Project expenses stream updated - notifyListeners called');
+        notifyListeners();
       },
-      onError: (e) => debugPrint('Error in project expenses stream: $e'),
+      onError: (e) {
+        if (_loading) {
+          _loading = false;
+          debugPrint('ExpenditureViewModel: Loading set to false - project expenses stream error');
+        }
+        debugPrint('Error in project expenses stream: $e');
+        notifyListeners();
+      },
     );
   }
 

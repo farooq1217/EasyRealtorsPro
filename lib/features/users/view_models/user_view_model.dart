@@ -219,6 +219,12 @@ class UserViewModel extends ChangeNotifier {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           
+          // CRITICAL: Set loading to false when stream data arrives
+          if (_loading) {
+            _loading = false;
+            debugPrint('UserViewModel: Loading set to false - stream data received');
+          }
+          
           // CRITICAL DEBUG: Log user filtering results for Umer Shahzad
           if (_currentUser?['email']?.toString().toLowerCase() == 'umershahzad596@gmail.com') {
             debugPrint('USER VIEW MODEL DEBUG: Stream update received for Umer Shahzad');
@@ -234,12 +240,20 @@ class UserViewModel extends ChangeNotifier {
           
           _users = data;
           _applySearchFilter();
+          
+          debugPrint('UserViewModel: notifyListeners called - stream data processed');
+          notifyListeners();
         });
       },
       onError: (e) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
+          if (_loading) {
+            _loading = false;
+            debugPrint('UserViewModel: Loading set to false - stream error');
+          }
           _error = 'Error loading users: $e';
+          debugPrint('UserViewModel: Stream error - $e');
           notifyListeners();
         });
       },

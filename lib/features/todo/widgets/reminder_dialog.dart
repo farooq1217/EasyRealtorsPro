@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../../core/font_utils.dart';
 import '../../../core/app_utils.dart';
 
@@ -109,7 +108,7 @@ class _ReminderDialogState extends State<ReminderDialog> {
           SnackBar(
             content: Text(
               'Reminder added successfully!',
-              style: GoogleFonts.poppins(),
+              style: AppFonts.poppins(),
             ),
             backgroundColor: const Color(0xFFFF6B35),
           ),
@@ -121,7 +120,7 @@ class _ReminderDialogState extends State<ReminderDialog> {
           SnackBar(
             content: Text(
               'Error adding reminder: $e',
-              style: GoogleFonts.poppins(),
+              style: AppFonts.poppins(),
             ),
             backgroundColor: Colors.red,
           ),

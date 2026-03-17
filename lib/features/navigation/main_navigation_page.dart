@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'dart:ui';
 import '../../../widgets/custom_sidebar.dart';
 import '../../../core/font_utils.dart';
 import '../../../core/services/app_storage.dart' show AppStorage;
@@ -145,6 +145,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     AdminApp.applyThemeSetting(mode);
   }
 
+  
   Widget _buildCurrentPage() {
     switch (_selectedIndex) {
       case 0:
@@ -169,6 +170,8 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         return UsersPage(db: widget.db);
       case 10:
         return ExpenditurePage(db: widget.db);
+      case 11:
+        return CompaniesPage(db: widget.db);
       default:
         return DashboardPage(db: widget.db);
     }
@@ -189,27 +192,136 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
             onLogout: _onLogout,
             onToggle: _onToggleSidebar,
             isOpen: _isSidebarOpen,
-            themeMode: _themeMode,
-            onThemeChanged: _onThemeChanged,
             currentUser: _currentUser,
             badgeFiles: _badgeFiles,
             badgeRentals: _badgeRentals,
           ),
           
+          // Separation Gap
+          const SizedBox(width: 8),
+          
           // Main Content Area
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0xFFF8F9FA),
-                    const Color(0xFFF1F3F4),
-                  ],
+            child: Column(
+              children: [
+                // Header Bar
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        const Color(0xFFFF6B35), // Orange on left
+                        const Color(0xFF4A90E2), // Blue on right
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      // Spacer for centering
+                      if (!_isSidebarOpen) const SizedBox(width: 16),
+                      
+                      // Branding - Centered (vertically centered)
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Real Estate Management System',
+                              style: AppFonts.poppins(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      // Dark Mode Toggle - Positioned in top-right corner
+                      Container(
+                        margin: const EdgeInsets.only(top: 0, right: 0),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.2),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.white.withOpacity(0.1),
+                              blurRadius: 8,
+                              spreadRadius: 0.5,
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: IconButton(
+                              icon: Icon(
+                                _themeMode == ThemeMode.dark 
+                                  ? Icons.light_mode 
+                                  : Icons.dark_mode,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                              onPressed: () async {
+                                final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
+                                final s = await AppStorage().readSettings();
+                                s['theme'] = newMode;
+                                await AppStorage().writeSettings(s);
+                                _onThemeChanged(newMode);
+                              },
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(32, 32),
+                                padding: EdgeInsets.zero,
+                              ),
+                              tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              child: _buildCurrentPage(),
+                
+                // 12px vertical gap separator
+                const SizedBox(height: 12),
+                
+                // Page Content - Removed breadcrumb sub-header for cleaner UI
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          const Color(0xFFF8F9FA),
+                          const Color(0xFFF1F3F4),
+                        ],
+                      ),
+                    ),
+                    child: _buildCurrentPage(),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

@@ -512,223 +512,233 @@ class _ToDoPageState extends State<ToDoPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('To-Do', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFFFF6B35), // Orange
-                const Color(0xFF4A90E2), // Blue
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: TopRightSearch(
-              hintText: 'Search tasks...',
-              onChanged: (q) {
-                if (!mounted) return;
-                _viewModel.setSearchQuery(q);
-              },
-            ),
-          ),
-        ],
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFFFF6B35).withOpacity(0.03), // Very subtle orange
-              const Color(0xFF4A90E2).withOpacity(0.03), // Very subtle blue
-            ],
-          ),
-        ),
-        child: Stack(
-          children: [
-            Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _dateController,
-                            readOnly: true,
-                            onTap: _pickDate,
-                            decoration: InputDecoration(
-                              labelText: 'Select Date',
-                              hintText: 'Tap to select date',
-                              prefixIcon: const Icon(Icons.calendar_today),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              filled: true,
-                              fillColor: Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF23272E)
-          : Colors.white,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton.icon(
-                          onPressed: _pickDate,
-                          icon: const Icon(Icons.calendar_today),
-                          label: const Text('Select Date'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF4A90E2), // Blue
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.today),
-                          tooltip: 'Today',
-                          onPressed: () {
-                            if (!mounted) return;
-                            setState(() {
-                              _selectedDate = DateTime.now();
-                              _dateController.text = DateFormat('dd MMM yyyy').format(_selectedDate);
-                            });
-                            _viewModel.setSelectedDate(_selectedDate);
-                            _loadTasks();
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton.icon(
-                          onPressed: _showAddReminderDialog,
-                          icon: const Icon(Icons.add_alert),
-                          label: const Text('Add Task'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFFFF6B35), // Orange
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Builder(
-                    builder: (context) {
-                      return AnimatedBuilder(
-                        builder: (context, child) {
-                          final allTasks = _viewModel.allTasks;
-                          
-                          return Expanded(
-                            child: Column(
-                              children: [
-                                if (allTasks.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                                    child: Text(
-                                      _viewModel.searchQuery.isEmpty
-                                          ? '${allTasks.length} task${allTasks.length == 1 ? '' : 's'} scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}'
-                                          : '${allTasks.length} task${allTasks.length == 1 ? '' : 's'} found',
-                                      style: AppFonts.poppins(
-                                        fontSize: 14,
-                                        color: Colors.grey.shade700,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                const SizedBox(height: 8),
-                                Expanded(
-                                  child: allTasks.isEmpty
-                                      ? Center(
-                                          child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Icon(
-                                                _viewModel.searchQuery.isNotEmpty ? Icons.search_off : Icons.checklist,
-                                                size: 64,
-                                                color: Colors.grey.shade400,
-                                              ),
-                                              const SizedBox(height: 16),
-                                              Text(
-                                                _viewModel.searchQuery.isNotEmpty
-                                                    ? 'No tasks found for "${_viewModel.searchQuery}"'
-                                                    : 'No tasks scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}',
-                                                style: AppFonts.poppins(
-                                                  fontSize: 18,
-                                                  color: Colors.grey.shade600,
-                                                ),
-                                              ),
-                                              if (_viewModel.searchQuery.isEmpty) ...[
-                                                const SizedBox(height: 8),
-                                                Text(
-                                                  'Tasks from Trading and Agent Working modules will appear here',
-                                                  style: AppFonts.poppins(
-                                                    fontSize: 14,
-                                                    color: Colors.grey.shade500,
-                                                  ),
-                                                  textAlign: TextAlign.center,
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                        )
-                                      : ListView.builder(
-                                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                                          itemCount: allTasks.length,
-                                          itemBuilder: (context, index) {
-                                            final task = allTasks[index];
-                                            
-                                            if (task is Reminder) {
-                                              return _buildReminderCard(task);
-                                            } else if (task is Map<String, dynamic>) {
-                                              return _buildAggregatedTaskCard(task);
-                                            }
-                                            
-                                            return const SizedBox.shrink();
-                                          },
-                                        ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                        animation: _viewModel,
-                      );
-                    },
-                  ),
-                ],
-              ),
-            // Sync indicator - show only when syncing
-            if (_syncState.isLoading)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
+    return Column(
+      children: [
+        // Vertical Separator "Cut" - Creates the separation line between main header and module
+        const SizedBox(height: 12),
+        
+        // To-Do Module Content
+        Expanded(
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text('To-Do', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+              centerTitle: true,
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              flexibleSpace: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFFFF6B35), // Orange
+                      const Color(0xFF4A90E2), // Blue
                     ],
-                  ),
-                  child: const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
               ),
-          ],
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  child: TopRightSearch(
+                    hintText: 'Search tasks...',
+                    onChanged: (q) {
+                      if (!mounted) return;
+                      _viewModel.setSearchQuery(q);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            body: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFFFF6B35).withOpacity(0.03), // Very subtle orange
+                    const Color(0xFF4A90E2).withOpacity(0.03), // Very subtle blue
+                  ],
+                ),
+              ),
+              child: Stack(
+                children: [
+                  Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _dateController,
+                                readOnly: true,
+                                onTap: _pickDate,
+                                decoration: InputDecoration(
+                                  labelText: 'Select Date',
+                                  hintText: 'Tap to select date',
+                                  prefixIcon: const Icon(Icons.calendar_today),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  filled: true,
+                                  fillColor: Theme.of(context).brightness == Brightness.dark
+                                    ? const Color(0xFF23272E)
+                                    : Colors.white,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.icon(
+                              onPressed: _pickDate,
+                              icon: const Icon(Icons.calendar_today),
+                              label: const Text('Select Date'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF4A90E2), // Blue
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.today),
+                              tooltip: 'Today',
+                              onPressed: () {
+                                if (!mounted) return;
+                                setState(() {
+                                  _selectedDate = DateTime.now();
+                                  _dateController.text = DateFormat('dd MMM yyyy').format(_selectedDate);
+                                });
+                                _viewModel.setSelectedDate(_selectedDate);
+                                _loadTasks();
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.icon(
+                              onPressed: _showAddReminderDialog,
+                              icon: const Icon(Icons.add_alert),
+                              label: const Text('Add Task'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFFF6B35), // Orange
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Builder(
+                        builder: (context) {
+                          return AnimatedBuilder(
+                            builder: (context, child) {
+                              final allTasks = _viewModel.allTasks;
+                              
+                              return Expanded(
+                                child: Column(
+                                  children: [
+                                    if (allTasks.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                                        child: Text(
+                                          _viewModel.searchQuery.isEmpty
+                                              ? '${allTasks.length} task${allTasks.length == 1 ? '' : 's'} scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}'
+                                              : '${allTasks.length} task${allTasks.length == 1 ? '' : 's'} found',
+                                          style: AppFonts.poppins(
+                                            fontSize: 14,
+                                            color: Colors.grey.shade700,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    const SizedBox(height: 8),
+                                    Expanded(
+                                      child: allTasks.isEmpty
+                                          ? Center(
+                                              child: Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    _viewModel.searchQuery.isNotEmpty ? Icons.search_off : Icons.checklist,
+                                                    size: 64,
+                                                    color: Colors.grey.shade400,
+                                                  ),
+                                                  const SizedBox(height: 16),
+                                                  Text(
+                                                    _viewModel.searchQuery.isNotEmpty
+                                                        ? 'No tasks found for "${_viewModel.searchQuery}"'
+                                                        : 'No tasks scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}',
+                                                    style: AppFonts.poppins(
+                                                      fontSize: 18,
+                                                      color: Colors.grey.shade600,
+                                                    ),
+                                                  ),
+                                                  if (_viewModel.searchQuery.isEmpty) ...[
+                                                    const SizedBox(height: 8),
+                                                    Text(
+                                                      'Tasks from Trading and Agent Working modules will appear here',
+                                                      style: AppFonts.poppins(
+                                                        fontSize: 14,
+                                                        color: Colors.grey.shade500,
+                                                      ),
+                                                      textAlign: TextAlign.center,
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            )
+                                          : ListView.builder(
+                                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                                              itemCount: allTasks.length,
+                                              itemBuilder: (context, index) {
+                                                final task = allTasks[index];
+                                                
+                                                if (task is Reminder) {
+                                                  return _buildReminderCard(task);
+                                                } else if (task is Map<String, dynamic>) {
+                                                  return _buildAggregatedTaskCard(task);
+                                                }
+                                                
+                                                return const SizedBox.shrink();
+                                              },
+                                            ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            animation: _viewModel,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  // Sync indicator - show only when syncing
+                  if (_syncState.isLoading)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 }
