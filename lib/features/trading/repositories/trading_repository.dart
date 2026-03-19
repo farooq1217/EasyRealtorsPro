@@ -9,6 +9,7 @@ abstract class TradingRepository {
   Future<TradingEntry?> getEntryById(String id);
   Future<void> addEntry(TradingEntry entry);
   Future<void> updateEntry(TradingEntry entry);
+  Future<void> updateEntryStatus(String entryId, String newStatus);
   Future<void> deleteEntry(String id); // Soft delete
   
   // Stream operations for real-time updates

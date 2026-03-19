@@ -29,9 +29,10 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
   final _unitPriceController = TextEditingController();
   
   // Form state variables
-  String _selectedEntryType = 'HP'; // Default entry type
+  String? _selectedEntryType; // No default entry type - user must choose
   DateTime _selectedDate = DateTime.now();
   String? _imagePath;
+  bool _isDateFieldLocked = false; // Track if date field should be read-only
   
   // Entry type options
   static const List<String> _entryTypes = [
@@ -50,6 +51,53 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
     super.initState();
     // Auto-fill date with current date
     _selectedDate = DateTime.now();
+  }
+
+  // Smart auto-date calculation based on payment option
+  DateTime _calculateAutoDate(String paymentOption) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day); // Normalize to start of day
+    
+    switch (paymentOption) {
+      case 'HP': // Current Date
+        return today;
+        
+      case 'KP': // Current Date + 1 day
+        return today.add(const Duration(days: 1));
+        
+      case 'MP': // Coming Monday of the current week
+        int daysUntilMonday = (DateTime.monday - today.weekday + 7) % 7;
+        if (daysUntilMonday == 0) daysUntilMonday = 7; // If today is Monday, use next Monday
+        return today.add(Duration(days: daysUntilMonday));
+        
+      case 'NMP': // The Monday after the coming Monday
+        int daysUntilComingMonday = (DateTime.monday - today.weekday + 7) % 7;
+        if (daysUntilComingMonday == 0) daysUntilComingMonday = 7; // If today is Monday, use next Monday
+        return today.add(Duration(days: daysUntilComingMonday + 7));
+        
+      case 'NNMP': // The 3rd Monday from today
+        int daysUntilFirstMonday = (DateTime.monday - today.weekday + 7) % 7;
+        if (daysUntilFirstMonday == 0) daysUntilFirstMonday = 7; // If today is Monday, use next Monday
+        return today.add(Duration(days: daysUntilFirstMonday + 14)); // +14 days for 3rd Monday
+        
+      case 'AEMP': // The first Monday after the upcoming Eid (using basic holiday constant)
+        // For demo purposes, assume upcoming Eid is 30 days from today
+        final upcomingEid = today.add(const Duration(days: 30));
+        int daysUntilEidMonday = (DateTime.monday - upcomingEid.weekday + 7) % 7;
+        if (daysUntilEidMonday == 0) daysUntilEidMonday = 7; // If Eid is Monday, use next Monday
+        return upcomingEid.add(Duration(days: daysUntilEidMonday));
+        
+      case 'BOP': // Bank Opening Payment - manual date
+      case 'SOP': // Society Opening Payment - manual date
+      default:
+        return today; // Default to current date for manual options
+    }
+  }
+
+  // Check if date field should be locked for a payment option
+  bool _isDateFieldLockedForOption(String? paymentOption) {
+    if (paymentOption == null) return false;
+    return ['HP', 'KP', 'MP', 'NMP', 'NNMP', 'AEMP'].contains(paymentOption);
   }
 
   // Field decoration helper
@@ -140,7 +188,7 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
         companyId: '',
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
-        status: 'active',
+        status: 'pending',
       );
     }
 
@@ -154,7 +202,7 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
 
     return TradingEntry(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      entryType: _selectedEntryType,
+      entryType: _selectedEntryType ?? '',
       date: _selectedDate,
       personName: _nameController.text,
       mobileNo: _mobileController.text,
@@ -165,7 +213,7 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
       companyId: '', // Will be set by repository
       createdAt: now,
       updatedAt: now,
-      status: 'active',
+      status: 'pending',
     );
   }
 
@@ -178,9 +226,10 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
     _quantityController.clear();
     _unitPriceController.clear();
     setState(() {
-      _selectedEntryType = 'HP';
+      _selectedEntryType = null; // Reset to null instead of HP
       _selectedDate = DateTime.now();
       _imagePath = null;
+      _isDateFieldLocked = false; // Reset date field lock state
     });
   }
 
@@ -260,7 +309,10 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _selectedEntryType,
-                    decoration: _fieldDecoration('Type', isRequired: true),
+                    decoration: _fieldDecoration('Type', isRequired: true).copyWith(
+                      hintText: 'Select Payment Option',
+                    ),
+                    validator: (value) => value == null || value.isEmpty ? 'Please select a payment option' : null,
                     items: _entryTypes.map((String type) {
                       return DropdownMenuItem<String>(
                         value: type,
@@ -271,6 +323,15 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                       if (newValue != null) {
                         setState(() {
                           _selectedEntryType = newValue;
+                          
+                          // Auto-calculate date for payment options that require it
+                          if (_isDateFieldLockedForOption(newValue)) {
+                            _selectedDate = _calculateAutoDate(newValue);
+                            _isDateFieldLocked = true;
+                          } else {
+                            // For manual options (BOP, SOP), unlock the date field
+                            _isDateFieldLocked = false;
+                          }
                         });
                       }
                     },
@@ -281,32 +342,55 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                 // Date Picker
                 Expanded(
                   child: InkWell(
-                    onTap: _selectDate,
+                    onTap: _isDateFieldLocked ? null : _selectDate, // Disable tap when locked
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
+                        border: Border.all(
+                          color: _isDateFieldLocked 
+                            ? Colors.grey.shade400 
+                            : Colors.grey.shade300,
+                        ),
                         borderRadius: BorderRadius.circular(12),
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? const Color(0xFF23272E)
-                            : Colors.grey.shade50,
+                        color: _isDateFieldLocked
+                          ? (Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey.shade700
+                              : Colors.grey.shade200)
+                          : (Theme.of(context).brightness == Brightness.dark
+                              ? const Color(0xFF23272E)
+                              : Colors.grey.shade50),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.calendar_today, color: Colors.grey.shade700, size: 20),
+                          Icon(
+                            Icons.calendar_today, 
+                            color: _isDateFieldLocked 
+                              ? Colors.grey.shade500 
+                              : Colors.grey.shade700, 
+                            size: 20,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               DateFormat('dd MMM yyyy').format(_selectedDate),
                               style: AppFonts.poppins(
-                                color: Colors.black87,
+                                color: _isDateFieldLocked 
+                                  ? Colors.grey.shade600 
+                                  : Colors.black87,
                                 fontWeight: FontWeight.w500,
                                 fontSize: 14,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          Icon(Icons.arrow_drop_down, color: Colors.grey.shade600, size: 20),
+                          if (_isDateFieldLocked)
+                            Icon(
+                              Icons.lock,
+                              color: Colors.grey.shade500,
+                              size: 16,
+                            )
+                          else
+                            Icon(Icons.arrow_drop_down, color: Colors.grey.shade600, size: 20),
                         ],
                       ),
                     ),
@@ -465,12 +549,6 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                     if (_formKey.currentState!.validate()) {
                       final entry = createEntry();
                       widget.onSave(entry);
-                      
-                      // Reset form after successful save
-                      _resetForm();
-                      
-                      // Call reset callback if provided
-                      widget.onFormReset?.call();
                     }
                   },
                   style: ElevatedButton.styleFrom(

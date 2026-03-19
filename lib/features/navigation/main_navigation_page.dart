@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'package:provider/provider.dart';
 import '../../../widgets/custom_sidebar.dart';
 import '../../../core/font_utils.dart';
 import '../../../core/services/app_storage.dart' show AppStorage;
@@ -13,6 +14,8 @@ import '../rental/pages/rental_page.dart' show RentalItemsPage;
 import '../todo/pages/todo_page.dart' show ToDoPage;
 import '../settings/pages/settings_page.dart' show SettingsPageClean;
 import '../trading/pages/trading_page.dart';
+import '../trading/view_models/trading_view_model.dart';
+import '../trading/repositories/trading_repository_impl.dart';
 import '../expenditure/pages/expenditure_page.dart';
 import '../users/pages/users_page.dart';
 import '../companies/pages/companies_page.dart';
@@ -36,11 +39,11 @@ class MainNavigationPage extends StatefulWidget {
 class _MainNavigationPageState extends State<MainNavigationPage> {
   int _selectedIndex = 0;
   bool _isSidebarOpen = true;
-  ThemeMode _themeMode = ThemeMode.system;
   Map<String, dynamic>? _currentUser;
+  ThemeMode _themeMode = ThemeMode.system;
   int? _badgeFiles;
   int? _badgeRentals;
-
+  
   @override
   void initState() {
     super.initState();
@@ -179,152 +182,161 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Sidebar
-          ModernSidebar(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: _onDestinationSelected,
-            onTradingTap: _onTradingTap,
-            onLogout: _onLogout,
-            onToggle: _onToggleSidebar,
-            isOpen: _isSidebarOpen,
-            currentUser: _currentUser,
-            badgeFiles: _badgeFiles,
-            badgeRentals: _badgeRentals,
-          ),
-          
-          // Separation Gap
-          const SizedBox(width: 8),
-          
-          // Main Content Area
-          Expanded(
-            child: Column(
-              children: [
-                // Header Bar
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        const Color(0xFFFF6B35), // Orange on left
-                        const Color(0xFF4A90E2), // Blue on right
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      // Spacer for centering
-                      if (!_isSidebarOpen) const SizedBox(width: 16),
-                      
-                      // Branding - Centered (vertically centered)
-                      Expanded(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Real Estate Management System',
-                              style: AppFonts.poppins(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      // Dark Mode Toggle - Positioned in top-right corner
-                      Container(
-                        margin: const EdgeInsets.only(top: 0, right: 0),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.2),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.white.withOpacity(0.1),
-                              blurRadius: 8,
-                              spreadRadius: 0.5,
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(18),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                            child: IconButton(
-                              icon: Icon(
-                                _themeMode == ThemeMode.dark 
-                                  ? Icons.light_mode 
-                                  : Icons.dark_mode,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                              onPressed: () async {
-                                final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
-                                final s = await AppStorage().readSettings();
-                                s['theme'] = newMode;
-                                await AppStorage().writeSettings(s);
-                                _onThemeChanged(newMode);
-                              },
-                              style: IconButton.styleFrom(
-                                minimumSize: const Size(32, 32),
-                                padding: EdgeInsets.zero,
-                              ),
-                              tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                // 12px vertical gap separator
-                const SizedBox(height: 12),
-                
-                // Page Content - Removed breadcrumb sub-header for cleaner UI
-                Expanded(
-                  child: Container(
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<TradingViewModel>(
+          create: (context) => TradingViewModel.getInstance(TradingRepositoryImpl(widget.db)),
+          lazy: false, // Ensure ViewModel is created immediately and stays alive
+        ),
+        // Add other providers here as needed for different pages
+      ],
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8F9FA),
+        body: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Sidebar
+            ModernSidebar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: _onDestinationSelected,
+              onTradingTap: _onTradingTap,
+              onLogout: _onLogout,
+              onToggle: _onToggleSidebar,
+              isOpen: _isSidebarOpen,
+              currentUser: _currentUser,
+              badgeFiles: _badgeFiles,
+              badgeRentals: _badgeRentals,
+            ),
+            
+            // Separation Gap
+            const SizedBox(width: 8),
+            
+            // Main Content Area
+            Expanded(
+              child: Column(
+                children: [
+                  // Header Bar
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
                         colors: [
-                          const Color(0xFFF8F9FA),
-                          const Color(0xFFF1F3F4),
+                          const Color(0xFFFF6B35), // Orange on left
+                          const Color(0xFF4A90E2), // Blue on right
                         ],
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(16),
+                      ),
                     ),
-                    child: _buildCurrentPage(),
+                    child: Row(
+                      children: [
+                        // Spacer for centering
+                        if (!_isSidebarOpen) const SizedBox(width: 16),
+                        
+                        // Branding - Centered (vertically centered)
+                        Expanded(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Real Estate Management System',
+                                style: AppFonts.poppins(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        
+                        // Dark Mode Toggle - Positioned in top-right corner
+                        Container(
+                          margin: const EdgeInsets.only(top: 0, right: 0),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.2),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.white.withOpacity(0.1),
+                                blurRadius: 8,
+                                spreadRadius: 0.5,
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              child: IconButton(
+                                icon: Icon(
+                                  _themeMode == ThemeMode.dark 
+                                    ? Icons.light_mode 
+                                    : Icons.dark_mode,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                onPressed: () async {
+                                  final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
+                                  final s = await AppStorage().readSettings();
+                                  s['theme'] = newMode;
+                                  await AppStorage().writeSettings(s);
+                                  _onThemeChanged(newMode);
+                                },
+                                style: IconButton.styleFrom(
+                                  minimumSize: const Size(32, 32),
+                                  padding: EdgeInsets.zero,
+                                ),
+                                tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  
+                  // 12px vertical gap separator
+                  const SizedBox(height: 12),
+                  
+                  // Page Content - Removed breadcrumb sub-header for cleaner UI
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            const Color(0xFFF8F9FA),
+                            const Color(0xFFF1F3F4),
+                          ],
+                        ),
+                      ),
+                      child: _buildCurrentPage(),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

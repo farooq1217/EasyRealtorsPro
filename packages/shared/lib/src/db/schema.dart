@@ -492,6 +492,13 @@ class AppDatabase extends _$AppDatabase {
           } catch (e) {
             // Column might already exist, ignore error
           }
+          
+          // Ensure trading_entries table has created_by column for existing databases
+          try {
+            await this.customStatement('ALTER TABLE trading_entries ADD COLUMN created_by TEXT');
+          } catch (e) {
+            // Column might already exist, ignore error
+          }
         },
         onUpgrade: (m, from, to) async {
           // Always make sure core business tables exist after upgrades too
@@ -866,6 +873,7 @@ class AppDatabase extends _$AppDatabase {
                 'ALTER TABLE trading_entries ADD COLUMN is_synced INTEGER NOT NULL DEFAULT 1',
                 'ALTER TABLE trading_entries ADD COLUMN created_at TEXT NOT NULL DEFAULT \'\'',
                 'ALTER TABLE trading_entries ADD COLUMN updated_at TEXT NOT NULL DEFAULT \'\'',
+                'ALTER TABLE trading_entries ADD COLUMN created_by TEXT',
               ];
               
               for (final stmt in columnsToAdd) {

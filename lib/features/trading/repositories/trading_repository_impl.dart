@@ -5,7 +5,6 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
-import '../../trading/models/trading_models.dart';
 import 'trading_repository.dart';
 import 'package:shared/shared.dart';
 import '../../../core/services/sync_database_helper.dart';
@@ -13,6 +12,14 @@ import '../../../firestore_sync_service.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/app_utils.dart';
 import '../../../core/services/firebase_threading_handler.dart';
+
+class AlreadyDeletedException implements Exception {
+  final String message;
+  AlreadyDeletedException(this.message);
+  
+  @override
+  String toString() => message;
+}
 
 class TradingRepositoryImpl implements TradingRepository {
   final AppDatabase db;
@@ -412,6 +419,50 @@ class TradingRepositoryImpl implements TradingRepository {
       map['entry_type'], map['date'], map['person_name'], map['mobile_no'], map['estate_name'],
       map['quantity'], map['unit_price'], map['image_path'], now, map['status'] ?? 'active', map['id']
     ]);
+  }
+
+  @override
+  Future<void> updateEntryStatus(String entryId, String newStatus) async {
+    final now = DateTime.now().toIso8601String();
+    
+    // Debug: Print the ID being updated
+    print('TradingRepository: Updating ID: $entryId');
+    print('TradingRepository: New status: $newStatus');
+    
+    // Check if entry exists in local SQLite cache before attempting update
+    final currentResult = await db.customSelect(
+      'SELECT status, is_active FROM trading_entries WHERE id = ?',
+      variables: [d.Variable.withString(entryId)]
+    ).getSingleOrNull();
+    
+    if (currentResult == null) {
+      print('TradingRepository: Entry not found in local cache - ID: $entryId');
+      throw AlreadyDeletedException('Entry not found. It may have been deleted or does not exist.');
+    }
+    
+    final isActive = currentResult.data['is_active'] as int? ?? 0;
+    final currentStatus = currentResult.data['status']?.toString();
+    
+    print('TradingRepository: Entry found - Active: $isActive, Status: $currentStatus');
+    
+    // Check if entry was already deleted (is_active = 0)
+    if (isActive == 0) {
+      print('TradingRepository: Entry already deleted - ID: $entryId');
+      throw AlreadyDeletedException('Entry was already deleted and cannot be updated.');
+    }
+    
+    // Strict lock: Prevent any updates if current status is already 'completed'
+    if (currentStatus == 'completed') {
+      debugPrint('TradingRepository: Status update blocked - entry $entryId is already completed');
+      throw Exception('Cannot update status of completed entry');
+    }
+    
+    await db.customStatement('''UPDATE trading_entries SET
+        status = ?, updated_at = ?
+      WHERE id = ?''', [newStatus, now, entryId]);
+    
+    print('TradingRepository: Successfully updated entry $entryId status to $newStatus');
+    debugPrint('TradingRepository: Updated entry $entryId status to $newStatus');
   }
 
   @override

@@ -4,7 +4,7 @@ import '../../../core/font_utils.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:intl/intl.dart';
-import 'package:shared/shared.dart' show TradingEntry;
+import 'package:shared/shared.dart' show TradingEntry, RoleUtils, AppDatabase;
 import '../repositories/trading_repository.dart';
 import '../repositories/trading_repository_impl.dart';
 import '../view_models/trading_view_model.dart';
@@ -31,335 +31,184 @@ class _TradingPageState extends State<TradingPage> {
   @override
   void initState() {
     super.initState();
+    viewModel = Provider.of<TradingViewModel>(context, listen: false);
     
-    final repo = TradingRepositoryImpl(widget.db);
-    viewModel = TradingViewModel(repo);
-  }
-
-  @override
-  void dispose() {
-    viewModel.dispose();
-    super.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted) {
+        try {
+          await viewModel.reinitializeIfNeeded();
+          await viewModel.loadEntries();
+        } catch (e) {
+          debugPrint("Error loading data: $e");
+          // Yahan error handle karein takay UI block na ho
+        }
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<TradingViewModel>.value(
-      value: viewModel,
-      child: Consumer<TradingViewModel>(
+    return Scaffold( // Direct Scaffold use karein
+      backgroundColor: const Color(0xFFF8F9FA),
+      appBar: AppBar(
+        title: Text(
+          'Trading', 
+          style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)
+        ),
+        centerTitle: true,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
+            ),
+          ),
+        ),
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: () => viewModel.refresh(),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: TopRightSearch(
+              onChanged: (value) {
+                _searchQuery = value;
+                viewModel.searchEntries(value);
+              },
+            ),
+          ),
+        ],
+      ),
+      body: Consumer<TradingViewModel>(
         builder: (context, viewModel, child) {
           return Column(
             children: [
-              // Vertical Separator "Cut" - Creates the separation line between main header and module
               const SizedBox(height: 12),
-              
-              // Trading Module Content
+              // Filter Section
+Container(
+  padding: const EdgeInsets.all(16),
+  color: Colors.white,
+  child: Column(
+    children: [
+      Row(
+        children: [
+          _buildFilterDropdown(
+            label: 'Date Range',
+            value: _dateRangeFilter,
+            icon: Icons.calendar_today,
+            items: ['All', 'Today', 'This Week', 'This Month', 'This Year'],
+            onChanged: (val) {
+              setState(() => _dateRangeFilter = val!);
+              viewModel.filterByDateRange(val!);
+            },
+          ),
+          const SizedBox(width: 12),
+          _buildFilterDropdown(
+            label: 'Select payment option',
+            value: _entryTypeFilter,
+            icon: Icons.category,
+            items: ['All', 'HP', 'KP', 'MP', 'NMP', 'NNMP', 'BOP', 'SOP', 'AEMP'],
+            onChanged: (val) {
+              if (val != null) {
+                setState(() => _entryTypeFilter = val);
+                viewModel.filterByEntryType(val);
+              }
+            },
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      
+      // YAHAN FIX HAI: Status dropdown ko Row mein wrap kar diya hai
+      Row(
+        children: [
+          _buildFilterDropdown(
+            label: 'Status',
+            value: _statusFilter,
+            icon: Icons.info_outline,
+            items: ['All', 'Pending', 'Completed', 'Cancelled'],
+            onChanged: (val) {
+              setState(() => _statusFilter = val!);
+              viewModel.filterByStatus(val!);
+            },
+          ),
+        ],
+      ),
+      
+      if (_dateRangeFilter != 'All' || _entryTypeFilter != 'All' || _statusFilter != 'All')
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () {
+              setState(() {
+                _dateRangeFilter = 'All';
+                _entryTypeFilter = 'All';
+                _statusFilter = 'All';
+              });
+              viewModel.clearFilters();
+            },
+            icon: const Icon(Icons.clear, size: 16),
+            label: const Text('Clear Filters'),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFFF6B35),
+            ),
+          ),
+        ),
+    ],
+  ),
+),
+              // List Section
               Expanded(
-                child: Scaffold(
-                  backgroundColor: const Color(0xFFF8F9FA),
-                  appBar: AppBar(
-                    title: Text(
-                      'Trading', 
-                      style: AppFonts.poppins(
-                        color: Colors.white, 
-                        fontWeight: FontWeight.w600
-                      )
-                    ),
-                    centerTitle: true,
-                    backgroundColor: Colors.transparent,
-                    flexibleSpace: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            const Color(0xFFFF6B35),
-                            const Color(0xFF4A90E2),
-                          ],
-                        ),
-                      ),
-                    ),
-                    elevation: 0,
-                    actions: [
-                      IconButton(
-                        icon: const Icon(Icons.refresh, color: Colors.white),
-                        onPressed: () => viewModel.refresh(),
-                        tooltip: 'Refresh',
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        child: TopRightSearch(
-                          onChanged: (value) {
-                            _searchQuery = value;
-                            viewModel.searchEntries(value);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  body: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(0xFFFF6B35).withOpacity(0.03), // Very subtle orange
-                          const Color(0xFF4A90E2).withOpacity(0.03), // Very subtle blue
-                        ],
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        // Filters Only
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          color: Colors.white,
-                          child: Column(
-                            children: [
-                              // Professional Dropdown Filters - First Row
-                              Row(
-                                children: [
-                                  // Date Range Dropdown
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      value: _dateRangeFilter,
-                                      decoration: InputDecoration(
-                                        labelText: 'Date Range',
-                                        prefixIcon: const Icon(Icons.calendar_today, color: Color(0xFFFF6B35)),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: BorderSide(color: Colors.grey.shade300),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                                        ),
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      ),
-                                      items: const [
-                                        DropdownMenuItem(value: 'All', child: Text('All')),
-                                        DropdownMenuItem(value: 'Today', child: Text('Today')),
-                                        DropdownMenuItem(value: 'This Week', child: Text('This Week')),
-                                        DropdownMenuItem(value: 'This Month', child: Text('This Month')),
-                                        DropdownMenuItem(value: 'This Year', child: Text('This Year')),
-                                      ],
-                                      onChanged: (value) {
-                                        if (value != null) {
-                                          setState(() {
-                                            _dateRangeFilter = value;
-                                            viewModel.filterByDateRange(value);
-                                          });
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  
-                                  // Entry Type Dropdown
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      value: _entryTypeFilter,
-                                      decoration: InputDecoration(
-                                        labelText: 'Entry Type',
-                                        prefixIcon: const Icon(Icons.category, color: Color(0xFFFF6B35)),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: BorderSide(color: Colors.grey.shade300),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                                        ),
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      ),
-                                      items: const [
-                                        DropdownMenuItem(value: 'All', child: Text('All Types')),
-                                        DropdownMenuItem(value: 'HP', child: Text('HP')),
-                                        DropdownMenuItem(value: 'KP', child: Text('KP')),
-                                        DropdownMenuItem(value: 'MP', child: Text('MP')),
-                                        DropdownMenuItem(value: 'NMP', child: Text('NMP')),
-                                        DropdownMenuItem(value: 'NNMP', child: Text('NNMP')),
-                                        DropdownMenuItem(value: 'BOP', child: Text('BOP')),
-                                        DropdownMenuItem(value: 'SOP', child: Text('SOP')),
-                                        DropdownMenuItem(value: 'AEMP', child: Text('AEMP')),
-                                      ],
-                                      onChanged: (value) {
-                                        if (value != null) {
-                                          setState(() {
-                                            _entryTypeFilter = value;
-                                            // filterByType method removed - using simple string filters
-                                          });
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              
-                              // Status Dropdown
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      value: _statusFilter,
-                                      decoration: InputDecoration(
-                                        labelText: 'Status',
-                                        prefixIcon: const Icon(Icons.info_outline, color: Color(0xFFFF6B35)),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: BorderSide(color: Colors.grey.shade300),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                                        ),
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      ),
-                                      items: const [
-                                        DropdownMenuItem(value: 'All', child: Text('All Status')),
-                                        DropdownMenuItem(value: 'Pending', child: Text('Pending')),
-                                        DropdownMenuItem(value: 'Completed', child: Text('Completed')),
-                                        DropdownMenuItem(value: 'Cancelled', child: Text('Cancelled')),
-                                      ],
-                                      onChanged: (value) {
-                                        if (value != null) {
-                                          viewModel.filterByStatus(value);
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              
-                              // Clear Filters Row
-                              if (_dateRangeFilter != 'All' || 
-                                  _entryTypeFilter != 'All' ||
-                                  _statusFilter != 'All')
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      TextButton.icon(
-                                        onPressed: () {
-                                          setState(() {
-                                            _dateRangeFilter = 'All';
-                                            _entryTypeFilter = 'All';
-                                            _statusFilter = 'All';
-                                            viewModel.clearFilters();
-                                          });
-                                        },
-                                        icon: const Icon(Icons.clear, size: 16),
-                                        label: const Text('Clear Filters'),
-                                        style: TextButton.styleFrom(
-                                          foregroundColor: const Color(0xFFFF6B35),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        
-                        // Entries List
-                        Expanded(
-                          child: _buildEntriesList(viewModel),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Floating Action Button
-                  floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-                  floatingActionButton: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Add Entry Button
-                      FloatingActionButton.extended(
-                        onPressed: () => _showTradingFormDialog(),
-                        backgroundColor: const Color(0xFFFF6B35),
-                        foregroundColor: Colors.white,
-                        icon: const Icon(Icons.add),
-                        label: Text(
-                          'Add Entry',
-                          style: AppFonts.poppins(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                child: _buildEntriesList(viewModel),
               ),
             ],
           );
         },
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showTradingFormDialog(),
+        backgroundColor: const Color(0xFFFF6B35),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: Text('Buy', style: AppFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
+      ),
+    );
+  }
+
+  // Helper method for clean dropdowns
+  Widget _buildFilterDropdown({
+    required String label,
+    required String value,
+    required IconData icon,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Expanded(
+      child: DropdownButtonFormField<String>(
+        value: value,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, color: const Color(0xFFFF6B35)),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+        items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+        onChanged: onChanged,
+      ),
     );
   }
 
   Widget _buildEntriesList(TradingViewModel viewModel) {
-    final entries = viewModel.entries;
-    
     if (viewModel.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    
-    if (viewModel.error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            Text(
-              'Error loading data',
-              style: AppFonts.poppins(fontSize: 18, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              viewModel.error!,
-              style: AppFonts.poppins(fontSize: 14, color: Colors.grey.shade500),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => viewModel.refresh(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6B35),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      );
-    }
-    
-    if (entries.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.description_outlined, size: 64, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            Text(
-              'No trading entries found',
-              style: AppFonts.poppins(fontSize: 18, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Add your first trading entry to get started',
-              style: AppFonts.poppins(fontSize: 14, color: Colors.grey.shade500),
-            ),
-          ],
-        ),
-      );
-    }
-    
     return TradingList(
-      entries: entries,
+      entries: viewModel.entries,
       onDelete: (entryId) => viewModel.deleteEntry(entryId),
-      isLoading: viewModel.isLoading,
+      isLoading: false,
+      onStatusUpdate: (entryId, newStatus) => viewModel.updateEntryStatus(entryId, newStatus, context: context),
     );
   }
 
@@ -367,98 +216,121 @@ class _TradingPageState extends State<TradingPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
-            maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
-          ),
-          child: Column(
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFFFF6B35),
-                      Color(0xFF4A90E2),
+      builder: (dialogContext) {
+        // Get the existing ViewModel from context - DO NOT create a new provider
+        final viewModel = context.read<TradingViewModel>();
+        
+        return Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+              maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+            ),
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFFFF6B35),
+                        Color(0xFF4A90E2),
+                      ],
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        'Add Trading Entry',
+                        style: AppFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const Spacer(),
                     ],
                   ),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    topRight: Radius.circular(16),
-                  ),
                 ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                    ),
-                    const SizedBox(width: 16),
-                    Text(
-                      'Add Trading Entry',
-                      style: AppFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const Spacer(),
-                  ],
-                ),
-              ),
-              
-              // Form Content
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: GenericTradingForm(
-                    onSave: (entry) async {
-                      try {
-                        await viewModel.saveEntry(entry);
+                
+                // Form Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: GenericTradingForm(
+                      onSave: (entry) async {
+                        try {
+                          // Await the save operation without passing context
+                          await viewModel.saveEntry(entry);
+                          
+                          // Close dialog exactly once after successful save
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                          
+                          // Show success message using main context
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Trading entry saved successfully!',
+                                  style: AppFonts.poppins(),
+                                ),
+                                backgroundColor: Colors.green,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          // Show error message using dialog context so it's visible without closing
+                          if (dialogContext.mounted) {
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Error saving entry: $e',
+                                  style: AppFonts.poppins(),
+                                ),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 3),
+                                action: SnackBarAction(
+                                  label: 'OK',
+                                  textColor: Colors.white,
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(dialogContext).hideCurrentSnackBar();
+                                  },
+                                ),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      onFormReset: () {
+                        // Close dialog cleanly when cancel is pressed
                         if (dialogContext.mounted) {
                           Navigator.of(dialogContext).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Trading entry saved successfully!',
-                                style: AppFonts.poppins(),
-                              ),
-                              backgroundColor: const Color(0xFFFF6B35),
-                            ),
-                          );
                         }
-                      } catch (e) {
-                        if (dialogContext.mounted) {
-                          ScaffoldMessenger.of(dialogContext).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Error saving entry: $e',
-                                style: AppFonts.poppins(),
-                              ),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      }
-                    },
-                    onFormReset: () {
-                      if (dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop();
-                      }
-                    },
+                      },
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
