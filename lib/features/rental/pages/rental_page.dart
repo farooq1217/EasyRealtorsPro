@@ -60,7 +60,7 @@ import '../../../features/expenditure/pages/expenditure_page.dart' show Expendit
 import '../../../features/expenditure/view_models/expenditure_view_model.dart';
 import '../../../features/users/pages/users_page.dart' as users show UsersPage;
 import '../../../features/companies/pages/companies_page.dart' as companies show CompaniesPage;
-import '../../../features/reports/reports_page.dart' show ReportsPage;
+import '../../../features/reports/pages/reports_page.dart' show ReportsPage;
 import '../../../features/settings/pages/settings_page.dart' show SettingsPageClean;
 
 class RentalItemsPage extends StatefulWidget {

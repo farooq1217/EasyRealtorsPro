@@ -124,16 +124,30 @@ Row(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Main Title: Estate Name
-          Text(
-            entry.estateName ?? 'N/A',
-            style: AppFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: entry.status?.toLowerCase() == 'completed' ? Colors.grey.shade600 : Colors.black87,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+          // Main Title: Estate Name with Trade Type Icon
+          Row(
+            children: [
+              // Trade Type Icon
+              Icon(
+                entry.tradeType == 'Buy' ? Icons.arrow_circle_down : Icons.arrow_circle_up,
+                size: 20,
+                color: entry.tradeType == 'Buy' ? Colors.green : Colors.red,
+              ),
+              const SizedBox(width: 8),
+              // Estate Name with Trade Type Color
+              Expanded(
+                child: Text(
+                  entry.estateName ?? 'N/A',
+                  style: AppFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _getEstateNameColor(entry.tradeType, entry.status),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
           // Type Badge
@@ -150,6 +164,41 @@ Row(
                 fontWeight: FontWeight.w600,
                 color: Colors.white,
               ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Buy/Sell Badge with enhanced styling
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: entry.tradeType == 'Buy' ? const Color(0xFF4CAF50) : const Color(0xFFF44336),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: (entry.tradeType == 'Buy' ? Colors.green : Colors.red).withOpacity(0.3),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  entry.tradeType == 'Buy' ? Icons.arrow_circle_down : Icons.arrow_circle_up,
+                  size: 14,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  entry.tradeType ?? 'Buy',
+                  style: AppFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -428,27 +477,45 @@ Row(
     );
   }
 
-  // Helper method to get entry type color
+  // Helper method to get entry type color with vibrant colors
   Color _getEntryTypeColor(String? entryType) {
     switch (entryType?.toLowerCase()) {
       case 'hp':
-        return Colors.blue.shade600;
+        return const Color(0xFF2196F3); // Vibrant Blue
       case 'kp':
-        return Colors.green.shade600;
+        return const Color(0xFF4CAF50); // Vibrant Green
       case 'mp':
-        return Colors.orange.shade600;
+        return const Color(0xFFFF9800); // Vibrant Orange
       case 'nmp':
-        return Colors.purple.shade600;
+        return const Color(0xFF9C27B0); // Vibrant Purple
       case 'nnmp':
-        return Colors.red.shade600;
+        return const Color(0xFFE91E63); // Vibrant Pink
       case 'bop':
-        return Colors.teal.shade600;
+        return const Color(0xFF009688); // Vibrant Teal
       case 'sop':
-        return Colors.indigo.shade600;
+        return const Color(0xFF3F51B5); // Vibrant Indigo
       case 'aemp':
-        return Colors.amber.shade600;
+        return const Color(0xFFFFC107); // Vibrant Amber
       default:
         return Colors.grey.shade600;
+    }
+  }
+
+  // Helper method to get estate name color based on trade type
+  Color _getEstateNameColor(String? tradeType, String? status) {
+    // If completed, use grey regardless of trade type
+    if (status?.toLowerCase() == 'completed') {
+      return Colors.grey.shade600;
+    }
+    
+    // Return color based on trade type
+    switch (tradeType?.toLowerCase()) {
+      case 'buy':
+        return const Color(0xFF2E7D32); // Deep Green
+      case 'sell':
+        return const Color(0xFFC62828); // Deep Red
+      default:
+        return Colors.black87; // Fallback
     }
   }
 

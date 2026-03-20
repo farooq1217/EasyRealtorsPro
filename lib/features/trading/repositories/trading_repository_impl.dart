@@ -375,14 +375,17 @@ class TradingRepositoryImpl implements TradingRepository {
       final map = entry.toMap();
       final now = DateTime.now().toIso8601String();
 
+      // Exactly 17 columns and 17 placeholders
       const sql = '''INSERT INTO trading_entries (
-        id, entry_type, date, person_name, mobile_no, estate_name, 
+        id, entry_type, trade_type, category, date, person_name, mobile_no, estate_name, 
         quantity, unit_price, image_path, company_id, is_active, is_synced, created_at, updated_at, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''';
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''';
 
       await db.customStatement(sql, [
         map['id'],
         map['entry_type'],
+        map['trade_type'] ?? '',
+        map['category'] ?? '',
         map['date'],
         map['person_name'],
         map['mobile_no'],
@@ -395,7 +398,7 @@ class TradingRepositoryImpl implements TradingRepository {
         map['is_synced'],
         map['created_at'],
         now, // updated_at
-        map['status'] ?? 'active', // status
+        map['status'] ?? 'pending', // status
       ]);
       
       // Mark as unsynced for Firestore sync
@@ -403,7 +406,8 @@ class TradingRepositoryImpl implements TradingRepository {
         await markEntryAsUnsynced(map['id']);
       }
     } catch (e) {
-      debugPrint('Error adding trading entry: $e');
+      debugPrint('Error adding trading entry in repository: $e');
+      rethrow; // CRITICAL: Rethrow so that ViewModel does not optimistically update UI on failure
     }
   }
 
@@ -413,10 +417,10 @@ class TradingRepositoryImpl implements TradingRepository {
     final now = DateTime.now().toIso8601String();
 
     await db.customStatement('''UPDATE trading_entries SET
-        entry_type = ?, date = ?, person_name = ?, mobile_no = ?, estate_name = ?, 
+        entry_type = ?, trade_type = ?, category = ?, date = ?, person_name = ?, mobile_no = ?, estate_name = ?, 
         quantity = ?, unit_price = ?, image_path = ?, updated_at = ?, status = ?
       WHERE id = ?''', [
-      map['entry_type'], map['date'], map['person_name'], map['mobile_no'], map['estate_name'],
+      map['entry_type'], map['trade_type'], map['category'], map['date'], map['person_name'], map['mobile_no'], map['estate_name'],
       map['quantity'], map['unit_price'], map['image_path'], now, map['status'] ?? 'active', map['id']
     ]);
   }
@@ -477,6 +481,8 @@ class TradingRepositoryImpl implements TradingRepository {
     return TradingEntry(
       id: data['id']?.toString() ?? '',
       entryType: data['entry_type']?.toString() ?? '',
+      tradeType: data['trade_type']?.toString() ?? 'Buy',
+      category: data['category']?.toString() ?? 'File',
       date: DateTime.tryParse(data['date']?.toString() ?? '') ?? DateTime.now(),
       personName: data['person_name']?.toString() ?? '',
       mobileNo: data['mobile_no']?.toString() ?? '',

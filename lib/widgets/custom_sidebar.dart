@@ -282,6 +282,14 @@ class ModernSidebar extends StatelessWidget {
                       onTap: _canSee('expenditure') ? () => onDestinationSelected(10) : null,
                       visible: _canSee('expenditure'),
                     ),
+                    SidebarMenuItem(
+                      icon: Icons.bar_chart_outlined,
+                      selectedIcon: Icons.bar_chart,
+                      label: 'Reports',
+                      isSelected: selectedIndex == 8,
+                      onTap: _canSee('reports') ? () => onDestinationSelected(8) : null,
+                      visible: _canSee('reports'),
+                    ),
                     // Trading - Direct Navigation
                     if (onTradingTap != null)
                       SidebarMenuItem(

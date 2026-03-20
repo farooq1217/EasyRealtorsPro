@@ -437,7 +437,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 31;
+  int get schemaVersion => 33;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -912,14 +912,18 @@ class AppDatabase extends _$AppDatabase {
             }
           }
           if (from < 31) {
-            // Schema version 31: Add extended fields to working_progress table
-            print('[MIGRATION] Version 31: Adding extended fields to working_progress table');
+            // Schema version 31: Add extended fields to working_progress and trading_entries tables
+            print('[MIGRATION] Version 31: Adding extended fields to working_progress and trading_entries tables');
             try {
               final columnsToAdd = [
+                // Working progress columns
                 'ALTER TABLE working_progress ADD COLUMN plot_no TEXT',
                 'ALTER TABLE working_progress ADD COLUMN registry_number TEXT',
                 'ALTER TABLE working_progress ADD COLUMN size TEXT',
                 'ALTER TABLE working_progress ADD COLUMN client_mobile TEXT',
+                // Trading entries columns
+                'ALTER TABLE trading_entries ADD COLUMN trade_type TEXT NOT NULL DEFAULT \'Buy\'',
+                'ALTER TABLE trading_entries ADD COLUMN category TEXT NOT NULL DEFAULT \'File\'',
               ];
               
               for (final stmt in columnsToAdd) {
@@ -930,8 +934,89 @@ class AppDatabase extends _$AppDatabase {
                   print('[MIGRATION] Column already exists or failed: $stmt - $e');
                 }
               }
+              
+              // Backfill existing trading entries with default values
+              try {
+                await m.database.customStatement('''
+                  UPDATE trading_entries SET 
+                    trade_type = COALESCE(trade_type, 'Buy'),
+                    category = COALESCE(category, 'File')
+                  WHERE trade_type IS NULL OR category IS NULL
+                ''');
+                print('[MIGRATION] Backfilled trading_entries table with default trade_type and category');
+              } catch (e) {
+                print('[MIGRATION] Error backfilling trading_entries: $e');
+              }
             } catch (e) {
-              print('[MIGRATION] Failed to add extended fields to working_progress table: $e');
+              print('[MIGRATION] Failed to add extended fields: $e');
+            }
+          }
+          if (from < 32) {
+            // Schema version 32: Ensure trading entries has trade_type and category columns (safety migration)
+            print('[MIGRATION] Version 32: Ensuring trading_entries has trade_type and category columns');
+            try {
+              final columnsToAdd = [
+                'ALTER TABLE trading_entries ADD COLUMN trade_type TEXT NOT NULL DEFAULT \'Buy\'',
+                'ALTER TABLE trading_entries ADD COLUMN category TEXT NOT NULL DEFAULT \'File\'',
+              ];
+              
+              for (final stmt in columnsToAdd) {
+                try {
+                  await m.database.customStatement(stmt);
+                  print('[MIGRATION] Version 32 - Added column: ${stmt.split(' ').last}');
+                } catch (e) {
+                  print('[MIGRATION] Version 32 - Column already exists: ${stmt.split(' ').last}');
+                }
+              }
+              
+              // Backfill existing trading entries with default values
+              try {
+                await m.database.customStatement('''
+                  UPDATE trading_entries SET 
+                    trade_type = COALESCE(trade_type, 'Buy'),
+                    category = COALESCE(category, 'File')
+                  WHERE trade_type IS NULL OR category IS NULL
+                ''');
+                print('[MIGRATION] Version 32 - Backfilled trading_entries table with default values');
+              } catch (e) {
+                print('[MIGRATION] Version 32 - Error backfilling trading_entries: $e');
+              }
+            } catch (e) {
+              print('[MIGRATION] Version 32 - Failed to ensure trading entries columns: $e');
+            }
+          }
+          if (from < 33) {
+            // Schema version 33: Final safety check for trading entries columns
+            print('[MIGRATION] Version 33: Final safety check for trading_entries columns');
+            try {
+              final columnsToAdd = [
+                'ALTER TABLE trading_entries ADD COLUMN trade_type TEXT NOT NULL DEFAULT \'Buy\'',
+                'ALTER TABLE trading_entries ADD COLUMN category TEXT NOT NULL DEFAULT \'File\'',
+              ];
+              
+              for (final stmt in columnsToAdd) {
+                try {
+                  await m.database.customStatement(stmt);
+                  print('[MIGRATION] Version 33 - Added column: ${stmt.split(' ').last}');
+                } catch (e) {
+                  print('[MIGRATION] Version 33 - Column already exists: ${stmt.split(' ').last}');
+                }
+              }
+              
+              // Final backfill
+              try {
+                await m.database.customStatement('''
+                  UPDATE trading_entries SET 
+                    trade_type = COALESCE(trade_type, 'Buy'),
+                    category = COALESCE(category, 'File')
+                  WHERE trade_type IS NULL OR category IS NULL
+                ''');
+                print('[MIGRATION] Version 33 - Final backfill completed');
+              } catch (e) {
+                print('[MIGRATION] Version 33 - Error in final backfill: $e');
+              }
+            } catch (e) {
+              print('[MIGRATION] Version 33 - Failed final safety check: $e');
             }
           }
         },
@@ -956,6 +1041,8 @@ Future<void> _ensureBusinessTables(dynamic db) async {
     CREATE TABLE IF NOT EXISTS trading_entries (
       id TEXT PRIMARY KEY,
       entry_type TEXT NOT NULL, -- HP, KP, MP, NMP, NNMP, BOP, SOP, AEMP
+      trade_type TEXT NOT NULL DEFAULT 'Buy', -- 'Buy' or 'Sell'
+      category TEXT NOT NULL DEFAULT 'File', -- 'File' or 'Form'
       date TEXT NOT NULL,
       person_name TEXT NOT NULL,
       mobile_no TEXT NOT NULL,

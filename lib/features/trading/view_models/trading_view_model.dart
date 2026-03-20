@@ -194,6 +194,8 @@ class TradingViewModel extends ChangeNotifier {
           final entryWithContext = TradingEntry(
             id: entry.id,
             entryType: entry.entryType,
+            tradeType: entry.tradeType,
+            category: entry.category,
             date: entry.date,
             personName: entry.personName,
             mobileNo: entry.mobileNo,
@@ -308,6 +310,8 @@ class TradingViewModel extends ChangeNotifier {
         _entries[index] = TradingEntry(
           id: e.id,
           entryType: e.entryType,
+          tradeType: e.tradeType,
+          category: e.category,
           date: e.date,
           personName: e.personName,
           mobileNo: e.mobileNo,
@@ -546,6 +550,36 @@ class TradingViewModel extends ChangeNotifier {
     _entries.clear();
     _instance = null; // Clear the singleton reference
     super.dispose();
+  }
+
+  // Stock calculation helper method
+  double getAvailableStock(String estateName, String entryType, String category) {
+    // Filter entries by matching criteria (case-insensitive)
+    final matchingEntries = _entries.where((entry) {
+      // Only consider active and non-cancelled entries
+      if (!entry.isActive || entry.status.toLowerCase() == 'cancelled') return false;
+      
+      // Case-insensitive comparison for matching
+      final estateMatch = entry.estateName.toLowerCase() == estateName.toLowerCase();
+      final entryTypeMatch = entry.entryType.toLowerCase() == entryType.toLowerCase();
+      final categoryMatch = entry.category.toLowerCase() == category.toLowerCase();
+      
+      return estateMatch && entryTypeMatch && categoryMatch;
+    }).toList();
+
+    // Calculate available stock: Buy quantities - Sell quantities
+    double totalBought = 0.0;
+    double totalSold = 0.0;
+
+    for (final entry in matchingEntries) {
+      if (entry.tradeType.toLowerCase() == 'buy') {
+        totalBought += entry.quantity;
+      } else if (entry.tradeType.toLowerCase() == 'sell') {
+        totalSold += entry.quantity;
+      }
+    }
+
+    return totalBought - totalSold;
   }
 
   @override

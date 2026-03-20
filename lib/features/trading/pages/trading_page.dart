@@ -21,8 +21,9 @@ class TradingPage extends StatefulWidget {
   State<TradingPage> createState() => _TradingPageState();
 }
 
-class _TradingPageState extends State<TradingPage> {
+class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin {
   late TradingViewModel viewModel;
+  late TabController _tabController;
   String _searchQuery = '';
   String _dateRangeFilter = 'All';
   String _entryTypeFilter = 'All';
@@ -31,6 +32,7 @@ class _TradingPageState extends State<TradingPage> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     viewModel = Provider.of<TradingViewModel>(context, listen: false);
     
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -47,47 +49,64 @@ class _TradingPageState extends State<TradingPage> {
   }
 
   @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold( // Direct Scaffold use karein
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        title: Text(
-          'Trading', 
-          style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)
-        ),
-        centerTitle: true,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold( // Direct Scaffold use karein
+        backgroundColor: const Color(0xFFF8F9FA),
+        appBar: AppBar(
+          title: Text(
+            'Trading', 
+            style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)
+          ),
+          centerTitle: true,
+          flexibleSpace: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
+              ),
             ),
           ),
-        ),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: () => viewModel.refresh(),
+          elevation: 0,
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: Colors.white,
+            labelStyle: AppFonts.poppins(fontWeight: FontWeight.bold),
+            tabs: const [
+              Tab(text: 'File'),
+              Tab(text: 'Form'),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: TopRightSearch(
-              onChanged: (value) {
-                _searchQuery = value;
-                viewModel.searchEntries(value);
-              },
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: () => viewModel.refresh(),
             ),
-          ),
-        ],
-      ),
-      body: Consumer<TradingViewModel>(
-        builder: (context, viewModel, child) {
-          return Column(
-            children: [
-              const SizedBox(height: 12),
-              // Filter Section
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: TopRightSearch(
+                onChanged: (value) {
+                  _searchQuery = value;
+                  viewModel.searchEntries(value);
+                },
+              ),
+            ),
+          ],
+        ),
+        body: Consumer<TradingViewModel>(
+          builder: (context, viewModel, child) {
+            return Column(
+              children: [
+                const SizedBox(height: 12),
+                // Filter Section
 Container(
   padding: const EdgeInsets.all(16),
   color: Colors.white,
@@ -160,21 +179,42 @@ Container(
     ],
   ),
 ),
-              // List Section
-              Expanded(
-                child: _buildEntriesList(viewModel),
-              ),
-            ],
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showTradingFormDialog(),
-        backgroundColor: const Color(0xFFFF6B35),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: Text('Buy', style: AppFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
+                // TabBarView for File and Form tabs
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      // File Tab - Show only File entries
+                      _buildEntriesList(viewModel, 'File'),
+                      // Form Tab - Show only Form entries  
+                      _buildEntriesList(viewModel, 'Form'),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => _showTradingFormDialog(),
+          backgroundColor: const Color(0xFFFF6B35),
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: Text(
+            'Add',
+            style: AppFonts.poppins(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
       ),
     );
+  }
+
+
+  // Get current active tab name
+  String _getCurrentTab() {
+    return _tabController.index == 0 ? 'File' : 'Form';
   }
 
   // Helper method for clean dropdowns
@@ -200,12 +240,19 @@ Container(
     );
   }
 
-  Widget _buildEntriesList(TradingViewModel viewModel) {
+  Widget _buildEntriesList(TradingViewModel viewModel, String category) {
     if (viewModel.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
+    
+    // Filter entries by category using the new category field from TradingEntry
+    final filteredEntries = viewModel.entries.where((entry) {
+      // Use the category field from TradingEntry model
+      return entry.category == category;
+    }).toList();
+    
     return TradingList(
-      entries: viewModel.entries,
+      entries: filteredEntries,
       onDelete: (entryId) => viewModel.deleteEntry(entryId),
       isLoading: false,
       onStatusUpdate: (entryId, newStatus) => viewModel.updateEntryStatus(entryId, newStatus, context: context),
@@ -271,6 +318,7 @@ Container(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(20),
                     child: GenericTradingForm(
+                      viewModel: viewModel,
                       onSave: (entry) async {
                         try {
                           // Await the save operation without passing context

@@ -1,13 +1,13 @@
-// features/reports/report_view_model.dart
+// presentation/view_models/report_view_model.dart
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'repositories/report_repository.dart';
-import 'repositories/report_repository_impl.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/services/permission_helper.dart' show PermissionHelper;
-import '../../../core/services/app_storage.dart' show AppStorage;
+import '../../domain/repositories/report_repository.dart';
+import '../../data/repositories/report_repository_impl.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/permission_helper.dart' show PermissionHelper;
+import '../../core/services/app_storage.dart' show AppStorage;
 import 'package:shared/shared.dart' show WorkingProgressData, Expenditure, RoleUtils;
 
 class ReportViewModel extends ChangeNotifier {

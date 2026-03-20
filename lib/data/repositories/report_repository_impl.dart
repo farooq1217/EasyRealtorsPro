@@ -1,7 +1,7 @@
-// features/reports/repositories/report_repository_impl.dart
+// data/repositories/report_repository_impl.dart
 import 'dart:typed_data';
 import 'dart:convert';
-import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
+import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -10,9 +10,9 @@ import 'package:printing/printing.dart';
 import 'package:csv/csv.dart';
 import 'package:shared/shared.dart' show AppDatabase, WorkingProgressData, Expenditure;
 import 'package:drift/drift.dart' as d;
-import 'report_repository.dart';
-import '../../../../core/services/app_storage.dart' show AppStorage;
-import '../../../../core/services/auth_service.dart';
+import '../../domain/repositories/report_repository.dart';
+import '../../core/services/app_storage.dart' show AppStorage;
+import '../../core/services/auth_service.dart';
 
 class ReportRepositoryImpl implements ReportRepository {
   final AppDatabase db;

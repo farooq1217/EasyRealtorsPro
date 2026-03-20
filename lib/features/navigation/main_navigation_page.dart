@@ -16,9 +16,12 @@ import '../settings/pages/settings_page.dart' show SettingsPageClean;
 import '../trading/pages/trading_page.dart';
 import '../trading/view_models/trading_view_model.dart';
 import '../trading/repositories/trading_repository_impl.dart';
+import '../expenditure/view_models/expenditure_view_model.dart';
+import '../expenditure/repositories/expenditure_repository_impl.dart';
 import '../expenditure/pages/expenditure_page.dart';
 import '../users/pages/users_page.dart';
 import '../companies/pages/companies_page.dart';
+import '../reports/pages/reports_page.dart';
 import 'package:shared/shared.dart' show AppDatabase;
 
 /// Main navigation page with sidebar and content area
@@ -188,6 +191,10 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           create: (context) => TradingViewModel.getInstance(TradingRepositoryImpl(widget.db)),
           lazy: false, // Ensure ViewModel is created immediately and stays alive
         ),
+        ChangeNotifierProvider<ExpenditureViewModel>(
+          create: (context) => ExpenditureViewModel(widget.db),
+          lazy: false, // Ensure ViewModel is created immediately and stays alive
+        ),
         // Add other providers here as needed for different pages
       ],
       child: Scaffold(
@@ -333,59 +340,6 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
                     ),
                   ),
                 ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Reports page placeholder
-class ReportsPage extends StatelessWidget {
-  final AppDatabase db;
-  const ReportsPage({super.key, required this.db});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Reports',
-          style: AppFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: const Color(0xFF2D3748),
-        elevation: 0,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.assessment,
-              size: 64,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Reports Module',
-              style: AppFonts.poppins(
-                fontSize: 24,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Analytics and reports coming soon',
-              style: AppFonts.poppins(
-                fontSize: 16,
-                color: Colors.grey.shade500,
               ),
             ),
           ],

@@ -3,6 +3,8 @@
 class TradingEntry {
   final String id;
   final String entryType; // HP, KP, MP, NMP, NNMP, BOP, SOP, AEMP
+  final String tradeType; // 'Buy' or 'Sell'
+  final String category; // 'File' or 'Form'
   final DateTime date;
   final String personName;
   final String mobileNo;
@@ -20,6 +22,8 @@ class TradingEntry {
   const TradingEntry({
     required this.id,
     required this.entryType,
+    required this.tradeType,
+    required this.category,
     required this.date,
     required this.personName,
     required this.mobileNo,
@@ -43,6 +47,8 @@ class TradingEntry {
     return {
       'id': id,
       'entry_type': entryType,
+      'trade_type': tradeType,
+      'category': category,
       'date': date.toIso8601String(),
       'person_name': personName,
       'mobile_no': mobileNo,
@@ -64,6 +70,8 @@ class TradingEntry {
     return TradingEntry(
       id: map['id']?.toString() ?? '',
       entryType: map['entry_type']?.toString() ?? '',
+      tradeType: map['trade_type']?.toString() ?? 'Buy', // Default to Buy
+      category: map['category']?.toString() ?? 'File', // Default to File
       date: DateTime.tryParse(map['date']?.toString() ?? '') ?? DateTime.now(),
       personName: map['person_name']?.toString() ?? '',
       mobileNo: map['mobile_no']?.toString() ?? '',

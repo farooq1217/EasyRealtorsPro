@@ -1,17 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/font_utils.dart';
 import 'package:shared/shared.dart' show TradingEntry;
+import '../view_models/trading_view_model.dart';
 
 class GenericTradingForm extends StatefulWidget {
   final Function(TradingEntry) onSave;
   final VoidCallback? onFormReset;
+  final String? initialTradeType; // Buy/Sell
+  final String? initialCategory; // File/Form
+  final TradingViewModel viewModel;
 
   const GenericTradingForm({
     super.key, 
     required this.onSave,
     this.onFormReset,
+    this.initialTradeType,
+    this.initialCategory,
+    required this.viewModel,
   });
 
   @override
@@ -30,6 +38,8 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
   
   // Form state variables
   String? _selectedEntryType; // No default entry type - user must choose
+  String _selectedTradeType = 'Buy'; // Default to Buy
+  String _selectedCategory = 'File'; // Default to File
   DateTime _selectedDate = DateTime.now();
   String? _imagePath;
   bool _isDateFieldLocked = false; // Track if date field should be read-only
@@ -51,6 +61,14 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
     super.initState();
     // Auto-fill date with current date
     _selectedDate = DateTime.now();
+    
+    // Set initial values if provided
+    if (widget.initialTradeType != null) {
+      _selectedTradeType = widget.initialTradeType!;
+    }
+    if (widget.initialCategory != null) {
+      _selectedCategory = widget.initialCategory!;
+    }
   }
 
   // Smart auto-date calculation based on payment option
@@ -173,12 +191,30 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
     );
   }
 
+  // Helper method to get available stock for current selection
+  double _getAvailableStock() {
+    if (_selectedTradeType.toLowerCase() != 'sell' || 
+        _selectedEntryType == null || 
+        _selectedEntryType!.isEmpty ||
+        _estateController.text.isEmpty) {
+      return 0.0;
+    }
+    
+    return widget.viewModel.getAvailableStock(
+      _estateController.text,
+      _selectedEntryType!,
+      _selectedCategory,
+    );
+  }
+
   // Method to create TradingEntry from current form data
   TradingEntry createEntry() {
     if (!_formKey.currentState!.validate()) {
       return TradingEntry(
         id: '',
         entryType: '',
+        tradeType: _selectedTradeType,
+        category: _selectedCategory,
         date: DateTime.now(),
         personName: '',
         mobileNo: '',
@@ -203,6 +239,8 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
     return TradingEntry(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       entryType: _selectedEntryType ?? '',
+      tradeType: _selectedTradeType,
+      category: _selectedCategory,
       date: _selectedDate,
       personName: _nameController.text,
       mobileNo: _mobileController.text,
@@ -227,6 +265,8 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
     _unitPriceController.clear();
     setState(() {
       _selectedEntryType = null; // Reset to null instead of HP
+      _selectedTradeType = widget.initialTradeType ?? 'Buy'; // Reset to initial or default
+      _selectedCategory = widget.initialCategory ?? 'File'; // Reset to initial or default
       _selectedDate = DateTime.now();
       _imagePath = null;
       _isDateFieldLocked = false; // Reset date field lock state
@@ -274,32 +314,145 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark 
-          ? const Color(0xFF1B1F24)
-          : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Form(
-        key: _formKey,
+    return Form(
+      key: _formKey,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
-            Text(
-              'Trading Entry',
-              style: AppFonts.poppins(
-                fontSize: 20, 
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).brightness == Brightness.dark 
-                  ? Colors.white 
-                  : Colors.black,
+            // Header: Buy/Sell Toggle
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedTradeType = 'Buy'),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _selectedTradeType == 'Buy' ? Colors.green : Colors.transparent,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(12),
+                            bottomLeft: Radius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'BUY',
+                          textAlign: TextAlign.center,
+                          style: AppFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            color: _selectedTradeType == 'Buy' ? Colors.white : Colors.green,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedTradeType = 'Sell'),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _selectedTradeType == 'Sell' ? Colors.red : Colors.transparent,
+                          borderRadius: const BorderRadius.only(
+                            topRight: Radius.circular(12),
+                            bottomRight: Radius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'SELL',
+                          textAlign: TextAlign.center,
+                          style: AppFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            color: _selectedTradeType == 'Sell' ? Colors.white : Colors.red,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+            
+            const SizedBox(height: 16),
+            
+            // Category Selector
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Category',
+                  style: AppFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _selectedCategory = 'File'),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: _selectedCategory == 'File' ? Theme.of(context).primaryColor : Colors.transparent,
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(12),
+                                bottomLeft: Radius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              'FILE',
+                              textAlign: TextAlign.center,
+                              style: AppFonts.poppins(
+                                fontWeight: FontWeight.w600,
+                                color: _selectedCategory == 'File' ? Colors.white : Theme.of(context).primaryColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _selectedCategory = 'Form'),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: _selectedCategory == 'Form' ? Theme.of(context).primaryColor : Colors.transparent,
+                              borderRadius: const BorderRadius.only(
+                                topRight: Radius.circular(12),
+                                bottomRight: Radius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              'FORM',
+                              textAlign: TextAlign.center,
+                              style: AppFonts.poppins(
+                                fontWeight: FontWeight.w600,
+                                color: _selectedCategory == 'Form' ? Colors.white : Theme.of(context).primaryColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            
             const SizedBox(height: 20),
             
             // Row 1: Dropdown (Type) | Date Picker | Mobile No.
@@ -436,23 +589,60 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                     controller: _estateController,
                     decoration: _fieldDecoration('Estate Name', isRequired: true),
                     validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
+                    onChanged: (value) {
+                      // Trigger state update to refresh helper text when estate name changes
+                      if (_selectedTradeType.toLowerCase() == 'sell') {
+                        setState(() {});
+                      }
+                    },
                   ),
                 ),
                 const SizedBox(width: 12),
                 
                 // Quantity
                 Expanded(
-                  child: TextFormField(
-                    controller: _quantityController,
-                    decoration: _fieldDecoration('Quantity', isRequired: true),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    validator: (value) {
-                      if (value?.isEmpty ?? true) return 'Required';
-                      final quantity = double.tryParse(value ?? '');
-                      if (quantity == null || quantity! <= 0) return 'Please enter a valid quantity';
-                      return null;
-                    },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: _quantityController,
+                        decoration: _fieldDecoration('Quantity', isRequired: true).copyWith(
+                          errorMaxLines: 2, // Fix error truncation
+                          helperText: _selectedTradeType.toLowerCase() == 'sell' && 
+                                     _selectedEntryType != null && 
+                                     _selectedEntryType!.isNotEmpty &&
+                                     _estateController.text.isNotEmpty
+                            ? 'In-stock: ${_getAvailableStock().toStringAsFixed(2)}'
+                            : null,
+                          helperStyle: AppFonts.poppins(
+                            color: Colors.green.shade700,
+                            fontSize: 12,
+                          ),
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        validator: (value) {
+                          if (value?.isEmpty ?? true) return 'Required';
+                          final quantity = double.tryParse(value ?? '');
+                          if (quantity == null || quantity! <= 0) return 'Please enter a valid quantity';
+                          
+                          // Stock validation for Sell entries
+                          if (_selectedTradeType.toLowerCase() == 'sell' && 
+                              _selectedEntryType != null && 
+                              _selectedEntryType!.isNotEmpty &&
+                              _estateController.text.isNotEmpty) {
+                            
+                            final availableStock = _getAvailableStock();
+                            
+                            if (quantity > availableStock) {
+                              return 'Insufficient stock! Available: ${availableStock.toStringAsFixed(2)}';
+                            }
+                          }
+                          
+                          return null;
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -547,6 +737,42 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                 ElevatedButton(
                   onPressed: () {
                     if (_formKey.currentState!.validate()) {
+                      // Additional stock validation for Sell entries (double-check)
+                      if (_selectedTradeType.toLowerCase() == 'sell' && 
+                          _selectedEntryType != null && 
+                          _selectedEntryType!.isNotEmpty &&
+                          _estateController.text.isNotEmpty) {
+                        
+                        final quantity = double.tryParse(_quantityController.text) ?? 0.0;
+                        final availableStock = widget.viewModel.getAvailableStock(
+                          _estateController.text,
+                          _selectedEntryType!,
+                          _selectedCategory,
+                        );
+                        
+                        if (quantity > availableStock) {
+                          // Show red SnackBar for insufficient stock
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Insufficient stock! Available quantity: ${availableStock.toStringAsFixed(2)}',
+                                style: AppFonts.poppins(color: Colors.white),
+                              ),
+                              backgroundColor: Colors.red,
+                              duration: const Duration(seconds: 3),
+                              action: SnackBarAction(
+                                label: 'OK',
+                                textColor: Colors.white,
+                                onPressed: () {
+                                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                },
+                              ),
+                            ),
+                          );
+                          return; // Don't proceed with save
+                        }
+                      }
+                      
                       final entry = createEntry();
                       widget.onSave(entry);
                     }
