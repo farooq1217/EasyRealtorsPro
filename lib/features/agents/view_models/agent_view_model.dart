@@ -27,6 +27,10 @@ class AgentViewModel extends ChangeNotifier {
   bool _loadingNotes = false;
   String _searchQuery = '';
   String _selectedType = 'Transfer'; // 'Transfer' or 'Client Requirements'
+  
+  // Pagination state
+  int _currentPage = 1;
+  int _itemsPerPage = 10;
   Map<String, dynamic>? _currentUser;
   String? _error;
 
@@ -94,12 +98,70 @@ class AgentViewModel extends ChangeNotifier {
   String get selectedType => _selectedType;
   Map<String, dynamic>? get currentUser => _currentUser;
   String? get error => _error;
+  
+  // Pagination getters
+  int get currentPage => _currentPage;
+  int get itemsPerPage => _itemsPerPage;
+  int get totalPages => (_getCurrentData().length / _itemsPerPage).ceil();
+  List<WorkingProgressData> get paginatedData {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    return _getCurrentData().skip(startIndex).take(_itemsPerPage).toList();
+  }
+
+  // Helper method to get current data based on selected type
+  List<WorkingProgressData> _getCurrentData() {
+    return _selectedType == 'Transfer' ? _transfers : _clientRequirements;
+  }
 
   // Form getters
   String? get transferCategory => _transferCategory;
   String? get transferSize => _transferSize;
   String? get requirementCategory => _requirementCategory;
   String? get requirementSource => _requirementSource;
+  
+  // Search functionality
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    _currentPage = 1; // Reset to page 1 when search changes
+    notifyListeners();
+  }
+
+  // Filter methods
+  void setTransferCategory(String? category) {
+    _transferCategory = category;
+    _currentPage = 1; // Reset to page 1 when filter changes
+    notifyListeners();
+  }
+
+  void setTransferSize(String? size) {
+    _transferSize = size;
+    _currentPage = 1; // Reset to page 1 when filter changes
+    notifyListeners();
+  }
+
+  void setRequirementCategory(String? category) {
+    _requirementCategory = category;
+    _currentPage = 1; // Reset to page 1 when filter changes
+    notifyListeners();
+  }
+
+  void setRequirementSource(String? source) {
+    _requirementSource = source;
+    _currentPage = 1; // Reset to page 1 when filter changes
+    notifyListeners();
+  }
+
+  void setRequirementLocation(String? location) {
+    _reqLocation = location;
+    _currentPage = 1; // Reset to page 1 when filter changes
+    notifyListeners();
+  }
+
+  void setRequirementSize(String? size) {
+    _reqSize = size;
+    _currentPage = 1; // Reset to page 1 when filter changes
+    notifyListeners();
+  }
   
   // New getters for client requirement form
   String? get reqCategory => _reqCategory;
@@ -267,18 +329,6 @@ class AgentViewModel extends ChangeNotifier {
     }
   }
 
-  // Search functionality
-  void setSearchQuery(String query) {
-    _searchQuery = query;
-    notifyListeners();
-    
-    // Reload data with new search query
-    if (_selectedType == 'Transfer') {
-      loadTransfers();
-    } else {
-      loadClientRequirements();
-    }
-  }
 
   void clearSearch() {
     setSearchQuery('');
@@ -329,27 +379,6 @@ class AgentViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Form setters
-  void setTransferCategory(String? category) {
-    _transferCategory = category;
-    notifyListeners();
-  }
-
-  void setTransferSize(String? size) {
-    _transferSize = size;
-    notifyListeners();
-  }
-
-  void setRequirementCategory(String? category) {
-    _requirementCategory = category;
-    notifyListeners();
-  }
-
-  void setRequirementSource(String? source) {
-    _requirementSource = source;
-    debugPrint('AgentViewModel: setRequirementSource called with: $source');
-    notifyListeners();
-  }
 
   void setSelectedDate(DateTime? date) {
     _selectedDate = date;
@@ -775,6 +804,22 @@ class AgentViewModel extends ChangeNotifier {
     _reqNextWorkingDate = null;
     _clientRequirementImages = [];
     _error = null;
+  }
+
+  // Pagination methods
+  void setPage(int page) {
+    if (page >= 1 && page <= totalPages) {
+      _currentPage = page;
+      notifyListeners();
+    }
+  }
+  
+  void setItemsPerPage(int limit) {
+    if (_itemsPerPage != limit) {
+      _itemsPerPage = limit;
+      _currentPage = 1; // Reset to page 1 when items per page changes
+      notifyListeners();
+    }
   }
 
   // Get filtered entries based on selected type and search

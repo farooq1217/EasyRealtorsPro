@@ -32,10 +32,15 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
   final TextEditingController _emailController = TextEditingController();
   final GlobalKey<FormState> _profileFormKey = GlobalKey<FormState>();
   bool _mounted = true;
+  
+  // CRITICAL FIX: Add timeout mechanism to prevent infinite loading
+  DateTime? _loadingStartTime;
+  static const Duration _maxLoadingTime = Duration(seconds: 10);
 
   @override
   void initState() {
     super.initState();
+    _loadingStartTime = DateTime.now();
     _initializeViewModel();
   }
 
@@ -74,13 +79,33 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
     
     if (_mounted) {
       setState(() {});
-      await _viewModel!.initialize();
-      _viewModel!.syncProfileForm(
-        fullNameController: _fullNameController,
-        phoneController: _phoneController,
-        companyController: _companyController,
-        emailController: _emailController,
-      );
+      
+      // CRITICAL FIX: Initialize with proper error handling and ensure loading state is resolved
+      try {
+        await _viewModel!.initialize();
+      } catch (e) {
+        debugPrint('SettingsViewModel initialization error: $e');
+        // Force loading state to false even if initialization fails
+        if (_mounted && _viewModel != null) {
+          _viewModel!.forceLoadingComplete();
+        }
+      }
+      
+      // SAFETY CHECK: Ensure loading is definitely false after initialization
+      if (_mounted && _viewModel != null && _viewModel!.loading) {
+        debugPrint('SettingsPage: Loading still true after initialization, forcing completion');
+        _viewModel!.forceLoadingComplete();
+      }
+      
+      // Sync form after initialization is complete
+      if (_mounted && _viewModel != null) {
+        _viewModel!.syncProfileForm(
+          fullNameController: _fullNameController,
+          phoneController: _phoneController,
+          companyController: _companyController,
+          emailController: _emailController,
+        );
+      }
     }
   }
 
@@ -312,6 +337,16 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
 
   @override
   Widget build(BuildContext context) {
+    // CRITICAL FIX: Check for infinite loading and force resolution
+    if (_loadingStartTime != null && 
+        DateTime.now().difference(_loadingStartTime!) > _maxLoadingTime &&
+        _viewModel != null && 
+        _viewModel!.loading) {
+      debugPrint('SettingsPage: Loading timeout reached, forcing completion');
+      _viewModel!.forceLoadingComplete();
+      _loadingStartTime = null; // Prevent repeated checks
+    }
+    
     if (_viewModel == null || _viewModel!.loading) {
       return Scaffold(
         appBar: AppBar(
@@ -349,13 +384,17 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
               // Export button
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
+                // CRITICAL FIX: Add unique key to prevent GlobalKey duplication
                 child: ElevatedButton.icon(
+                  key: ValueKey('export_data_${DateTime.now().millisecondsSinceEpoch}'),
                   onPressed: _exportData,
                   icon: const Icon(Icons.download),
                   label: const Text('Export Data'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF6B35),
                     foregroundColor: Colors.white,
+                    // CRITICAL FIX: Fix TextStyle interpolation
+                    textStyle: Theme.of(context).textTheme.labelMedium,
                   ),
                 ),
               ),
@@ -475,10 +514,16 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
+                          key: ValueKey('save_profile_${viewModel.currentUser?["id"] ?? "unknown"}'),
                           onPressed: viewModel.savingProfile ? null : _saveProfile,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFF6B35),
                             padding: const EdgeInsets.symmetric(vertical: 12),
+                            // CRITICAL FIX: Fix TextStyle interpolation by using consistent theme
+                            textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           child: viewModel.savingProfile
                               ? const SizedBox(
@@ -489,10 +534,7 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
                                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                   ),
                                 )
-                              : const Text(
-                                  'Save Profile',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                ),
+                              : const Text('Save Profile'),
                         ),
                       ),
                     ],
@@ -535,13 +577,17 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
                       ),
                     ),
                     const SizedBox(width: 12),
+                    // CRITICAL FIX: Add unique key to prevent GlobalKey duplication
                     ElevatedButton.icon(
+                      key: ValueKey('add_society_${DateTime.now().millisecondsSinceEpoch}'),
                       onPressed: _addSociety,
                       icon: const Icon(Icons.add),
                       label: const Text('Add'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFFF6B35),
                         foregroundColor: Colors.white,
+                        // CRITICAL FIX: Fix TextStyle interpolation
+                        textStyle: Theme.of(context).textTheme.labelMedium,
                       ),
                     ),
                   ],
@@ -572,13 +618,18 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
                     itemCount: viewModel.societies.length,
                     itemBuilder: (context, index) {
                       final society = viewModel.societies[index];
+                      // CRITICAL FIX: Add unique key to each ListTile to prevent GlobalKey duplication
                       return ListTile(
+                        key: ValueKey('society_${society['id']}_$index'),
                         title: Text(society['name'] ?? ''),
                         subtitle: Text('ID: ${society['id'] ?? ''}'),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
+                          // CRITICAL FIX: Prevent horizontal overflow by constraining Row
                           children: [
+                            // CRITICAL FIX: Add unique key to IconButton
                             IconButton(
+                              key: ValueKey('delete_society_${society['id']}_$index'),
                               icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () => _deleteSociety(society['id'] ?? ''),
                               tooltip: 'Delete Society',
@@ -650,13 +701,17 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
                         ),
                       ),
                       const SizedBox(width: 12),
+                      // CRITICAL FIX: Add unique key to prevent GlobalKey duplication
                       ElevatedButton.icon(
+                        key: ValueKey('add_block_${viewModel.selectedSocietyId}_${DateTime.now().millisecondsSinceEpoch}'),
                         onPressed: _addBlock,
                         icon: const Icon(Icons.add),
                         label: const Text('Add'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFFF6B35),
                           foregroundColor: Colors.white,
+                          // CRITICAL FIX: Fix TextStyle interpolation
+                          textStyle: Theme.of(context).textTheme.labelMedium,
                         ),
                       ),
                     ],
@@ -712,10 +767,13 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
                       itemCount: viewModel.blocks.length,
                       itemBuilder: (context, index) {
                         final block = viewModel.blocks[index];
+                        // CRITICAL FIX: Add unique key to each ListTile to prevent GlobalKey duplication
                         return ListTile(
+                          key: ValueKey('block_${block['id']}_$index'),
                           title: Text(block['name'] ?? ''),
                           subtitle: Text('ID: ${block['id'] ?? ''}'),
                           trailing: IconButton(
+                            key: ValueKey('delete_block_${block['id']}_$index'),
                             icon: const Icon(Icons.delete, color: Colors.red),
                             onPressed: () => _deleteBlock(block['id'] ?? ''),
                             tooltip: 'Delete Block',

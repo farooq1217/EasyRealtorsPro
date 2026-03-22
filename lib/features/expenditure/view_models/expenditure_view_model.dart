@@ -36,6 +36,10 @@ class ExpenditureViewModel extends ChangeNotifier {
   // Search
   String _searchQuery = '';
   
+  // Pagination state
+  int _currentPage = 1;
+  int _itemsPerPage = 10;
+  
   // Form data
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
@@ -87,6 +91,15 @@ class ExpenditureViewModel extends ChangeNotifier {
     PermissionHelper.getModulePermissionLevel(_user, 'expenditure').contains('add') || 
     RoleUtils.isCompanyAdmin(_user);
 
+  // Pagination getters
+  int get currentPage => _currentPage;
+  int get itemsPerPage => _itemsPerPage;
+  int get totalPages => (currentExpenses.length / _itemsPerPage).ceil();
+  List<domain.ExpenditureItem> get paginatedExpenses {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    return currentExpenses.skip(startIndex).take(_itemsPerPage).toList();
+  }
+
   // Initialization
   Future<void> initialize() async {
     try {
@@ -95,10 +108,14 @@ class ExpenditureViewModel extends ChangeNotifier {
       
       await _loadUser();
       await _repository.ensureExpenditureTableColumns();
+      
+      // CRITICAL: Set loading to false before setting up streams
+      _loading = false;
+      notifyListeners();
+      
       await _setupStreams();
     } catch (e) {
       debugPrint('Error initializing ExpenditureViewModel: $e');
-    } finally {
       _loading = false;
       notifyListeners();
     }
@@ -212,6 +229,7 @@ class ExpenditureViewModel extends ChangeNotifier {
   // Search functionality
   void setSearchQuery(String query) {
     _searchQuery = query;
+    _currentPage = 1; // Reset to page 1 when search changes
     _applySearchFilter();
   }
 
@@ -502,6 +520,22 @@ class ExpenditureViewModel extends ChangeNotifier {
   void _showSuccessSnackBar(String message) {
     // This will be handled by the UI layer
     debugPrint('Success: $message');
+  }
+
+  // Pagination methods
+  void setPage(int page) {
+    if (page >= 1 && page <= totalPages) {
+      _currentPage = page;
+      notifyListeners();
+    }
+  }
+  
+  void setItemsPerPage(int limit) {
+    if (_itemsPerPage != limit) {
+      _itemsPerPage = limit;
+      _currentPage = 1; // Reset to page 1 when items per page changes
+      notifyListeners();
+    }
   }
 
   @override

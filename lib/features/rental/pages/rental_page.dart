@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/font_utils.dart';
+import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
 
 // Firebase imports
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -902,44 +903,47 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
         ),
         child: Column(
           children: [
-            // Data table
+            // Scrollable Content Area
             Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _rows.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.home_outlined,
-                              size: 64,
-                              color: Colors.grey.shade400,
+              child: SingleChildScrollView(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _rows.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.home_outlined,
+                                  size: 64,
+                                  color: Colors.grey.shade400,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No rental items found',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    color: Colors.grey.shade600,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Add your first rental item to get started',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No rental items found',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey.shade600,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Add your first rental item to get started',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _rows.length,
-                        itemBuilder: (context, index) {
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _rows.length,
+                            itemBuilder: (context, index) {
                           final row = _rows[index];
                           final id = row['id']?.toString() ?? '';
                           final name = row['name']?.toString() ?? '';
@@ -1062,7 +1066,13 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                         },
                       ),
           ),
-        ],
+            ),
+            // Pagination (Fixed at bottom)
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: _buildPaginationCard(),
+            ),
+          ],
       ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -1095,6 +1105,20 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPaginationCard() {
+    return CustomPaginationCard(
+      currentPage: 1, // TODO: Implement pagination state
+      totalItems: _rows.length,
+      itemsPerPage: 20, // TODO: Make configurable
+      onPageChanged: (page) {
+        // TODO: Implement page change logic
+      },
+      onItemsPerPageChanged: (limit) {
+        // TODO: Implement items per page change logic
+      },
     );
   }
 

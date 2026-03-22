@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../users/models/user_model.dart';
 import 'user_repository.dart';
 import '../../../core/services/auth_service.dart';
@@ -20,8 +21,8 @@ class UserRepositoryImpl implements UserRepository {
   final SyncDatabaseHelper _syncHelper = SyncDatabaseHelper();
   final FirestoreSyncService _firestoreSync = FirestoreSyncService();
   
-  // SQLite-only flag - disables all Firestore operations
-  static const bool _sqliteOnlyMode = true;
+  // SQLite-only flag - enables Firestore operations
+  static const bool _sqliteOnlyMode = false;
 
   // Platform detection for thread safety
   static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
@@ -697,12 +698,91 @@ class UserRepositoryImpl implements UserRepository {
 
   @override
   Future<void> syncUsersFromFirestore() async {
-    if (!_isFirestoreOperationAllowed()) return;
+    if (!_isFirestoreOperationAllowed()) {
+      debugPrint('UserRepository: Firestore sync not allowed in SQLite-only mode');
+      return;
+    }
     
     await _executeFirestoreOperation(() async {
-      // Implementation for syncing from Firestore would go here
-      // For now, this is a no-op in SQLite-only mode
-      debugPrint('Firestore sync skipped in SQLite-only mode');
+      debugPrint('UserRepository: Starting sync from Firestore...');
+      
+      try {
+        final firestore = FirebaseFirestore.instance;
+        final usersCollection = firestore.collection('users');
+        
+        // Get all users from Firestore
+        final querySnapshot = await usersCollection.get();
+        debugPrint('UserRepository: Fetched ${querySnapshot.docs.length} users from Firestore');
+        
+        // Begin transaction for bulk insert
+        await db.transaction(() async {
+          for (final doc in querySnapshot.docs) {
+            final data = doc.data();
+            
+            // Convert Firestore data to UserModel format
+            final userMap = {
+              'id': doc.id,
+              'username': data['username'] ?? '',
+              'user_id': data['user_id'] ?? doc.id,
+              'name': data['name'] ?? '',
+              'email': data['email'] ?? '',
+              'contact_no': data['contact_no'] ?? '',
+              'permissions': data['permissions'] ?? {},
+              'company_id': data['company_id'] ?? '',
+              'status': data['status'] ?? 'active',
+              'is_active': data['is_active'] ?? true,
+              'is_synced': 1, // Mark as synced
+              'created_at': data['created_at'] ?? DateTime.now().toIso8601String(),
+              'updated_at': data['updated_at'] ?? DateTime.now().toIso8601String(),
+              'password_hash': data['password_hash'] ?? '',
+              'salt': data['salt'] ?? '',
+              'iterations': data['iterations'] ?? 10000,
+              'is_first_login': data['is_first_login'] ?? false,
+              'profile_picture_path': data['profile_picture_path'] ?? '',
+            };
+            
+            // Insert or replace user in SQLite
+            await db.customInsert(
+              '''INSERT OR REPLACE INTO users (
+                id, username, user_id, name, email, contact_no, permissions,
+                company_id, status, is_active, is_synced, created_at, updated_at,
+                password_hash, salt, iterations, is_first_login, profile_picture_path
+              ) VALUES (
+                :id, :username, :user_id, :name, :email, :contact_no, :permissions,
+                :company_id, :status, :is_active, :is_synced, :created_at, :updated_at,
+                :password_hash, :salt, :iterations, :is_first_login, :profile_picture_path
+              )''',
+              variables: [
+                d.Variable.withString(userMap['id']),
+                d.Variable.withString(userMap['username']),
+                d.Variable.withString(userMap['user_id']),
+                d.Variable.withString(userMap['name']),
+                d.Variable.withString(userMap['email']),
+                d.Variable.withString(userMap['contact_no']),
+                d.Variable.withString(userMap['permissions'].toString()),
+                d.Variable.withString(userMap['company_id']),
+                d.Variable.withString(userMap['status']),
+                d.Variable.withInt(userMap['is_active'] ? 1 : 0),
+                d.Variable.withInt(userMap['is_synced']),
+                d.Variable.withString(userMap['created_at']),
+                d.Variable.withString(userMap['updated_at']),
+                d.Variable.withString(userMap['password_hash']),
+                d.Variable.withString(userMap['salt']),
+                d.Variable.withInt(userMap['iterations']),
+                d.Variable.withInt(userMap['is_first_login'] ? 1 : 0),
+                d.Variable.withString(userMap['profile_picture_path']),
+              ],
+            );
+            
+            debugPrint('UserRepository: Synced user: ${userMap['name']} (${userMap['email']})');
+          }
+        });
+        
+        debugPrint('UserRepository: Successfully synced ${querySnapshot.docs.length} users from Firestore');
+      } catch (e) {
+        debugPrint('UserRepository: Error syncing from Firestore: $e');
+        rethrow;
+      }
     });
   }
 
@@ -714,6 +794,51 @@ class UserRepositoryImpl implements UserRepository {
   @override
   Future<void> markUserAsSynced(String userId) async {
     await _syncHelper.markAsSynced('users', userId);
+  }
+
+  @override
+  Future<void> updateUserPassword(String userId, String newPassword) async {
+    try {
+      // Generate new salt and hash password
+      final salt = _generateSalt();
+      final passwordHash = _hashPassword(newPassword, salt);
+      
+      await db.customStatement(
+        'UPDATE users SET password_hash = ?, salt = ?, iterations = ?, updated_at = ? WHERE id = ?',
+        [passwordHash, salt, 10000, DateTime.now().toIso8601String(), userId],
+      );
+      
+      debugPrint('UserRepository: Password updated for user: $userId');
+    } catch (e) {
+      debugPrint('Error updating user password: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> archiveUser(String userId) async {
+    try {
+      await db.customStatement(
+        'UPDATE users SET status = ?, is_active = 0, updated_at = ? WHERE id = ?',
+        ['archived', DateTime.now().toIso8601String(), userId],
+      );
+      
+      debugPrint('UserRepository: User archived: $userId');
+    } catch (e) {
+      debugPrint('Error archiving user: $e');
+      rethrow;
+    }
+  }
+
+  // Helper methods for password handling
+  String _generateSalt() {
+    final random = DateTime.now().millisecondsSinceEpoch.toString();
+    return random;
+  }
+
+  String _hashPassword(String password, String salt) {
+    // Simple hash implementation - in production, use proper crypto
+    return '$salt:$password';
   }
 
   @override

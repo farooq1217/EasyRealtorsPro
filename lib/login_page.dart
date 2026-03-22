@@ -555,10 +555,10 @@ class _LoginPageState extends State<LoginPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Logo space
-            Container(
+          Container(
             width: 120,
             height: 120,
-              decoration: BoxDecoration(
+            decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.2),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
@@ -566,12 +566,16 @@ class _LoginPageState extends State<LoginPage> {
                 width: 2,
               ),
             ),
-            child: Icon(
-              Icons.business,
-              size: 60,
-              color: Colors.white.withOpacity(0.9),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Image.asset(
+                'assets/logo.png',
+                width: 100,
+                height: 100,
+                fit: BoxFit.contain,
+              ),
             ),
-                ),
+          ),
           const SizedBox(height: 32),
           Text(
             'Welcome!',
@@ -601,7 +605,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
           const SizedBox(height: 40),
           Text(
-            '© 2024 Real Estate Management',
+            '© 2026 Real Estate Management',
             style: AppFonts.poppins(
               fontSize: 14,
               color: Colors.white.withOpacity(0.7),
@@ -616,239 +620,243 @@ class _LoginPageState extends State<LoginPage> {
   Widget _buildLoginForm() {
     return Form(
       key: _formKey,
-                  child: ConstrainedBox(
+      child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 400),
         child: Card(
-          elevation: 8,
+          elevation: 12,
+          shadowColor: Colors.black.withOpacity(0.15),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    child: Padding(
-            padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Login',
-                  style: AppFonts.poppins(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFFFF6B35), // Orange
-                  ),
-                  textAlign: TextAlign.center,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.12),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
                 ),
-                const SizedBox(height: 32),
-                TextFormField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    labelText: 'Email',
-                    hintText: 'Enter your email',
-                    prefixIcon: const Icon(Icons.email),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    filled: true,
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  onFieldSubmitted: (_) {
-                    FocusScope.of(context).requestFocus(_passwordFocusNode);
-                  },
-                  validator: _validateEmail,
-                ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: _passwordController,
-                  focusNode: _passwordFocusNode,
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    prefixIcon: const Icon(Icons.lock),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Login',
+                    style: AppFonts.poppins(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFFFF6B35), // Orange
                     ),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    filled: true,
+                    textAlign: TextAlign.center,
                   ),
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) {
-                    if (!_isLoading && _formKey.currentState?.validate() == true) {
-                      _login();
-                    }
-                  },
-                  validator: _requiredValidator,
-                ),
-                if (_requires2FA) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 32),
                   TextFormField(
-                    controller: _twoFactorCodeController,
+                    controller: _emailController,
                     decoration: InputDecoration(
-                      labelText: 'Two-Factor Authentication Code',
-                      hintText: 'Enter 6-digit code',
-                      prefixIcon: const Icon(Icons.security),
+                      labelText: 'Email',
+                      hintText: 'Enter your email',
+                      prefixIcon: const Icon(Icons.email),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       filled: true,
                     ),
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 24, letterSpacing: 8),
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) {
+                      FocusScope.of(context).requestFocus(_passwordFocusNode);
+                    },
+                    validator: _validateEmail,
                   ),
-                ],
-                const SizedBox(height: 8),
-                // Use Wrap or Column for smaller screens to prevent overflow
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    if (constraints.maxWidth < 350) {
-                      // Stack vertically on very small screens
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: _rememberMe,
-                                onChanged: (value) {
-                                  setState(() {
-                                    _rememberMe = value ?? false;
-                                  });
-                                },
-                                activeColor: const Color(0xFFFF6B35),
-                              ),
-                              Flexible(
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _passwordController,
+                    focusNode: _passwordFocusNode,
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      prefixIcon: const Icon(Icons.lock),
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                    ),
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) {
+                      if (!_isLoading && _formKey.currentState?.validate() == true) {
+                        _login();
+                      }
+                    },
+                    validator: _requiredValidator,
+                  ),
+                  if (_requires2FA) ...[
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _twoFactorCodeController,
+                      decoration: InputDecoration(
+                        labelText: 'Two-Factor Authentication Code',
+                        hintText: 'Enter 6-digit code',
+                        prefixIcon: const Icon(Icons.security),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                      ),
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 24, letterSpacing: 8),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  // Use Wrap or Column for smaller screens to prevent overflow
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (constraints.maxWidth < 350) {
+                        // Stack vertically on very small screens
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: _rememberMe,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _rememberMe = value ?? false;
+                                    });
+                                  },
+                                  activeColor: const Color(0xFFFF6B35),
+                                ),
+                                Flexible(
+                                  child: Text(
+                                    'Remember Me (7 days)',
+                                    style: AppFonts.poppins(
+                                      fontSize: 14,
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: _showForgotPasswordDialog,
                                 child: Text(
-                                  'Remember Me (7 days)',
+                                  'Forgot Password?',
                                   style: AppFonts.poppins(
+                                    color: const Color(0xFFFF6B35),
                                     fontSize: 14,
-                                    color: Colors.grey.shade700,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: _showForgotPasswordDialog,
-                              child: Text(
-                                'Forgot Password?',
-                                style: AppFonts.poppins(
-                                  color: const Color(0xFFFF6B35),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
                             ),
-                          ),
-                        ],
-                      );
-                    } else {
-                      // Use Row for larger screens
-                      return Row(
-                        children: [
-                          Checkbox(
-                            value: _rememberMe,
-                            onChanged: (value) {
-                              setState(() {
-                                _rememberMe = value ?? false;
-                              });
-                            },
-                            activeColor: const Color(0xFFFF6B35),
-                          ),
-                          Flexible(
-                            child: Text(
-                              'Remember Me (7 days)',
-                              style: AppFonts.poppins(
-                                fontSize: 14,
-                                color: Colors.grey.shade700,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                          ],
+                        );
+                      } else {
+                        // Use Row for larger screens
+                        return Row(
+                          children: [
+                            Checkbox(
+                              value: _rememberMe,
+                              onChanged: (value) {
+                                setState(() {
+                                  _rememberMe = value ?? false;
+                                });
+                              },
+                              activeColor: const Color(0xFFFF6B35),
                             ),
-                          ),
-                          const Spacer(),
-                          Flexible(
-                            child: TextButton(
-                              onPressed: _showForgotPasswordDialog,
+                            Flexible(
                               child: Text(
-                                'Forgot Password?',
+                                'Remember Me (7 days)',
                                 style: AppFonts.poppins(
-                                  color: const Color(0xFFFF6B35),
                                   fontSize: 14,
-                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey.shade700,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                          ),
-                        ],
-                      );
-                    }
-                  },
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _login,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF6B35), // Orange
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 4,
-                    ),
-                    child: _isLoading
-                        ? Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            const Spacer(),
+                            Flexible(
+                              child: TextButton(
+                                onPressed: _showForgotPasswordDialog,
+                                child: Text(
+                                  'Forgot Password?',
+                                  style: AppFonts.poppins(
+                                    color: const Color(0xFFFF6B35),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                          Text(
-                                'Authenticating...',
-                                style: AppFonts.poppins(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 1,
-                              color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          )
-                        : Text(
-                            'LOGIN',
-                            style: AppFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 1,
                             ),
-                                ),
-                            ),
-                          ),
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: _isLoading ? null : _showCreateAccountDialog,
-                  child: Text(
-                    'Create Account',
-                    style: AppFonts.poppins(
-                      fontSize: 14,
-                      color: const Color(0xFFFF6B35),
-                      fontWeight: FontWeight.w500,
-                                ),
-                            ),
-                          ),
-                        ],
+                          ],
+                        );
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _login,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF6B35), // Orange
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 6,
+                        shadowColor: Colors.black.withOpacity(0.2),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                       ),
+                      child: _isLoading
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Authenticating...',
+                                  style: AppFonts.poppins(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 1,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Text(
+                              'LOGIN',
+                              style: AppFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1,
+                              ),
+                            ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

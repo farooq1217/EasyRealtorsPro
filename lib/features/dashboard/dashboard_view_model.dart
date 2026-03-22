@@ -84,6 +84,7 @@ class DashboardViewModel extends ChangeNotifier {
   int get totalClosedDeals => _totalClosedDeals;
   double get totalTradingProfit => _totalTradingProfit;
   int get availableProperties => _availableProperties;
+  List<TradingEntry> get tradingEntries => _totalTradingEntries;
 
   bool get isLoading => _isLoading;
   bool get usersLoading => _usersLoading;

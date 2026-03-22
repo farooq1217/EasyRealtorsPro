@@ -35,6 +35,10 @@ class UserViewModel extends ChangeNotifier {
   String _searchQuery = '';
   bool _backfillingUserIds = false;
   bool _backfillUserIdsDone = false;
+  
+  // Pagination state
+  int _currentPage = 1;
+  int _itemsPerPage = 10;
 
   // Form controllers
   final TextEditingController _nameController = TextEditingController();
@@ -63,6 +67,16 @@ class UserViewModel extends ChangeNotifier {
   String get searchQuery => _searchQuery;
   bool get backfillingUserIds => _backfillingUserIds;
   bool get backfillUserIdsDone => _backfillUserIdsDone;
+  
+  // Pagination getters
+  int get currentPage => _currentPage;
+  int get itemsPerPage => _itemsPerPage;
+  int get totalPages => (_filteredUsers.length / _itemsPerPage).ceil();
+  List<UserModel> get paginatedUsers {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    final endIndex = startIndex + _itemsPerPage;
+    return _filteredUsers.skip(startIndex).take(_itemsPerPage).toList();
+  }
 
   // Set mounted state and process any stored data
   void setMounted(bool mounted) {
@@ -136,6 +150,138 @@ class UserViewModel extends ChangeNotifier {
   bool get isCurrentUserSuperAdmin => 
     RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
 
+  // Public sync method
+  Future<void> syncFromFirestore() async {
+    await _repository.syncUsersFromFirestore();
+  }
+
+  // Edit user functionality
+  void setEditingUser(UserModel user) {
+    _editingUser = user;
+    _nameController.text = user.name;
+    _emailController.text = user.email;
+    _contactController.text = user.contactNo ?? '';
+    notifyListeners();
+  }
+
+  Future<void> updateUser() async {
+    if (_editingUser == null) return;
+    
+    try {
+      _saving = true;
+      notifyListeners();
+      
+      final updatedUser = _editingUser!.copyWith(
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        contactNo: _contactController.text.trim(),
+        updatedAt: DateTime.now().toIso8601String(),
+      );
+      
+      await _repository.updateUser(updatedUser);
+      
+      // Clear editing state
+      _editingUser = null;
+      _nameController.clear();
+      _emailController.clear();
+      _contactController.clear();
+      
+      notifyListeners();
+    } catch (e) {
+      _error = 'Failed to update user: $e';
+      notifyListeners();
+    } finally {
+      _saving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateUserPassword(String newPassword) async {
+    if (_editingUser == null) return;
+    
+    try {
+      _saving = true;
+      notifyListeners();
+      
+      await _repository.updateUserPassword(_editingUser!.id, newPassword);
+      
+      // Clear editing state
+      _editingUser = null;
+      
+      notifyListeners();
+    } catch (e) {
+      _error = 'Failed to update password: $e';
+      notifyListeners();
+    } finally {
+      _saving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> assignRole(String role) async {
+    if (_editingUser == null) return;
+    
+    try {
+      _saving = true;
+      notifyListeners();
+      
+      Map<String, dynamic> newPermissions = {};
+      switch (role.toLowerCase()) {
+        case 'super admin':
+          newPermissions['super_admin'] = true;
+          break;
+        case 'company admin':
+          newPermissions['company_admin'] = true;
+          break;
+        case 'agent':
+          newPermissions['agent'] = true;
+          break;
+      }
+      
+      // Encode permissions as JSON string for database storage
+      final encodedPermissions = UserModel.encodePermissions(newPermissions);
+      
+      final updatedUser = _editingUser!.copyWith(
+        permissions: encodedPermissions,
+        updatedAt: DateTime.now().toIso8601String(),
+      );
+      
+      await _repository.updateUser(updatedUser);
+      
+      // Clear editing state
+      _editingUser = null;
+      
+      notifyListeners();
+    } catch (e) {
+      _error = 'Failed to assign role: $e';
+      notifyListeners();
+    } finally {
+      _saving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> archiveUser(String userId) async {
+    try {
+      await _repository.archiveUser(userId);
+    } catch (e) {
+      _error = 'Failed to archive user: $e';
+      notifyListeners();
+    }
+  }
+
+  void clearEditingUser() {
+    _editingUser = null;
+    _nameController.clear();
+    _emailController.clear();
+    _contactController.clear();
+    _usernameController.clear();
+    _passwordController.clear();
+    _confirmPasswordController.clear();
+    _userIdController.clear();
+    notifyListeners();
+  }
+
   // Initialization
   Future<void> initialize() async {
     try {
@@ -145,6 +291,12 @@ class UserViewModel extends ChangeNotifier {
       
       await _loadCurrentUser();
       await _repository.ensureUserTableColumns();
+      
+      // CRITICAL: Sync users from Firestore before loading companies
+      debugPrint('UserViewModel: Starting Firestore sync...');
+      await _repository.syncUsersFromFirestore();
+      debugPrint('UserViewModel: Firestore sync completed');
+      
       await _loadCompanies();
       await _setupStreams();
     } catch (e) {
@@ -278,7 +430,25 @@ class UserViewModel extends ChangeNotifier {
         return name.contains(query) || email.contains(query) || username.contains(query);
       }).toList();
     }
+    // Reset to page 1 when filter changes
+    _currentPage = 1;
     notifyListeners();
+  }
+  
+  // Pagination methods
+  void setPage(int page) {
+    if (page >= 1 && page <= totalPages) {
+      _currentPage = page;
+      notifyListeners();
+    }
+  }
+  
+  void setItemsPerPage(int limit) {
+    if (_itemsPerPage != limit) {
+      _itemsPerPage = limit;
+      _currentPage = 1; // Reset to page 1 when items per page changes
+      notifyListeners();
+    }
   }
 
   // Form operations

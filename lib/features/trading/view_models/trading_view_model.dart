@@ -39,6 +39,10 @@ class TradingViewModel extends ChangeNotifier {
   String _dateRangeFilter = 'All';
   String _entryTypeFilter = 'All';
   
+  // Pagination state
+  int _currentPage = 1;
+  int _itemsPerPage = 10;
+  
   // Error states
   String? _error;
   
@@ -69,6 +73,16 @@ class TradingViewModel extends ChangeNotifier {
   Map<String, dynamic>? get currentUser => _currentUser;
   String? get userCompanyId => _userCompanyId;
   bool get isSuperAdmin => _isSuperAdmin;
+
+  // Pagination getters
+  int get currentPage => _currentPage;
+  int get itemsPerPage => _itemsPerPage;
+  int get totalPages => (_getFilteredEntries().length / _itemsPerPage).ceil();
+  List<TradingEntry> get paginatedEntries {
+    final filteredEntries = _getFilteredEntries();
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    return filteredEntries.skip(startIndex).take(_itemsPerPage).toList();
+  }
 
   // Initialize user context
   Future<void> _initializeUser() async {
@@ -412,6 +426,7 @@ class TradingViewModel extends ChangeNotifier {
   // Search functionality
   Future<void> searchEntries(String query) async {
     _searchQuery = query;
+    _currentPage = 1; // Reset to page 1 when search changes
     notifyListeners();
   }
 
@@ -424,18 +439,21 @@ class TradingViewModel extends ChangeNotifier {
   // Filter by entry type
   void filterByEntryType(String type) {
     _entryTypeFilter = type;
+    _currentPage = 1; // Reset to page 1 when filter changes
     notifyListeners();
   }
 
   // Filter by status
   void filterByStatus(String status) {
     _statusFilter = status;
+    _currentPage = 1; // Reset to page 1 when filter changes
     notifyListeners();
   }
 
   // Filter by date range
   void filterByDateRange(String dateRange) {
     _dateRangeFilter = dateRange;
+    _currentPage = 1; // Reset to page 1 when filter changes
     notifyListeners();
   }
 
@@ -445,6 +463,7 @@ class TradingViewModel extends ChangeNotifier {
     _statusFilter = 'All';
     _dateRangeFilter = 'All';
     _entryTypeFilter = 'All';
+    _currentPage = 1; // Reset to page 1 when filters clear
     notifyListeners();
   }
 
@@ -582,20 +601,45 @@ class TradingViewModel extends ChangeNotifier {
     return totalBought - totalSold;
   }
 
+  // Pagination methods
+  void setPage(int page) {
+    if (page >= 1 && page <= totalPages) {
+      _currentPage = page;
+      notifyListeners();
+    }
+  }
+  
+  void setItemsPerPage(int limit) {
+    if (_itemsPerPage != limit) {
+      _itemsPerPage = limit;
+      _currentPage = 1; // Reset to page 1 when items per page changes
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
     debugPrint('DISPOSING TradingViewModel instance: ${identityHashCode(this)}');
     
-    // ABSOLUTELY DO NOT DISPOSE THE SINGLETON
-    // This prevents the blank screen issue entirely
-    debugPrint('TradingViewModel: REFUSING TO DISPOSE - singleton must survive');
+    // PROPER DISPOSAL: Allow natural lifecycle management
+    // The singleton pattern will be handled at the Provider level
+    debugPrint('TradingViewModel: Properly disposing streams and state');
     
-    // Don't cancel streams either - they need to keep working
-    // Don't mark as disposed or clear mounted state
-    // Keep the instance alive for the entire app lifecycle
+    // Cancel streams to prevent memory leaks
+    _entriesSubscription?.cancel();
+    _entriesSubscription = null;
     
-    // Call super.dispose() to satisfy @mustCallSuper but don't actually dispose
-    // The singleton will survive because Provider manages the lifecycle
+    // Mark as disposed to prevent further operations
+    _isDisposed = true;
+    _mounted = false;
+    _isStreamInitialized = false;
+    _entries.clear();
+    
+    // Clear singleton reference if this is the current instance
+    if (_instance == this) {
+      _instance = null;
+    }
+    
     super.dispose();
   }
 }

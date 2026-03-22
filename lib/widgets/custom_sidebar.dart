@@ -50,11 +50,13 @@ class ModernSidebar extends StatelessWidget {
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxWidth: isOpen ? 280 : 80, // Collapsed width when closed
+        minWidth: isOpen ? 280 : 80, // Ensure minimum width
       ),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
         child: Container(
+          width: double.infinity, // Ensure full width
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -68,7 +70,7 @@ class ModernSidebar extends StatelessWidget {
             topRight: Radius.circular(16),
             bottomRight: Radius.circular(16),
           ),
-          boxShadow: [
+          boxShadow: isOpen ? [
             // Inner shadow for depth
             BoxShadow(
               color: Colors.black.withOpacity(0.1),
@@ -81,9 +83,10 @@ class ModernSidebar extends StatelessWidget {
               blurRadius: 25,
               offset: const Offset(4, 8),
             ),
-          ],
+          ] : [], // No shadows when collapsed to prevent white shade
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.max, // Ensure column takes full height
           children: [
             // Header - Responsive based on isOpen state
             Container(
@@ -137,7 +140,7 @@ class ModernSidebar extends StatelessWidget {
                         ),
                         child: const Center(
                           child: Text(
-                            'RE',
+                            'ERP',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -149,7 +152,7 @@ class ModernSidebar extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Real Estate',
+                          'EasyRealtorsPro',
                           style: AppFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -214,7 +217,7 @@ class ModernSidebar extends StatelessWidget {
                         ),
                         child: const Center(
                           child: Text(
-                            'RE',
+                            'ERP',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -226,19 +229,19 @@ class ModernSidebar extends StatelessWidget {
                     ],
                   ),
             ),
-            // Menu Items - Only show when sidebar is open
-            if (isOpen) ...[
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
+            // Menu Items - Always show icons, show labels only when open
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
                     SidebarMenuItem(
                       icon: Icons.dashboard_outlined,
                       selectedIcon: Icons.dashboard,
                       label: 'Dashboard',
                       isSelected: selectedIndex == 0,
                       onTap: () => onDestinationSelected(0),
+                      showLabel: isOpen,
                     ),
                     SidebarMenuItem(
                       icon: Icons.insert_drive_file_outlined,
@@ -248,6 +251,7 @@ class ModernSidebar extends StatelessWidget {
                       onTap: _canSee('inventory') ? () => onDestinationSelected(1) : null,
                       badge: badgeFiles,
                       visible: _canSee('inventory'),
+                      showLabel: isOpen,
                     ),
                     SidebarMenuItem(
                       icon: Icons.support_agent_outlined,
@@ -256,6 +260,7 @@ class ModernSidebar extends StatelessWidget {
                       isSelected: selectedIndex == 2,
                       onTap: _canSee('agent_working') ? () => onDestinationSelected(2) : null,
                       visible: _canSee('agent_working'),
+                      showLabel: isOpen,
                     ),
                     SidebarMenuItem(
                       icon: Icons.chair_outlined,
@@ -265,6 +270,7 @@ class ModernSidebar extends StatelessWidget {
                       onTap: _canSee('rental_items') ? () => onDestinationSelected(3) : null,
                       badge: badgeRentals,
                       visible: _canSee('rental_items'),
+                      showLabel: isOpen,
                     ),
                     SidebarMenuItem(
                       icon: Icons.checklist_outlined,
@@ -273,6 +279,7 @@ class ModernSidebar extends StatelessWidget {
                       isSelected: selectedIndex == 4,
                       onTap: _canSee('todo') ? () => onDestinationSelected(4) : null,
                       visible: _canSee('todo'),
+                      showLabel: isOpen,
                     ),
                     SidebarMenuItem(
                       icon: Icons.payments_outlined,
@@ -281,6 +288,7 @@ class ModernSidebar extends StatelessWidget {
                       isSelected: selectedIndex == 10,
                       onTap: _canSee('expenditure') ? () => onDestinationSelected(10) : null,
                       visible: _canSee('expenditure'),
+                      showLabel: isOpen,
                     ),
                     SidebarMenuItem(
                       icon: Icons.bar_chart_outlined,
@@ -289,6 +297,7 @@ class ModernSidebar extends StatelessWidget {
                       isSelected: selectedIndex == 8,
                       onTap: _canSee('reports') ? () => onDestinationSelected(8) : null,
                       visible: _canSee('reports'),
+                      showLabel: isOpen,
                     ),
                     // Trading - Direct Navigation
                     if (onTradingTap != null)
@@ -296,9 +305,10 @@ class ModernSidebar extends StatelessWidget {
                         icon: Icons.currency_exchange_outlined,
                         selectedIcon: Icons.currency_exchange,
                         label: 'Trading',
-                        isSelected: selectedIndex == 6 || selectedIndex == 7,
-                        onTap: _canSee('trading') ? onTradingTap! : null,
-                        visible: _canSee('trading'),
+                        isSelected: false,
+                        onTap: onTradingTap,
+                        visible: true,
+                        showLabel: isOpen,
                       ),
                     // Super Admin Menu Items
                     if (isAdminRole) ...[
@@ -309,6 +319,7 @@ class ModernSidebar extends StatelessWidget {
                         isSelected: selectedIndex == 9,
                         onTap: () => onDestinationSelected(9),
                         visible: true,
+                        showLabel: isOpen,
                       ),
                       SidebarMenuItem(
                         icon: Icons.business_outlined,
@@ -317,6 +328,7 @@ class ModernSidebar extends StatelessWidget {
                         isSelected: selectedIndex == 11,
                         onTap: () => onDestinationSelected(11),
                         visible: true,
+                        showLabel: isOpen,
                       ),
                     ],
                     SidebarMenuItem(
@@ -325,41 +337,43 @@ class ModernSidebar extends StatelessWidget {
                       label: 'Settings',
                       isSelected: selectedIndex == 5,
                       onTap: () => onDestinationSelected(5),
+                      visible: true,
+                      showLabel: isOpen,
                     ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
-              // Separator
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                height: 1,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      Colors.white.withOpacity(0.2),
-                      Colors.transparent,
-                    ],
-                  ),
+            ),
+            // Separator
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.transparent,
+                    Colors.white.withOpacity(0.2),
+                    Colors.transparent,
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              // Logout
-              SidebarMenuItem(
-                icon: Icons.logout,
-                selectedIcon: Icons.logout,
-                label: 'Logout',
-                isSelected: false,
-                onTap: onLogout,
-              ),
-              const SizedBox(height: 8),
-            ],
+            ),
+            const SizedBox(height: 8),
+            // Logout
+            SidebarMenuItem(
+              icon: Icons.logout,
+              selectedIcon: Icons.logout,
+              label: 'Logout',
+              isSelected: false,
+              onTap: onLogout,
+              showLabel: isOpen,
+            ),
+            const SizedBox(height: 8),
           ],
         ),
-      ),
-      ),
-    );
+        ), // Close Container from line 57
+      ), // Close AnimatedContainer
+    ); // Close ConstrainedBox
   }
 }
 
@@ -373,6 +387,7 @@ class SidebarMenuItem extends StatelessWidget {
   final bool isSubItem;
   final int? badge;
   final bool visible;
+  final bool showLabel;
 
   const SidebarMenuItem({
     super.key,
@@ -384,6 +399,7 @@ class SidebarMenuItem extends StatelessWidget {
     this.isSubItem = false,
     this.badge,
     this.visible = true,
+    this.showLabel = true,
   });
 
   @override
@@ -392,46 +408,151 @@ class SidebarMenuItem extends StatelessWidget {
     
     // Use this structure to ensure clicks pass through
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: InkWell(
-        onTap: onTap, // Ensure this is linked correctly
-        borderRadius: BorderRadius.circular(25),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(25),
-            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
-          ),
-          child: Row(
-            children: [
-              // Orange Active Indicator
-              if (isSelected)
-                Container(
-                  width: 4,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF6B35),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(2),
-                      bottomLeft: Radius.circular(2),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFF6B35).withOpacity(0.5),
-                        blurRadius: 8,
-                        spreadRadius: 1,
+      padding: EdgeInsets.symmetric(
+        horizontal: showLabel ? 12 : 8, // Less padding when collapsed
+        vertical: 6,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap, // Ensure this is linked correctly
+          borderRadius: BorderRadius.circular(25),
+          child: Container(
+            constraints: BoxConstraints(
+              minWidth: showLabel ? 200 : 64, // Ensure minimum width
+              minHeight: 48, // Ensure minimum height for touch targets
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(25),
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
+            ),
+            child: showLabel 
+              ? Row(
+                  children: [
+                    // Orange Active Indicator
+                    if (isSelected)
+                      Container(
+                        width: 4,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF6B35),
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(2),
+                            bottomLeft: Radius.circular(2),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFF6B35).withOpacity(0.5),
+                              blurRadius: 8,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-              
-              // Menu Item Container
-              Expanded(
+                    
+                    // Menu Item Container
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(25),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: isSelected ? Colors.white.withOpacity(0.2) : Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(25),
+                              border: Border.all(
+                                color: isSelected 
+                                  ? Colors.white.withOpacity(0.4)
+                                  : Colors.white.withOpacity(0.2),
+                                width: isSelected ? 1.5 : 1.0,
+                              ),
+                              boxShadow: isSelected ? [
+                                // Enhanced glow effect for selected items
+                                BoxShadow(
+                                  color: Colors.white.withOpacity(0.3),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, -3),
+                                ),
+                                // Overall glow
+                                BoxShadow(
+                                  color: Colors.white.withOpacity(0.15),
+                                  blurRadius: 20,
+                                  spreadRadius: 2,
+                                ),
+                                // Orange glow for selected
+                                BoxShadow(
+                                  color: const Color(0xFFFF6B35).withOpacity(0.2),
+                                  blurRadius: 15,
+                                  spreadRadius: 1,
+                                ),
+                              ] : [
+                                // Subtle shadow for non-selected items
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(isSelected ? selectedIcon : icon, color: Colors.white, size: 22),
+                                if (showLabel) ...[
+                                  SizedBox(width: 14),
+                                  Expanded(
+                                    child: Text(
+                                      label, 
+                                      style: TextStyle(
+                                        color: Colors.white, 
+                                        fontSize: 14, 
+                                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400
+                                      )
+                                    )
+                                  ),
+                                  if (badge != null && badge! > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange,
+                                        borderRadius: BorderRadius.circular(10),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.orange.withOpacity(0.5),
+                                            blurRadius: 4,
+                                            spreadRadius: 1,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Text(
+                                        '$badge',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : Center(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(25),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                     child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      constraints: BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
+                      ),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: isSelected ? Colors.white.withOpacity(0.2) : Colors.white.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(25),
@@ -442,26 +563,17 @@ class SidebarMenuItem extends StatelessWidget {
                           width: isSelected ? 1.5 : 1.0,
                         ),
                         boxShadow: isSelected ? [
-                          // Enhanced glow effect for selected items
                           BoxShadow(
                             color: Colors.white.withOpacity(0.3),
                             blurRadius: 12,
                             offset: const Offset(0, -3),
                           ),
-                          // Overall glow
-                          BoxShadow(
-                            color: Colors.white.withOpacity(0.15),
-                            blurRadius: 20,
-                            spreadRadius: 2,
-                          ),
-                          // Orange glow for selected
                           BoxShadow(
                             color: const Color(0xFFFF6B35).withOpacity(0.2),
                             blurRadius: 15,
                             spreadRadius: 1,
                           ),
                         ] : [
-                          // Subtle shadow for non-selected items
                           BoxShadow(
                             color: Colors.black.withOpacity(0.1),
                             blurRadius: 4,
@@ -469,53 +581,18 @@ class SidebarMenuItem extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: Row(
-                        children: [
-                          Icon(isSelected ? selectedIcon : icon, color: Colors.white, size: 22),
-                          SizedBox(width: 14),
-                          Expanded(
-                            child: Text(
-                              label, 
-                              style: TextStyle(
-                                color: Colors.white, 
-                                fontSize: 14, 
-                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400
-                              )
-                            )
-                          ),
-                          if (badge != null && badge! > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.orange,
-                                borderRadius: BorderRadius.circular(10),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.orange.withOpacity(0.5),
-                                    blurRadius: 4,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
-                              ),
-                              child: Text(
-                                badge.toString(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                        ],
+                      child: Icon(
+                        isSelected ? selectedIcon : icon, 
+                        color: Colors.white, 
+                        size: 20,
                       ),
                     ),
                   ),
                 ),
               ),
-            ],
+            ),
           ),
         ),
-      ),
     );
   }
 }

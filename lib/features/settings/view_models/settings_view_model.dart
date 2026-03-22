@@ -30,13 +30,25 @@ class SettingsViewModel extends ChangeNotifier {
   bool get savingProfile => _savingProfile;
   bool get isLoadingBlocks => _isLoadingBlocks;
 
+  // CRITICAL FIX: Emergency method to force loading state to false
+  void forceLoadingComplete() {
+    if (_loading) {
+      debugPrint('SettingsViewModel: Forcefully setting loading to false');
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   // Initialize
   Future<void> initialize() async {
+    debugPrint('SettingsViewModel: Starting initialization');
+    
     // Set loading to true initially
     _loading = true;
     notifyListeners();
     
     try {
+      debugPrint('SettingsViewModel: Loading current user and societies in parallel');
       // Run operations in parallel with timeout protection
       await Future.wait([
         _loadCurrentUser().timeout(const Duration(seconds: 5), onTimeout: () {
@@ -50,6 +62,8 @@ class SettingsViewModel extends ChangeNotifier {
         }),
       ]);
       
+      debugPrint('SettingsViewModel: User and societies loaded, loading blocks if needed');
+      
       // Load blocks only after societies are loaded and if a society is selected
       if (_selectedSocietyId != null) {
         await _loadBlocksForSociety(_selectedSocietyId!).timeout(const Duration(seconds: 5), onTimeout: () {
@@ -57,11 +71,15 @@ class SettingsViewModel extends ChangeNotifier {
           _blocks = [];
         });
       }
+      
+      debugPrint('SettingsViewModel: Initialization completed successfully');
     } catch (e) {
       debugPrint('Settings initialization error: $e');
       // Continue with partial data rather than hanging indefinitely
     } finally {
+      // CRITICAL FIX: Always ensure loading is set to false
       _loading = false;
+      debugPrint('SettingsViewModel: Loading set to false, notifying listeners');
       notifyListeners();
     }
   }
@@ -166,6 +184,7 @@ class SettingsViewModel extends ChangeNotifier {
   // Societies methods
   Future<void> _loadSocieties() async {
     try {
+      debugPrint('SettingsViewModel: Starting to load societies');
       final rawData = await _repository.getSocieties().timeout(const Duration(seconds: 3));
       debugPrint('SettingsViewModel: Repository returned ${rawData.length} raw societies: $rawData');
       
@@ -184,8 +203,12 @@ class SettingsViewModel extends ChangeNotifier {
       if (_societies.length == 1 && _selectedSocietyId == null) {
         final singleSociety = _societies.first;
         debugPrint('SettingsViewModel: Auto-selecting single society: ${singleSociety['name']} (${singleSociety['id']})');
-        setSelectedSociety(singleSociety['id'].toString());
+        _selectedSocietyId = singleSociety['id'].toString();
+        // Don't call setSelectedSociety here to avoid infinite recursion during initialization
+        // Just set the ID directly, blocks will be loaded after initialization completes
       }
+      
+      debugPrint('SettingsViewModel: Societies loading completed successfully');
     } catch (e) {
       debugPrint('Error loading societies: $e');
       // Set empty list to prevent complete failure

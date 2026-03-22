@@ -245,7 +245,7 @@ class _AdminAppState extends State<AdminApp> {
       ),
     );
     return MaterialApp(
-      title: 'Desktop Admin',
+      title: 'EasyRealtorsPro',
       debugShowCheckedModeBanner: false,
       themeMode: _themeMode,
       theme: baseLight,

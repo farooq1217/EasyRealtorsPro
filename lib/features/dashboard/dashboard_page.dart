@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:shared/shared.dart';
-import 'package:syncfusion_flutter_charts/charts.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../../core/font_utils.dart';
-import '../../../shimmer_widgets.dart';
-import '../dashboard/dashboard_view_model.dart';
-import '../users/repositories/user_repository_impl.dart';
-import '../companies/repositories/company_repository_impl.dart';
-import '../expenditure/repositories/expenditure_repository_impl.dart';
-import '../rental/repositories/rental_repository_impl.dart';
-import '../trading/repositories/trading_repository_impl.dart';
-import '../inventory/repositories/inventory_repository_impl.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/services/app_storage.dart';
+import '../trading/view_models/trading_view_model.dart';
+import '../inventory/view_models/inventory_view_model.dart';
+import '../expenditure/view_models/expenditure_view_model.dart';
+import '../users/view_models/user_view_model.dart';
+import '../todo/view_models/todo_view_model.dart';
+import '../todo/repositories/todo_repository_impl.dart';
+import '../rental/view_models/rental_view_model.dart';
+import 'widgets/sparkline_chart.dart';
+import 'widgets/revenue_area_chart.dart';
+import 'widgets/property_map_widget.dart';
+import 'package:shared/shared.dart' show AppDatabase, TradingEntry;
 
 class DashboardPage extends StatefulWidget {
   final AppDatabase db;
@@ -24,230 +27,168 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  late DashboardViewModel _viewModel;
-
   @override
   void initState() {
     super.initState();
-    _viewModel = DashboardViewModel(
-      userRepository: UserRepositoryImpl(widget.db),
-      companyRepository: CompanyRepositoryImpl(widget.db),
-      expenditureRepository: ExpenditureRepositoryImpl(widget.db),
-      rentalRepository: RentalRepositoryImpl(widget.db),
-      tradingRepository: TradingRepositoryImpl(widget.db),
-      inventoryRepository: InventoryRepositoryImpl(widget.db, companyId: null, isSuperAdmin: true),
-      usersRepository: UserRepositoryImpl(widget.db),
-    );
-
-    // Initialize ViewModel
+    // Force data fetching on dashboard load using proper Provider access
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _viewModel.initialize();
+      final inventoryViewModel = Provider.of<InventoryViewModel>(context, listen: false);
+      final userViewModel = Provider.of<UserViewModel>(context, listen: false);
+      final rentalViewModel = Provider.of<RentalViewModel>(context, listen: false);
+      final expenditureViewModel = Provider.of<ExpenditureViewModel>(context, listen: false);
+      
+      // Load data if lists are empty to ensure Dashboard populates
+      debugPrint('Dashboard: Checking data - Societies: ${inventoryViewModel.societies.length}, Users: ${userViewModel.users.length}');
+      
+      if (inventoryViewModel.societies.isEmpty) {
+        debugPrint('Dashboard: Loading societies...');
+        inventoryViewModel.loadSocieties();
+      }
+      if (userViewModel.users.isEmpty) {
+        debugPrint('Dashboard: Loading users...');
+        userViewModel.initialize();
+      }
+      if (rentalViewModel.rentalItems.isEmpty) {
+        debugPrint('Dashboard: Loading rental items...');
+        rentalViewModel.initialize();
+      }
+      if (expenditureViewModel.currentTotal == 0) {
+        debugPrint('Dashboard: Loading expenses...');
+        expenditureViewModel.refreshData();
+      }
     });
   }
 
   @override
-  void dispose() {
-    _viewModel.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<DashboardViewModel>.value(
-      value: _viewModel,
-      child: Consumer<DashboardViewModel>(
-        builder: (context, viewModel, child) {
-          return Scaffold(
-            backgroundColor: const Color(0xFFF8F9FA),
-            appBar: AppBar(
-              title: Text(
-                'Dashboard',
-                style: AppFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-              backgroundColor: const Color(0xFF2D3748),
-              elevation: 0,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.white),
-                  onPressed: () => viewModel.refreshAll(),
-                  tooltip: 'Refresh Dashboard',
-                ),
-              ],
-            ),
-            body: Container(
-              height: MediaQuery.of(context).size.height - 
-                       MediaQuery.of(context).padding.top - 
-                       kToolbarHeight,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header with Gradient
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            const Color(0xFFFF6B35), // Orange
-                            const Color(0xFF805AD5), // Purple
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Analytics Dashboard',
-                            style: AppFonts.poppins(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Real-time insights into your business performance',
-                            style: AppFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.white.withOpacity(0.9),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // Dashboard Cards Grid - Takes remaining space
-                    Expanded(
-                      child: GridView.count(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: 1.4,
-                        children: [
-                          // Trading Card - Purple Theme
-                          _buildDashboardCard(
-                            title: 'Total Closed Deals',
-                            value: viewModel.totalClosedDeals.toString(),
-                            subtitle: 'Completed transactions',
-                            icon: Icons.trending_up,
-                            color: const Color(0xFF805AD5),
-                            backgroundColor: const Color(0xFFF3E8FF),
-                            loading: viewModel.tradingLoading,
-                            error: viewModel.tradingError,
-                            viewModel: viewModel,
-                          ),
-                          
-                          // Trading Profit Card - Orange Theme
-                          _buildDashboardCard(
-                            title: 'Trading Profit',
-                            value: 'Rs ${viewModel.totalTradingProfit.toStringAsFixed(0)}',
-                            subtitle: 'Net profit from deals',
-                            icon: Icons.attach_money,
-                            color: const Color(0xFFED8936),
-                            backgroundColor: const Color(0xFFFFFAF0),
-                            loading: viewModel.tradingLoading,
-                            error: viewModel.tradingError,
-                            viewModel: viewModel,
-                          ),
-                          
-                          // Users Card - Blue Theme
-                          _buildDashboardCard(
-                            title: 'Active Agents',
-                            value: viewModel.totalUsers.toString(),
-                            subtitle: 'Active team members',
-                            icon: Icons.people,
-                            color: const Color(0xFF3182CE),
-                            backgroundColor: const Color(0xFFEBF8FF),
-                            loading: viewModel.usersLoading,
-                            error: viewModel.usersError,
-                            viewModel: viewModel,
-                          ),
-                          
-                          // Expense Card - Red Theme
-                          _buildDashboardCard(
-                            title: "This Month's Expenses",
-                            value: viewModel.formattedMonthlyExpenditure,
-                            subtitle: 'Current month spending',
-                            icon: Icons.account_balance_wallet,
-                            color: const Color(0xFFE53E3E),
-                            backgroundColor: const Color(0xFFFFF5F5),
-                            loading: viewModel.expenditureLoading,
-                            error: viewModel.expenditureError,
-                            viewModel: viewModel,
-                          ),
-                          
-                          // Inventory Card - Green Theme
-                          _buildDashboardCard(
-                            title: 'Available Properties',
-                            value: viewModel.availableProperties.toString(),
-                            subtitle: 'Properties for sale/rent',
-                            icon: Icons.home,
-                            color: const Color(0xFF38A169),
-                            backgroundColor: const Color(0xFFF0FFF4),
-                            loading: viewModel.inventoryLoading,
-                            error: viewModel.inventoryError,
-                            viewModel: viewModel,
-                          ),
-                          
-                          // Companies Card - Teal Theme
-                          _buildDashboardCard(
-                            title: 'Total Companies',
-                            value: viewModel.totalCompanies.toString(),
-                            subtitle: 'Business entities',
-                            icon: Icons.business,
-                            color: const Color(0xFF319795),
-                            backgroundColor: const Color(0xFFE6FFFA),
-                            loading: viewModel.companiesLoading,
-                            error: viewModel.companiesError,
-                            viewModel: viewModel,
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Error Message (if any) - Fixed at bottom
-                    if (viewModel.hasError)
-                      Container(
-                        margin: const EdgeInsets.only(top: 16),
-                        child: _buildErrorMessage(viewModel),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
+    return Consumer<InventoryViewModel>(
+      builder: (context, inventoryViewModel, child) {
+        return Consumer<RentalViewModel>(
+          builder: (context, rentalViewModel, child) {
+            return Consumer<UserViewModel>(
+              builder: (context, userViewModel, child) {
+                return Consumer<ExpenditureViewModel>(
+                  builder: (context, expenditureViewModel, child) {
+                    return Consumer<TodoViewModel>(
+                      builder: (context, todoViewModel, child) {
+                        return Consumer<TradingViewModel>(
+                          builder: (context, tradingViewModel, child) {
+                            return Scaffold(
+                              backgroundColor: const Color(0xFFF8F9FA),
+                              body: SingleChildScrollView(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildSummaryCards(
+                                      context.watch<InventoryViewModel>(),
+                                      context.watch<RentalViewModel>(),
+                                      context.watch<UserViewModel>(),
+                                      context.watch<ExpenditureViewModel>(),
+                                      context.watch<TodoViewModel>(),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    _buildCentralArea(
+                                      context.watch<TradingViewModel>(),
+                                      context.watch<InventoryViewModel>(),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    _buildTradingPerformanceTable(context.watch<TradingViewModel>()),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 
 
-  Widget _buildDashboardCard({
+  // Top 4 Summary Cards with Sparkline Charts
+  Widget _buildSummaryCards(
+    InventoryViewModel inventoryViewModel,
+    RentalViewModel rentalViewModel,
+    UserViewModel userViewModel,
+    ExpenditureViewModel expenditureViewModel,
+    TodoViewModel todoViewModel,
+  ) {
+    return Row(
+      children: [
+        // Total Inventory Card
+        Expanded(
+          child: _buildSummaryCard(
+            title: 'Total Inventory',
+            value: inventoryViewModel.societies.length.toString(),
+            icon: Icons.home,
+            color: const Color(0xFF805AD5),
+            sparklineData: _generateMockSparklineData(),
+            loading: false, // Remove infinite loading spinner
+          ),
+        ),
+        const SizedBox(width: 16),
+        // Rental Items Card
+        Expanded(
+          child: _buildSummaryCard(
+            title: 'Rental Items',
+            value: rentalViewModel.rentalItems.length.toString(),
+            icon: Icons.apartment,
+            color: const Color(0xFF4A90E2),
+            sparklineData: _generateMockSparklineData(),
+            loading: false, // Remove infinite loading spinner
+          ),
+        ),
+        const SizedBox(width: 16),
+        // Active Users Card
+        Expanded(
+          child: _buildSummaryCard(
+            title: 'Active Users',
+            value: userViewModel.users.length.toString(),
+            icon: Icons.people,
+            color: const Color(0xFFFF6B35),
+            sparklineData: _generateMockSparklineData(),
+            loading: false, // Remove infinite loading spinner
+          ),
+        ),
+        const SizedBox(width: 16),
+        // Combined Summary Card
+        Expanded(
+          child: _buildSummaryCard(
+            title: 'Expenses & Tasks',
+            value: 'Rs ${expenditureViewModel.currentTotal.toStringAsFixed(0)}',
+            subtitle: 'Track expenses and tasks',
+            icon: Icons.analytics,
+            color: const Color(0xFF38A169),
+            sparklineData: _generateMockSparklineData(),
+            loading: false, // Remove infinite loading spinner
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryCard({
     required String title,
     required String value,
-    required String subtitle,
+    String? subtitle,
     required IconData icon,
     required Color color,
-    required Color backgroundColor,
+    required List<double> sparklineData,
     required bool loading,
-    required String? error,
-    required DashboardViewModel viewModel,
   }) {
     return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -255,169 +196,128 @@ class _DashboardPageState extends State<DashboardPage> {
             offset: const Offset(0, 4),
           ),
         ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Icon and Header
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: backgroundColor,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    icon,
-                    color: color,
-                    size: 24,
-                  ),
-                ),
-                const Spacer(),
-                if (error != null)
-                  Icon(
-                    Icons.error_outline,
-                    color: Colors.red.shade400,
-                    size: 20,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            // Loading State
-            if (loading) ...[
-              _buildShimmerValue(),
-              const SizedBox(height: 8),
-              _buildShimmerSubtitle(),
-            ] else if (error != null) ...[
-              // Error State
-              Text(
-                'Error',
-                style: AppFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.red.shade600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Failed to load',
-                style: AppFonts.poppins(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w400,
-                  color: Colors.red.shade400,
-                ),
-              ),
-            ] else ...[
-              // Normal State
-              Text(
-                value,
-                style: AppFonts.poppins(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF2D3748),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: AppFonts.poppins(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w400,
-                  color: const Color(0xFF718096),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShimmerValue() {
-    return Shimmer.fromColors(
-      baseColor: const Color(0xFFE6E8ED),
-      highlightColor: const Color(0xFFF4F5F7),
-      child: Container(
-        height: 32,
-        width: 80,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE6E8ED),
-          borderRadius: BorderRadius.circular(4),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShimmerSubtitle() {
-    return Shimmer.fromColors(
-      baseColor: const Color(0xFFE6E8ED),
-      highlightColor: const Color(0xFFF4F5F7),
-      child: Container(
-        height: 16,
-        width: 120,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE6E8ED),
-          borderRadius: BorderRadius.circular(4),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorMessage(DashboardViewModel viewModel) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.shade200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.red.shade600, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Data Loading Error',
-                style: AppFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.red.shade600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            viewModel.error ?? 'Some dashboard data failed to load. Please try refreshing.',
-            style: AppFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w400,
-              color: Colors.red.shade500,
+          // Icon
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
+            child: Icon(icon, color: color, size: 20),
           ),
           const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: viewModel.refresh,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          // Title
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Value
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w400,
+                color: Colors.black54,
               ),
             ),
-            child: Text(
-              'Retry',
-              style: AppFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+          ],
+          const SizedBox(height: 12),
+          // Sparkline Chart
+          SizedBox(
+            height: 60, // Fixed height to prevent layout issues
+            width: double.infinity, // Fixed width to prevent overflow
+            child: SparklineChart(
+              data: sparklineData,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Central Charts & Map Area
+  Widget _buildCentralArea(
+    TradingViewModel tradingViewModel,
+    InventoryViewModel inventoryViewModel,
+  ) {
+    return SizedBox(
+      height: 450, // Fixed height to prevent layout issues
+      child: Row(
+        children: [
+          // Left Chart (70%)
+          Expanded(
+            flex: 7,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Revenue Trend',
+                    style: AppFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF2D3748),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Completed trading performance over time',
+                    style: AppFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                      color: const Color(0xFF718096),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: RevenueAreaChart(
+                      tradingEntries: tradingViewModel.entries,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Right Map (30%)
+          Expanded(
+            flex: 3,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: PropertyMapWidget(
+                tradingEntries: tradingViewModel.entries,
               ),
             ),
           ),
@@ -426,18 +326,13 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-}
-
-/// Custom shimmer widget for dashboard cards
-class DashboardCardShimmer extends StatelessWidget {
-  const DashboardCardShimmer({super.key});
-
-  @override
-  Widget build(BuildContext context) {
+  // Bottom Trading Performance Table
+  Widget _buildTradingPerformanceTable(TradingViewModel tradingViewModel) {
     return Container(
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -446,63 +341,242 @@ class DashboardCardShimmer extends StatelessWidget {
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Icon shimmer
-            Shimmer.fromColors(
-              baseColor: const Color(0xFFE6E8ED),
-              highlightColor: const Color(0xFFF4F5F7),
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE6E8ED),
-                  borderRadius: BorderRadius.circular(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Trading Performance',
+            style: AppFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF2D3748),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Recent trading entries and their status',
+            style: AppFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              color: const Color(0xFF718096),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Table Header
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7FAFC),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Person Name',
+                    style: AppFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF4A5568),
+                    ),
+                  ),
                 ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Property',
+                    style: AppFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF4A5568),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Type',
+                    style: AppFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF4A5568),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Quantity',
+                    style: AppFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF4A5568),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Date',
+                    style: AppFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF4A5568),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Status',
+                    style: AppFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF4A5568),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Table Data
+          SizedBox(
+            height: 300,
+            child: tradingViewModel.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView.builder(
+                    itemCount: tradingViewModel.entries.take(10).length,
+                    itemBuilder: (context, index) {
+                      final entry = tradingViewModel.entries[index];
+                      return _buildTradingRow(entry);
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTradingRow(TradingEntry entry) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.grey.shade200,
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              entry.personName,
+              style: AppFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF2D3748),
               ),
             ),
-            const SizedBox(height: 16),
-            
-            // Value shimmer
-            Shimmer.fromColors(
-              baseColor: const Color(0xFFE6E8ED),
-              highlightColor: const Color(0xFFF4F5F7),
-              child: Container(
-                height: 32,
-                width: 80,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE6E8ED),
-                  borderRadius: BorderRadius.circular(4),
-                ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              entry.estateName,
+              style: AppFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF2D3748),
               ),
             ),
-            const SizedBox(height: 8),
-            
-            // Subtitle shimmer
-            Shimmer.fromColors(
-              baseColor: const Color(0xFFE6E8ED),
-              highlightColor: const Color(0xFFF4F5F7),
-              child: Container(
-                height: 16,
-                width: 120,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE6E8ED),
-                  borderRadius: BorderRadius.circular(4),
-                ),
+          ),
+          Expanded(
+            child: Text(
+              entry.entryType ?? 'N/A',
+              style: AppFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF2D3748),
               ),
             ),
-          ],
+          ),
+          Expanded(
+            child: Text(
+              entry.quantity.toString(),
+              style: AppFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF2D3748),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              DateFormat('dd MMM yyyy').format(entry.createdAt),
+              style: AppFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF2D3748),
+              ),
+            ),
+          ),
+          Expanded(
+            child: _buildStatusBadge(entry.status),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    Color backgroundColor;
+    Color textColor;
+    
+    switch (status.toLowerCase()) {
+      case 'completed':
+        backgroundColor = const Color(0xFFD4EDDA);
+        textColor = const Color(0xFF155724);
+        break;
+      case 'cancelled':
+        backgroundColor = const Color(0xFFF8D7DA);
+        textColor = const Color(0xFF721C24);
+        break;
+      case 'pending':
+      default:
+        backgroundColor = const Color(0xFFFFF3CD);
+        textColor = const Color(0xFF856404);
+        break;
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        status.toUpperCase(),
+        style: AppFonts.poppins(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: textColor,
         ),
       ),
     );
   }
-}
 
-class ChartData {
-  ChartData(this.month, this.value);
-  final String month;
-  final double value;
+  // Helper Methods
+  List<double> _generateMockSparklineData() {
+    // Generate realistic trend data with at least 2 points to prevent RangeError
+    return [
+      20, 25, 22, 30, 28, 35, 32, 40, 38, 45, 42, 48, 45, 50,
+    ];
+  }
+
+  int _getPendingTasksCount() {
+    // This would come from TodoViewModel in a real implementation
+    return 5; // Mock value
+  }
+
+  // Remove old methods - replaced with new structure
 }

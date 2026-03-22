@@ -25,7 +25,7 @@ class RentalViewModel extends ChangeNotifier {
   
   // Pagination
   int _currentPage = 1;
-  int _pageSize = 20;
+  int _pageSize = 10;
   bool _hasMore = true;
   bool _isLoadingMore = false;
   
@@ -65,6 +65,15 @@ class RentalViewModel extends ChangeNotifier {
   bool get canAddRental => PermissionHelper.canAddModule(_currentUser, 'rental_items');
   bool get canEditRental => PermissionHelper.canEditModule(_currentUser, 'rental_items');
   bool get canDeleteRental => PermissionHelper.canDeleteModule(_currentUser, 'rental_items');
+
+  // Standard pagination getters (for consistency with other modules)
+  int get currentPage => _currentPage;
+  int get itemsPerPage => _pageSize;
+  int get totalPages => (_rentalItems.length / _pageSize).ceil();
+  List<Map<String, dynamic>> get paginatedRentalItems {
+    final startIndex = (_currentPage - 1) * _pageSize;
+    return _rentalItems.skip(startIndex).take(_pageSize).toList();
+  }
 
   /// Initialize user context and start data loading
   Future<void> initialize() async {
@@ -358,6 +367,22 @@ class RentalViewModel extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  // Standard pagination methods (for consistency with other modules)
+  void setPage(int page) {
+    if (page >= 1 && page <= totalPages) {
+      _currentPage = page;
+      notifyListeners();
+    }
+  }
+  
+  void setItemsPerPage(int limit) {
+    if (_pageSize != limit) {
+      _pageSize = limit;
+      _currentPage = 1; // Reset to page 1 when items per page changes
+      notifyListeners();
+    }
   }
 
   @override

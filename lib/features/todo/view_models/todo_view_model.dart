@@ -37,6 +37,10 @@ class TodoViewModel extends ChangeNotifier {
   String _searchQuery = '';
   bool _mounted = false; // Add missing mounted field
   
+  // Pagination state
+  int _currentPage = 1;
+  int _itemsPerPage = 10;
+  
   // Getters
   List<Reminder> get reminders => _reminders;
   List<Map<String, dynamic>> get aggregatedTasks => _aggregatedTasks;
@@ -45,6 +49,15 @@ class TodoViewModel extends ChangeNotifier {
   DateTime get selectedDate => _selectedDate;
   TaskSortOption get sortOption => _sortOption;
   String get searchQuery => _searchQuery;
+  
+  // Pagination getters
+  int get currentPage => _currentPage;
+  int get itemsPerPage => _itemsPerPage;
+  int get totalPages => (allTasks.length / _itemsPerPage).ceil();
+  List<dynamic> get paginatedTasks {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    return allTasks.skip(startIndex).take(_itemsPerPage).toList();
+  }
   
   // Combined and filtered tasks
   List<dynamic> get allTasks {
@@ -316,6 +329,7 @@ class TodoViewModel extends ChangeNotifier {
 
   void setSearchQuery(String query) {
     _searchQuery = query;
+    _currentPage = 1; // Reset to page 1 when search changes
     notifyListeners();
   }
 
@@ -332,6 +346,22 @@ class TodoViewModel extends ChangeNotifier {
   void _setLoading(bool loading) {
     _loading = loading;
     notifyListeners();
+  }
+
+  // Pagination methods
+  void setPage(int page) {
+    if (page >= 1 && page <= totalPages) {
+      _currentPage = page;
+      notifyListeners();
+    }
+  }
+  
+  void setItemsPerPage(int limit) {
+    if (_itemsPerPage != limit) {
+      _itemsPerPage = limit;
+      _currentPage = 1; // Reset to page 1 when items per page changes
+      notifyListeners();
+    }
   }
 
   @override

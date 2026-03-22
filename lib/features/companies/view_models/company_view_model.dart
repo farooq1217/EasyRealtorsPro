@@ -31,6 +31,10 @@ class CompanyViewModel extends ChangeNotifier {
   List<CompanyModel> _filteredCompanies = [];
   CompanyModel? _editingCompany;
   String _searchQuery = '';
+  
+  // Pagination state
+  int _currentPage = 1;
+  int _itemsPerPage = 10;
 
   // Form controllers
   final TextEditingController _nameController = TextEditingController();
@@ -53,6 +57,16 @@ class CompanyViewModel extends ChangeNotifier {
   List<CompanyModel> get filteredCompanies => _filteredCompanies;
   CompanyModel? get editingCompany => _editingCompany;
   String get searchQuery => _searchQuery;
+  
+  // Pagination getters
+  int get currentPage => _currentPage;
+  int get itemsPerPage => _itemsPerPage;
+  int get totalPages => (_filteredCompanies.length / _itemsPerPage).ceil();
+  List<CompanyModel> get paginatedCompanies {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    final endIndex = startIndex + _itemsPerPage;
+    return _filteredCompanies.skip(startIndex).take(_itemsPerPage).toList();
+  }
   
   // Set mounted state and process any stored data
   void setMounted(bool mounted) {
@@ -105,6 +119,14 @@ class CompanyViewModel extends ChangeNotifier {
     PermissionHelper.getModulePermissionLevel(_currentUser, 'companies').contains('delete') || 
     RoleUtils.isSuperAdmin(_currentUser);
 
+  bool get isCurrentUserSuperAdmin => 
+    RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+
+  // Public sync method
+  Future<void> syncFromFirestore() async {
+    await _repository.syncCompaniesFromFirestore();
+  }
+
   // Subscription tiers with static limits
   static const Map<String, int> _tierLimits = {
     'Starter': 5,
@@ -135,6 +157,11 @@ class CompanyViewModel extends ChangeNotifier {
       await _repository.ensureCompanyTableColumns().timeout(const Duration(seconds: 3), onTimeout: () {
         debugPrint('CompanyViewModel: Table columns check timed out');
       });
+      
+      // CRITICAL: Sync companies from Firestore before setting up streams
+      debugPrint('CompanyViewModel: Starting Firestore sync...');
+      await _repository.syncCompaniesFromFirestore();
+      debugPrint('CompanyViewModel: Firestore sync completed');
       
       await _setupStreams().timeout(const Duration(seconds: 5), onTimeout: () {
         debugPrint('CompanyViewModel: Stream setup timed out, setting loading to false');
@@ -248,7 +275,25 @@ class CompanyViewModel extends ChangeNotifier {
         return name.contains(query) || address.contains(query) || contact.contains(query);
       }).toList();
     }
+    // Reset to page 1 when filter changes
+    _currentPage = 1;
     notifyListeners();
+  }
+  
+  // Pagination methods
+  void setPage(int page) {
+    if (page >= 1 && page <= totalPages) {
+      _currentPage = page;
+      notifyListeners();
+    }
+  }
+  
+  void setItemsPerPage(int limit) {
+    if (_itemsPerPage != limit) {
+      _itemsPerPage = limit;
+      _currentPage = 1; // Reset to page 1 when items per page changes
+      notifyListeners();
+    }
   }
 
   // Form operations

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../widgets/stat_card.dart';
 import '../../../core/font_utils.dart' show AppFonts;
 import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
@@ -34,6 +35,7 @@ import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../widgets/image_upload_widget.dart' show ImageUploadWidget;
 import '../../../widgets/primary_gradient_button.dart' show PrimaryGradientButton;
 import '../../../core/shared_utils.dart' show TopRightSearch, showCustomTimePicker;
+import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
 import '../../agents/view_models/agent_view_model.dart';
 import '../../agents/repositories/agent_repository_impl.dart';
 import 'agent_working_detail_page.dart';
@@ -520,31 +522,33 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _viewModel,
-      builder: (context, child) {
-        return Focus(
-          autofocus: true,
-          onKeyEvent: (node, event) {
-            if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
-              Navigator.pop(context);
-              return KeyEventResult.handled;
-            }
-            return KeyEventResult.ignored;
-          },
-          child: Scaffold(
-            backgroundColor: Colors.grey.shade50,
-            appBar: AppBar(
-              automaticallyImplyLeading: false,
-              centerTitle: true,
-              title: Text('Agent Working', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
-              backgroundColor: Colors.transparent,
-              flexibleSpace: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
+    return ChangeNotifierProvider<AgentViewModel>.value(
+      value: _viewModel,
+      child: AnimatedBuilder(
+        animation: _viewModel,
+        builder: (context, child) {
+          return Focus(
+            autofocus: true,
+            onKeyEvent: (node, event) {
+              if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+                Navigator.pop(context);
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: Scaffold(
+              backgroundColor: Colors.grey.shade50,
+              appBar: AppBar(
+                automaticallyImplyLeading: false,
+                centerTitle: true,
+                title: Text('Agent Working', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+                backgroundColor: Colors.transparent,
+                flexibleSpace: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
                       Color(0xFFFF6B35), // Orange
                       Color(0xFF4A90E2), // Blue
                     ],
@@ -606,6 +610,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
           ),
         );
       },
+      ),
     );
   }
 
@@ -661,23 +666,77 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   }
 
   Widget _buildTransfersList(List<WorkingProgressData> transfers) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: transfers.length,
-      itemBuilder: (context, index) {
-        final transfer = transfers[index];
-        return _buildTransferCard(transfer);
+    return Consumer<AgentViewModel>(
+      builder: (context, viewModel, child) {
+        final paginatedTransfers = viewModel.paginatedData;
+        final propertyCategories = ['Residential', 'Commercial', 'Plot', 'other'];
+        final filteredPaginatedTransfers = paginatedTransfers.where((entry) => 
+          entry.category != null && 
+          entry.category!.isNotEmpty && 
+          propertyCategories.contains(entry.category)
+        ).toList();
+        
+        return filteredPaginatedTransfers.isEmpty
+            ? _buildEmptyState('No transfers found')
+            : Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(16),
+                      itemCount: filteredPaginatedTransfers.length,
+                      itemBuilder: (context, index) {
+                        final transfer = filteredPaginatedTransfers[index];
+                        return _buildTransferCard(transfer);
+                      },
+                    ),
+                  ),
+                  // Pagination Card (Fixed at bottom)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    child: _buildPaginationCard(viewModel),
+                  ),
+                ],
+              );
       },
     );
   }
 
   Widget _buildClientRequirementsList(List<WorkingProgressData> requirements) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: requirements.length,
-      itemBuilder: (context, index) {
-        final requirement = requirements[index];
-        return _buildRequirementCard(requirement);
+    return Consumer<AgentViewModel>(
+      builder: (context, viewModel, child) {
+        final paginatedRequirements = viewModel.paginatedData;
+        final sourceCategories = ['Direct', 'Agent', 'Website', 'Social Media', 'Referral'];
+        final filteredPaginatedRequirements = paginatedRequirements.where((entry) => 
+          entry.category != null && 
+          entry.category!.isNotEmpty && 
+          sourceCategories.contains(entry.category)
+        ).toList();
+        
+        return filteredPaginatedRequirements.isEmpty
+            ? _buildEmptyState('No client requirements found')
+            : Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(16),
+                      itemCount: filteredPaginatedRequirements.length,
+                      itemBuilder: (context, index) {
+                        final requirement = filteredPaginatedRequirements[index];
+                        return _buildRequirementCard(requirement);
+                      },
+                    ),
+                  ),
+                  // Pagination Card (Fixed at bottom)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    child: _buildPaginationCard(viewModel),
+                  ),
+                ],
+              );
       },
     );
   }
@@ -889,32 +948,34 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
-            maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
-          ),
-          child: Column(
-            children: [
-              // Header with back button
-              Container(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
-                    ),
-                    const Spacer(),
-                    Text(
-                      'Add Transfer',
-                      style: AppFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFFFF6B35),
+      builder: (dialogContext) => ChangeNotifierProvider<AgentViewModel>.value(
+        value: Provider.of<AgentViewModel>(context, listen: false),
+        child: Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+              maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+            ),
+            child: Column(
+              children: [
+                // Header with back button
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'Add Transfer',
+                        style: AppFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFFFF6B35),
                       ),
                     ),
                     const Spacer(),
@@ -928,6 +989,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             ],
           ),
         ),
+        ),
       ),
     );
   }
@@ -936,32 +998,34 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
-            maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
-          ),
-          child: Column(
-            children: [
-              // Header with back button
-              Container(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
-                    ),
-                    const Spacer(),
-                    Text(
-                      'Add Client Requirement',
-                      style: AppFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFFFF6B35),
+      builder: (dialogContext) => ChangeNotifierProvider<AgentViewModel>.value(
+        value: Provider.of<AgentViewModel>(context, listen: false),
+        child: Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+              maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+            ),
+            child: Column(
+              children: [
+                // Header with back button
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'Add Client Requirement',
+                        style: AppFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFFFF6B35),
                       ),
                     ),
                     const Spacer(),
@@ -974,6 +1038,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -1572,6 +1637,16 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
           },
         ),
       ],
+    );
+  }
+
+  Widget _buildPaginationCard(AgentViewModel viewModel) {
+    return CustomPaginationCard(
+      currentPage: viewModel.currentPage,
+      totalItems: viewModel.filteredEntries.length,
+      itemsPerPage: viewModel.itemsPerPage,
+      onPageChanged: (page) => viewModel.setPage(page),
+      onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
     );
   }
 }

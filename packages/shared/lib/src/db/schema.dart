@@ -9,13 +9,20 @@ part 'schema.g.dart';
 class Companies extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
-  TextColumn get status => text()(); // 'active' or 'inactive'
+  TextColumn get status => text().withDefault(const Constant('active'))(); // 'active' or 'inactive' - with default
+  TextColumn get email => text().nullable()(); // Email field for company contact
+  TextColumn get address => text().nullable()(); // Company address
+  TextColumn get contact => text().nullable()(); // Contact phone
+  TextColumn get description => text().nullable()(); // Company description
+  TextColumn get logoUrl => text().nullable()(); // Logo URL
   TextColumn get metadata => text().nullable()();
   IntColumn get maxUserLimit => integer().withDefault(const Constant(5))();
   TextColumn get subscriptionTier => text().withDefault(const Constant('Starter'))();
   TextColumn get createdAt => text()();
   TextColumn get updatedAt => text()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))(); // Active status
+  TextColumn get createdBy => text().nullable()(); // User who created this company
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -152,6 +159,7 @@ class RentalItems extends Table {
   IntColumn get security => integer().nullable()();
   TextColumn get saleStatus => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  TextColumn get createdAt => text()();
   TextColumn get updatedAt => text()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
   @override
@@ -437,7 +445,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 33;
+  int get schemaVersion => 37;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1017,6 +1025,75 @@ class AppDatabase extends _$AppDatabase {
               }
             } catch (e) {
               print('[MIGRATION] Version 33 - Failed final safety check: $e');
+            }
+          }
+          if (from < 34) {
+            // Schema version 34: Add created_at column to rental_items table
+            print('[MIGRATION] Version 34: Adding created_at column to rental_items table');
+            try {
+              await m.database.customStatement('ALTER TABLE rental_items ADD COLUMN created_at TEXT');
+              print('[MIGRATION] Version 34 - Added created_at column to rental_items');
+              
+              // Backfill existing records with current timestamp
+              try {
+                final now = DateTime.now().toIso8601String();
+                await m.database.customStatement('''
+                  UPDATE rental_items SET 
+                    created_at = COALESCE(created_at, updated_at)
+                  WHERE created_at IS NULL OR TRIM(created_at) = ''
+                ''');
+                print('[MIGRATION] Version 34 - Backfilled rental_items table with created_at values');
+              } catch (e) {
+                print('[MIGRATION] Version 34 - Error backfilling rental_items: $e');
+              }
+            } catch (e) {
+              print('[MIGRATION] Version 34 - Error adding created_at column to rental_items: $e');
+            }
+          }
+          if (from < 35) {
+            // Schema version 35: Add missing email column to companies table
+            print('[MIGRATION] Version 35: Adding email column to companies table');
+            try {
+              await m.database.customStatement('ALTER TABLE companies ADD COLUMN email TEXT');
+              print('[MIGRATION] Version 35 - Added email column to companies table');
+            } catch (e) {
+              print('[MIGRATION] Version 35 - Email column already exists or failed to add: $e');
+            }
+          }
+          if (from < 36) {
+            // Schema version 36: Add missing company columns for Firestore sync
+            print('[MIGRATION] Version 36: Adding missing company columns for Firestore sync');
+            try {
+              final columnsToAdd = [
+                'ALTER TABLE companies ADD COLUMN address TEXT',
+                'ALTER TABLE companies ADD COLUMN contact TEXT',
+                'ALTER TABLE companies ADD COLUMN description TEXT',
+                'ALTER TABLE companies ADD COLUMN logo_url TEXT',
+                'ALTER TABLE companies ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+                'ALTER TABLE companies ADD COLUMN created_by TEXT',
+              ];
+              
+              for (final stmt in columnsToAdd) {
+                try {
+                  await m.database.customStatement(stmt);
+                  print('[MIGRATION] Version 36 - Added column: ${stmt.split('ADD COLUMN')[1]}');
+                } catch (e) {
+                  print('[MIGRATION] Version 36 - Column already exists: ${stmt.split('ADD COLUMN')[1]}');
+                }
+              }
+            } catch (e) {
+              print('[MIGRATION] Version 36 - Error adding company columns: $e');
+            }
+          }
+          if (from < 37) {
+            // Schema version 37: Fix status column NOT NULL constraint
+            print('[MIGRATION] Version 37: Fixing status column NOT NULL constraint');
+            try {
+              // Backfill existing records with default status
+              await m.database.customStatement("UPDATE companies SET status = 'active' WHERE status IS NULL OR TRIM(status) = ''");
+              print('[MIGRATION] Version 37 - Backfilled companies status column');
+            } catch (e) {
+              print('[MIGRATION] Version 37 - Error backfilling status column: $e');
             }
           }
         },

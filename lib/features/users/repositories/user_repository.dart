@@ -47,6 +47,10 @@ abstract class UserRepository {
   Future<void> markUserAsUnsynced(String userId);
   Future<void> markUserAsSynced(String userId);
   
+  // User management operations
+  Future<void> updateUserPassword(String userId, String newPassword);
+  Future<void> archiveUser(String userId);
+  
   // User statistics
   Future<Map<String, dynamic>> getUserStatistics(String? companyId);
 }

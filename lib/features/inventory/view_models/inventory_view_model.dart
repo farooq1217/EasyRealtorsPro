@@ -22,6 +22,10 @@ class InventoryViewModel extends ChangeNotifier {
   bool _initialized = false;
   bool _mounted = false;
   
+  // Pagination state
+  int _currentPage = 1;
+  int _itemsPerPage = 10;
+  
   void _setLoading(bool loading) {
     _isLoading = loading;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -63,6 +67,15 @@ class InventoryViewModel extends ChangeNotifier {
   String? get selectedBlockId => _selectedBlockId;
   String? get selectedStatusFilter => _selectedStatusFilter;
   InventoryRepository get repository => _inventoryRepository;
+  
+  // Pagination getters
+  int get currentPage => _currentPage;
+  int get itemsPerPage => _itemsPerPage;
+  int get totalPages => (_filteredItems.length / _itemsPerPage).ceil();
+  List<InventoryItem> get paginatedItems {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    return _filteredItems.skip(startIndex).take(_itemsPerPage).toList();
+  }
 
   // Load all data with proper parameters
   Future<void> loadAllData({String? companyId, bool? isSuper}) async {
@@ -224,6 +237,7 @@ class InventoryViewModel extends ChangeNotifier {
   void setSearchQuery(String query) {
     if (_searchQuery != query) {
       _searchQuery = query;
+      _currentPage = 1; // Reset to page 1 when search changes
       loadItems();
     }
   }
@@ -264,6 +278,7 @@ class InventoryViewModel extends ChangeNotifier {
       }
       
       // Load items with new filters
+      _currentPage = 1; // Reset to page 1 when filter changes
       loadItems();
     } else {
       debugPrint('InventoryViewModel: SocietyId is the same, no action taken');
@@ -402,14 +417,13 @@ class InventoryViewModel extends ChangeNotifier {
             final blockId = block['id'] ?? '';
             return blockId.contains('$_selectedSocietyId\_');
           }).toList();
-    debugPrint('InventoryViewModel: getAvailableBlocks - selectedSocietyId: $_selectedSocietyId, total blocks: ${_blocks.length}, available blocks: ${availableBlocks.length}');
-    debugPrint('InventoryViewModel: Available blocks: ${availableBlocks.map((b) => '${b['id']}:${b['name']}').toList()}');
     
-    // Force UI refresh when blocks are accessed
-    Future.microtask(() {
-      if (!mounted) return;
-      notifyListeners();
-    });
+    // Remove debug logging to prevent console spam
+    // debugPrint('InventoryViewModel: getAvailableBlocks - selectedSocietyId: $_selectedSocietyId, total blocks: ${_blocks.length}, available blocks: ${availableBlocks.length}');
+    // debugPrint('InventoryViewModel: Available blocks: ${availableBlocks.map((b) => '${b['id']}:${b['name']}').toList()}');
+    
+    // Remove the notifyListeners() call that was causing infinite loop
+    // The UI will automatically update when _blocks or _selectedSocietyId changes
     
     return availableBlocks;
   }
@@ -429,6 +443,22 @@ class InventoryViewModel extends ChangeNotifier {
            _selectedBlockId != null ||
            _selectedStatusFilter != null ||
            _searchQuery.isNotEmpty;
+  }
+
+  // Pagination methods
+  void setPage(int page) {
+    if (page >= 1 && page <= totalPages) {
+      _currentPage = page;
+      notifyListeners();
+    }
+  }
+  
+  void setItemsPerPage(int limit) {
+    if (_itemsPerPage != limit) {
+      _itemsPerPage = limit;
+      _currentPage = 1; // Reset to page 1 when items per page changes
+      notifyListeners();
+    }
   }
 
   @override

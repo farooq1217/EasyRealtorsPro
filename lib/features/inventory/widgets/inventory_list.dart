@@ -8,6 +8,7 @@ import '../view_models/inventory_view_model.dart';
 import 'inventory_detail_page.dart';
 import 'inventory_details_modal.dart';
 import '../../../core/phone_actions.dart' show showPhoneActionSheet;
+import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
 
 class InventoryList extends StatefulWidget {
   const InventoryList({super.key});
@@ -21,11 +22,11 @@ class _InventoryListState extends State<InventoryList> {
   Widget build(BuildContext context) {
     return Consumer<InventoryViewModel>(
       builder: (context, viewModel, child) {
-        // Debug: Log the current state
-        debugPrint('InventoryList: Building UI - Societies: ${viewModel.societies.length}, Blocks: ${viewModel.blocks.length}, Loading: ${viewModel.isLoadingSocieties}/${viewModel.isLoadingBlocks}');
+        // Remove debug logging to prevent console spam
+        // debugPrint('InventoryList: Building UI - Societies: ${viewModel.societies.length}, Blocks: ${viewModel.blocks.length}, Loading: ${viewModel.isLoadingSocieties}/${viewModel.isLoadingBlocks}');
         
-        // Filter items by selected type
-        final itemsForType = viewModel.filteredItems
+        // Filter paginated items by selected type
+        final paginatedItemsForType = viewModel.paginatedItems
             .where((item) => item.type == viewModel.selectedType)
             .toList();
         
@@ -97,43 +98,52 @@ class _InventoryListState extends State<InventoryList> {
                 ],
               ),
             ),
-            // List View
+            // Scrollable Content Area
             Expanded(
-              child: viewModel.isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : itemsForType.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.search_off, size: 64, color: Colors.grey.shade400),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No items found',
-                                style: AppFonts.poppins(
-                                  fontSize: 16,
-                                  color: Colors.grey.shade600,
+              child: SingleChildScrollView(
+                child: viewModel.isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : paginatedItemsForType.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.search_off, size: 64, color: Colors.grey.shade400),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No items found',
+                                  style: AppFonts.poppins(
+                                    fontSize: 16,
+                                    color: Colors.grey.shade600,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Try adjusting your filters or add new items',
-                                style: AppFonts.poppins(
-                                  fontSize: 14,
-                                  color: Colors.grey.shade500,
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Try adjusting your filters or add new items',
+                                  style: AppFonts.poppins(
+                                    fontSize: 14,
+                                    color: Colors.grey.shade500,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 116),
+                            itemCount: paginatedItemsForType.length,
+                            itemBuilder: (ctx, i) {
+                              final item = paginatedItemsForType[i];
+                              return _buildInventoryCard(item, viewModel);
+                            },
                           ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 116),
-                          itemCount: itemsForType.length,
-                          itemBuilder: (ctx, i) {
-                            final item = itemsForType[i];
-                            return _buildInventoryCard(item, viewModel);
-                          },
-                        ),
+              ),
+            ),
+            // Pagination Card (Fixed at bottom)
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: _buildPaginationCard(viewModel),
             ),
           ],
         );
@@ -381,6 +391,21 @@ class _InventoryListState extends State<InventoryList> {
       fontSize: 14,
       fontWeight: FontWeight.w600,
       color: sizeColor,
+    );
+  }
+
+  Widget _buildPaginationCard(InventoryViewModel viewModel) {
+    // Filter items by selected type for pagination
+    final filteredItemsForType = viewModel.filteredItems
+        .where((item) => item.type == viewModel.selectedType)
+        .toList();
+    
+    return CustomPaginationCard(
+      currentPage: viewModel.currentPage,
+      totalItems: filteredItemsForType.length,
+      itemsPerPage: viewModel.itemsPerPage,
+      onPageChanged: (page) => viewModel.setPage(page),
+      onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
     );
   }
 }

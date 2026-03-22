@@ -10,6 +10,8 @@ import '../../../core/app.dart' show AdminApp;
 import '../dashboard/dashboard_page.dart';
 import '../inventory/pages/inventory_page.dart';
 import '../agent_working/pages/agent_working_page.dart';
+import '../agents/view_models/agent_view_model.dart';
+import '../agents/repositories/agent_repository_impl.dart';
 import '../rental/pages/rental_page.dart' show RentalItemsPage;
 import '../todo/pages/todo_page.dart' show ToDoPage;
 import '../settings/pages/settings_page.dart' show SettingsPageClean;
@@ -18,6 +20,16 @@ import '../trading/view_models/trading_view_model.dart';
 import '../trading/repositories/trading_repository_impl.dart';
 import '../expenditure/view_models/expenditure_view_model.dart';
 import '../expenditure/repositories/expenditure_repository_impl.dart';
+import '../inventory/view_models/inventory_view_model.dart';
+import '../inventory/repositories/inventory_repository_impl.dart';
+import '../settings/repositories/settings_repository_impl.dart';
+import '../rental/view_models/rental_view_model.dart';
+import '../rental/repositories/rental_repository_impl.dart';
+import '../users/view_models/user_view_model.dart';
+import '../users/repositories/user_repository_impl.dart';
+import '../todo/view_models/todo_view_model.dart';
+import '../todo/repositories/todo_repository_impl.dart';
+import '../../../core/services/notification_service.dart';
 import '../expenditure/pages/expenditure_page.dart';
 import '../users/pages/users_page.dart';
 import '../companies/pages/companies_page.dart';
@@ -195,6 +207,42 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           create: (context) => ExpenditureViewModel(widget.db),
           lazy: false, // Ensure ViewModel is created immediately and stays alive
         ),
+        ChangeNotifierProvider<InventoryViewModel>(
+          create: (context) => InventoryViewModel(
+            InventoryRepositoryImpl(widget.db, companyId: null, isSuperAdmin: false),
+            SettingsRepositoryImpl(widget.db, companyId: null, isSuperAdmin: false),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<RentalViewModel>(
+          create: (context) => RentalViewModel(
+            repository: RentalRepositoryImpl(widget.db),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<UserViewModel>(
+          create: (context) => UserViewModel(
+            UserRepositoryImpl(widget.db),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<TodoViewModel>(
+          create: (context) => TodoViewModel(
+            repository: TodoRepositoryImpl(widget.db),
+            notificationService: NotificationService(),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<AgentViewModel>(
+          create: (context) => AgentViewModel(
+            AgentRepositoryImpl(
+              widget.db,
+              companyId: null,
+              isSuperAdmin: false,
+            ),
+          ),
+          lazy: false,
+        ),
         // Add other providers here as needed for different pages
       ],
       child: Scaffold(
@@ -221,6 +269,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
             // Main Content Area
             Expanded(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Header Bar
                   Container(
@@ -257,13 +306,18 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text(
-                                'Real Estate Management System',
-                                style: AppFonts.poppins(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                  letterSpacing: 0.5,
+                              Expanded(
+                                child: Text(
+                                  'Real Estate Management System',
+                                  style: AppFonts.poppins(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                    letterSpacing: 0.5,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
                               ),
                             ],
@@ -271,50 +325,109 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
                         ),
                         
                         // Dark Mode Toggle - Positioned in top-right corner
-                        Container(
-                          margin: const EdgeInsets.only(top: 0, right: 0),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 1,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Profile Picture
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor: const Color(0xFF805AD5),
+                              backgroundImage: _currentUser?['profile_picture_path'] != null
+                                  ? AssetImage(_currentUser!['profile_picture_path'])
+                                  : null,
+                              child: _currentUser?['profile_picture_path'] == null
+                                  ? Text(
+                                      (_currentUser?['name']?.isNotEmpty == true) 
+                                          ? _currentUser!['name'].substring(0, 1).toUpperCase() 
+                                          : 'U',
+                                      style: AppFonts.poppins(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : null,
                             ),
-                            boxShadow: [
-                              BoxShadow(
+                            const SizedBox(width: 8),
+                            // Notification Bell
+                            Stack(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.notifications_outlined,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  onPressed: () {
+                                    // Handle notifications
+                                  },
+                                  style: IconButton.styleFrom(
+                                    minimumSize: const Size(32, 32),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                  tooltip: 'Notifications',
+                                ),
+                                Positioned(
+                                  top: 6,
+                                  right: 6,
+                                  child: Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.red,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              margin: const EdgeInsets.only(top: 0, right: 0),
+                              decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.1),
-                                blurRadius: 8,
-                                spreadRadius: 0.5,
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.2),
+                                  width: 1,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.white.withOpacity(0.1),
+                                    blurRadius: 8,
+                                    spreadRadius: 0.5,
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                              child: IconButton(
-                                icon: Icon(
-                                  _themeMode == ThemeMode.dark 
-                                    ? Icons.light_mode 
-                                    : Icons.dark_mode,
-                                  color: Colors.white,
-                                  size: 16,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(18),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                  child: IconButton(
+                                    icon: Icon(
+                                      _themeMode == ThemeMode.dark 
+                                        ? Icons.light_mode 
+                                        : Icons.dark_mode,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                    onPressed: () async {
+                                      final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
+                                      final s = await AppStorage().readSettings();
+                                      s['theme'] = newMode;
+                                      await AppStorage().writeSettings(s);
+                                      _onThemeChanged(newMode);
+                                    },
+                                    style: IconButton.styleFrom(
+                                      minimumSize: const Size(32, 32),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                                  ),
                                 ),
-                                onPressed: () async {
-                                  final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
-                                  final s = await AppStorage().readSettings();
-                                  s['theme'] = newMode;
-                                  await AppStorage().writeSettings(s);
-                                  _onThemeChanged(newMode);
-                                },
-                                style: IconButton.styleFrom(
-                                  minimumSize: const Size(32, 32),
-                                  padding: EdgeInsets.zero,
-                                ),
-                                tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
                               ),
                             ),
-                          ),
+                          ],
                         ),
                       ],
                     ),
@@ -323,9 +436,10 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
                   // 12px vertical gap separator
                   const SizedBox(height: 12),
                   
-                  // Page Content - Removed breadcrumb sub-header for cleaner UI
+                  // Page Content - Fixed layout constraints
                   Expanded(
                     child: Container(
+                      width: double.infinity,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:drift/drift.dart' as d;
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared/shared.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/services/app_storage.dart';
@@ -19,8 +20,8 @@ class CompanyRepositoryImpl implements CompanyRepository {
   final SyncDatabaseHelper _syncHelper = SyncDatabaseHelper();
   final FirestoreSyncService _firestoreSync = FirestoreSyncService();
   
-  // SQLite-only flag - disables all Firestore operations
-  static const bool _sqliteOnlyMode = true;
+  // SQLite-only flag - enables Firestore operations
+  static const bool _sqliteOnlyMode = false;
 
   // Platform detection for thread safety
   static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
@@ -254,8 +255,8 @@ class CompanyRepositoryImpl implements CompanyRepository {
                    max_user_limit, subscription_tier, is_active, is_synced, 
                    created_at, updated_at
             FROM companies 
-            WHERE (is_active = 1 OR is_active IS NULL OR is_active = 0)
-            AND (status IS NULL OR status != 'deleted')
+            WHERE (status IS NULL OR (status != 'archived' AND status != 'deleted')) 
+            AND (is_active = 1 OR is_active IS NULL) 
             ORDER BY updated_at DESC
             ''',
           )
@@ -515,14 +516,78 @@ class CompanyRepositoryImpl implements CompanyRepository {
 
   @override
   Future<void> syncCompaniesFromFirestore() async {
-    if (!_isFirestoreOperationAllowed()) return;
+    if (!_isFirestoreOperationAllowed()) {
+      debugPrint('CompanyRepository: Firestore sync not allowed in SQLite-only mode');
+      return;
+    }
     
-    // OPTIMIZATION: Run asynchronously without blocking navigation
-    unawaited(_executeFirestoreOperation(() async {
-      // Implementation for syncing from Firestore would go here
-      // For now, this is a no-op in SQLite-only mode
-      debugPrint('CompanyRepository: Firestore sync skipped in SQLite-only mode');
-    }));
+    await _executeFirestoreOperation(() async {
+      debugPrint('CompanyRepository: Starting sync from Firestore...');
+      
+      try {
+        final firestore = FirebaseFirestore.instance;
+        final companiesCollection = firestore.collection('companies');
+        
+        // Get all companies from Firestore
+        final querySnapshot = await companiesCollection.get();
+        debugPrint('CompanyRepository: Fetched ${querySnapshot.docs.length} companies from Firestore');
+        
+        // Begin transaction for bulk insert
+        await db.transaction(() async {
+          for (final doc in querySnapshot.docs) {
+            final data = doc.data();
+            
+            // Convert Firestore data to CompanyModel format
+            final companyMap = {
+              'id': doc.id,
+              'name': data['name'] ?? '',
+              'address': data['address'] ?? '',
+              'phone': data['phone'] ?? '',
+              'email': data['email'] ?? '',
+              'description': data['description'] ?? '',
+              'logo_url': data['logo_url'] ?? '',
+              'is_active': data['is_active'] ?? true,
+              'is_synced': 1, // Mark as synced
+              'created_at': data['created_at'] ?? DateTime.now().toIso8601String(),
+              'updated_at': data['updated_at'] ?? DateTime.now().toIso8601String(),
+              'created_by': data['created_by'] ?? '',
+            };
+            
+            // Insert or replace company in SQLite
+            await db.customInsert(
+              '''INSERT OR REPLACE INTO companies (
+                id, name, address, contact, email, description, logo_url,
+                is_active, is_synced, created_at, updated_at, created_by
+              ) VALUES (
+                :id, :name, :address, :contact, :email, :description, :logo_url,
+                :is_active, :is_synced, :created_at, :updated_at, :created_by
+              )''',
+              variables: [
+                d.Variable.withString(companyMap['id']),
+                d.Variable.withString(companyMap['name']),
+                d.Variable.withString(companyMap['address']),
+                d.Variable.withString(companyMap['phone'] ?? companyMap['contact'] ?? ''), // Map phone to contact
+                d.Variable.withString(companyMap['email']),
+                d.Variable.withString(companyMap['description']),
+                d.Variable.withString(companyMap['logo_url']),
+                d.Variable.withInt(companyMap['is_active'] ? 1 : 0),
+                d.Variable.withInt(companyMap['is_synced']),
+                d.Variable.withString(companyMap['created_at']),
+                d.Variable.withString(companyMap['updated_at']),
+                d.Variable.withString(companyMap['created_by']),
+              ],
+            );
+            
+            debugPrint('CompanyRepository: Synced company: ${companyMap['name']}');
+          }
+        });
+        
+        debugPrint('CompanyRepository: Successfully synced ${querySnapshot.docs.length} companies from Firestore');
+      } catch (e) {
+        debugPrint('CompanyRepository: Error syncing from Firestore: $e');
+        rethrow;
+      }
+    });
   }
   
   /// Helper method to run async operations without awaiting

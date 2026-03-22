@@ -625,12 +625,9 @@ class _ToDoPageState extends State<ToDoPage> {
                       ),
                       Builder(
                         builder: (context) {
-                          return AnimatedBuilder(
-                            builder: (context, child) {
-                              final allTasks = _viewModel.allTasks;
+                          final allTasks = _viewModel.allTasks;
                               
-                              return Expanded(
-                                child: Column(
+                              return Column(
                                   children: [
                                     if (allTasks.isNotEmpty)
                                       Padding(
@@ -647,8 +644,7 @@ class _ToDoPageState extends State<ToDoPage> {
                                         ),
                                       ),
                                     const SizedBox(height: 8),
-                                    Expanded(
-                                      child: allTasks.isEmpty
+                                    allTasks.isEmpty
                                           ? Center(
                                               child: Column(
                                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -684,6 +680,8 @@ class _ToDoPageState extends State<ToDoPage> {
                                             )
                                           : ListView.builder(
                                               padding: const EdgeInsets.symmetric(horizontal: 16),
+                                              shrinkWrap: true,
+                                              physics: const NeverScrollableScrollPhysics(),
                                               itemCount: allTasks.length,
                                               itemBuilder: (context, index) {
                                                 final task = allTasks[index];
@@ -697,13 +695,8 @@ class _ToDoPageState extends State<ToDoPage> {
                                                 return const SizedBox.shrink();
                                               },
                                             ),
-                                    ),
                                   ],
-                                ),
-                              );
-                            },
-                            animation: _viewModel,
-                          );
+                                );
                         },
                       ),
                     ],

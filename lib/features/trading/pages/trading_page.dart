@@ -12,6 +12,7 @@ import '../widgets/trading_list.dart';
 import '../../../core/services/pdf_service.dart';
 import '../../../core/shared_utils.dart' show TopRightSearch;
 import '../widgets/trading_form.dart';
+import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
 
 class TradingPage extends StatefulWidget {
   final dynamic db;
@@ -179,17 +180,28 @@ Container(
     ],
   ),
 ),
-                // TabBarView for File and Form tabs
+                // Scrollable Content Area
                 Expanded(
                   child: TabBarView(
                     controller: _tabController,
                     children: [
                       // File Tab - Show only File entries
-                      _buildEntriesList(viewModel, 'File'),
+                      Container(
+                        height: double.infinity,
+                        child: _buildEntriesList(viewModel, 'File'),
+                      ),
                       // Form Tab - Show only Form entries  
-                      _buildEntriesList(viewModel, 'Form'),
+                      Container(
+                        height: double.infinity,
+                        child: _buildEntriesList(viewModel, 'Form'),
+                      ),
                     ],
                   ),
+                ),
+                // Pagination Card (Fixed at bottom)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  child: _buildPaginationCard(viewModel),
                 ),
               ],
             );
@@ -245,14 +257,14 @@ Container(
       return const Center(child: CircularProgressIndicator());
     }
     
-    // Filter entries by category using the new category field from TradingEntry
-    final filteredEntries = viewModel.entries.where((entry) {
+    // Filter paginated entries by category using the new category field from TradingEntry
+    final filteredPaginatedEntries = viewModel.paginatedEntries.where((entry) {
       // Use the category field from TradingEntry model
       return entry.category == category;
     }).toList();
     
     return TradingList(
-      entries: filteredEntries,
+      entries: filteredPaginatedEntries,
       onDelete: (entryId) => viewModel.deleteEntry(entryId),
       isLoading: false,
       onStatusUpdate: (entryId, newStatus) => viewModel.updateEntryStatus(entryId, newStatus, context: context),
@@ -379,6 +391,19 @@ Container(
           ),
         );
       },
+    );
+  }
+
+  Widget _buildPaginationCard(TradingViewModel viewModel) {
+    // Get total filtered entries for pagination
+    final totalFilteredEntries = viewModel.entries.length;
+    
+    return CustomPaginationCard(
+      currentPage: viewModel.currentPage,
+      totalItems: totalFilteredEntries,
+      itemsPerPage: viewModel.itemsPerPage,
+      onPageChanged: (page) => viewModel.setPage(page),
+      onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
     );
   }
 }

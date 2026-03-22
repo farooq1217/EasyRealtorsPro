@@ -9,22 +9,13 @@ import 'package:file_selector/file_selector.dart';
 import '../../../../core/font_utils.dart';
 import '../../../../core/services/permission_helper.dart';
 import '../../../../core/services/auth_service.dart';
-import '../../agents/view_models/agent_view_model.dart';
-import '../../agents/repositories/agent_repository_impl.dart';
-import '../../inventory/view_models/inventory_view_model.dart';
-import '../../inventory/repositories/inventory_repository_impl.dart';
-import '../../rental/view_models/rental_view_model.dart';
-import '../../rental/repositories/rental_repository_impl.dart';
-import '../../todo/view_models/todo_view_model.dart';
-import '../../todo/repositories/todo_repository_impl.dart';
-import '../../trading/view_models/trading_view_model.dart';
-import '../../trading/repositories/trading_repository_impl.dart';
-import '../../expenditure/view_models/expenditure_view_model.dart';
-import '../../expenditure/repositories/expenditure_repository_impl.dart';
-import '../../settings/repositories/settings_repository_impl.dart';
+import '../../../../core/services/app_storage.dart';
+import '../view_models/reports_view_model.dart';
+import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:shared/shared.dart';
+import 'package:drift/drift.dart' as d;
 
 class ReportsPage extends StatefulWidget {
   final AppDatabase db;
@@ -35,461 +26,159 @@ class ReportsPage extends StatefulWidget {
 }
 
 class _ReportsPageState extends State<ReportsPage> {
-  // ViewModels
-  late AgentViewModel _agentViewModel;
-  late InventoryViewModel _inventoryViewModel;
-  late RentalViewModel _rentalViewModel;
-  late TodoViewModel _todoViewModel;
-  late TradingViewModel _tradingViewModel;
-  late ExpenditureViewModel _expenditureViewModel;
+  late ReportsViewModel _viewModel;
   
-  // Filter state
-  String _selectedModule = 'Agent Working';
-  String _dateRange = 'All Time';
-  DateTime? _fromDate;
-  DateTime? _toDate;
-  
-  // Module options
-  final List<String> _modules = ['Agent Working', 'Inventory', 'Rental', 'To-Do', 'Trading', 'Expenditure'];
-  final List<String> _dateRanges = ['All Time', 'Daily', 'Weekly', 'Monthly'];
+  // Search controller
+  final TextEditingController _searchController = TextEditingController();
   
   @override
   void initState() {
     super.initState();
+    _viewModel = ReportsViewModel(widget.db);
     
-    // Initialize all ViewModels
-    _agentViewModel = AgentViewModel(AgentRepositoryImpl(
-      widget.db,
-      companyId: null,
-      isSuperAdmin: true,
-    ));
-    _inventoryViewModel = InventoryViewModel(
-      InventoryRepositoryImpl(
-        widget.db,
-        companyId: null,
-        isSuperAdmin: true,
-      ),
-      SettingsRepositoryImpl(
-        widget.db,
-        companyId: null,
-        isSuperAdmin: true,
-      ),
-    );
-    _rentalViewModel = RentalViewModel(
-      repository: RentalRepositoryImpl(widget.db),
-    );
-    _todoViewModel = TodoViewModel(
-      repository: TodoRepositoryImpl(widget.db),
-    );
-    _tradingViewModel = TradingViewModel(TradingRepositoryImpl(widget.db));
-    _expenditureViewModel = ExpenditureViewModel(widget.db);
-    
-    // Load data
+    // Initialize ViewModel but defer data loading
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _loadAllData();
-      }
+      if (!mounted) return;
+      _viewModel.initialize();
     });
   }
   
-  Future<void> _loadAllData() async {
-    await Future.wait([
-      _agentViewModel.initialize(),
-      _inventoryViewModel.loadAllData(),
-      _rentalViewModel.initialize(),
-      _todoViewModel.loadTasks(
-        '',
-        null,
-      ),
-      _tradingViewModel.loadEntries(),
-      _expenditureViewModel.initialize(),
-    ]);
-  }
 
   @override
   void dispose() {
-    _agentViewModel.dispose();
-    _inventoryViewModel.dispose();
-    _rentalViewModel.dispose();
-    _todoViewModel.dispose();
-    _tradingViewModel.dispose();
-    _expenditureViewModel.dispose();
+    _viewModel.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Text(
-          'Reports & Analytics',
-          style: AppFonts.poppins(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        backgroundColor: Colors.transparent,
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.purple.shade500,
-                Colors.purple.shade400,
-                Colors.purple.shade300,
-              ],
-            ),
-          ),
-        ),
-      ),
-      body: MultiProvider(
-        providers: [
-          ChangeNotifierProvider.value(value: _agentViewModel),
-          ChangeNotifierProvider.value(value: _inventoryViewModel),
-          ChangeNotifierProvider.value(value: _rentalViewModel),
-          ChangeNotifierProvider.value(value: _todoViewModel),
-          ChangeNotifierProvider.value(value: _tradingViewModel),
-          ChangeNotifierProvider.value(value: _expenditureViewModel),
-        ],
-        child: Consumer6<AgentViewModel, InventoryViewModel, RentalViewModel, TodoViewModel, TradingViewModel, ExpenditureViewModel>(
-          builder: (context, agent, inventory, rental, todo, trading, expenditure, child) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Step 1: Top Filter Section
-                  _buildFilterSection(),
-                  const SizedBox(height: 24),
-                  
-                  // Step 2: Comprehensive Summary Cards Row
-                  _buildSummaryCards(agent, inventory, rental, todo, trading, expenditure),
-                  const SizedBox(height: 24),
-                  
-                  // Step 3: Data Table Section with Export Buttons
-                  _buildDataTableSection(agent, inventory, rental, todo, trading, expenditure),
+    return ChangeNotifierProvider<ReportsViewModel>.value(
+      value: _viewModel,
+      child: Consumer<ReportsViewModel>(
+        builder: (context, viewModel, child) {
+          // Show loading state but keep buttons visible
+          if (viewModel.loading) {
+            return Scaffold(
+              appBar: AppBar(
+                title: Text('Reports & Analytics', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
+                actions: [
+                  // Show placeholder buttons during loading to maintain UI consistency
+                  const SizedBox(width: 48), // Placeholder for more_vert button
+                  const SizedBox(width: 48), // Placeholder for add button
+                  const SizedBox(width: 48), // Placeholder for search
                 ],
               ),
+              body: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Loading reports...', style: TextStyle(fontSize: 16)),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return Scaffold(
+            backgroundColor: Colors.grey.shade50,
+            body: Column(
+              children: [
+                // Scrollable Content Area (Header, Filters, Stats, Table)
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header with Action Buttons
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          child: _buildHeaderSection(),
+                        ),
+                        const SizedBox(height: 24),
+                        
+                        // Search and Filter Section
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _buildSearchAndFilterSection(),
+                        ),
+                        const SizedBox(height: 24),
+                        
+                        // Summary Dashboard (Stats Cards)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _buildSummaryCards(),
+                        ),
+                        const SizedBox(height: 24),
+                        
+                        // Data Table (Non-scrollable within scrollable parent)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _buildDataTable(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                
+                // Pagination (Fixed at bottom)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  child: _buildPaginationCard(),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildHeaderSection() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            'Reports & Analytics',
+            style: AppFonts.poppins(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF1A237E), // Deep indigo
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        // Clear Filters Button
+        ElevatedButton(
+          onPressed: () {
+            _viewModel.clearFilters();
+            _searchController.clear();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Filters cleared')),
             );
           },
-        ),
-      ),
-    );
-  }
-
-  // Step 1: Top Filter Section
-  Widget _buildFilterSection() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Module Selector
-          Text(
-            'Report Type',
-            style: AppFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFF6B35),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
             ),
+            elevation: 2,
           ),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: _modules.map((module) {
-                final isSelected = _selectedModule == module;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: Text(
-                      module,
-                      style: AppFonts.poppins(
-                        fontSize: 12,
-                        color: isSelected ? Colors.white : Colors.black87,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      if (selected) {
-                        setState(() {
-                          _selectedModule = module;
-                        });
-                      }
-                    },
-                    backgroundColor: Colors.grey.shade100,
-                    selectedColor: Colors.orange.shade600,
-                    checkmarkColor: Colors.white,
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Date Range Selector
-          Text(
-            'Date Range',
-            style: AppFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: _dateRanges.map((range) {
-                final isSelected = _dateRange == range;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: Text(
-                      range,
-                      style: AppFonts.poppins(
-                        fontSize: 12,
-                        color: isSelected ? Colors.white : Colors.black87,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      if (selected) {
-                        setState(() {
-                          _dateRange = range;
-                          _updateDateRange();
-                        });
-                      }
-                    },
-                    backgroundColor: Colors.grey.shade100,
-                    selectedColor: Colors.blue.shade600,
-                    checkmarkColor: Colors.white,
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Custom Date Pickers
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _selectDate(true),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
-                        const SizedBox(width: 8),
-                        Text(
-                          'From: ${_fromDate != null ? _formatDate(_fromDate!) : 'Select date'}',
-                          style: AppFonts.poppins(
-                            fontSize: 12,
-                            color: _fromDate != null ? Colors.black87 : Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _selectDate(false),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
-                        const SizedBox(width: 8),
-                        Text(
-                          'To: ${_toDate != null ? _formatDate(_toDate!) : 'Select date'}',
-                          style: AppFonts.poppins(
-                            fontSize: 12,
-                            color: _toDate != null ? Colors.black87 : Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // Action Buttons
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    setState(() {
-                      _selectedModule = 'Agent Working';
-                      _dateRange = 'All Time';
-                      _fromDate = null;
-                      _toDate = null;
-                    });
-                  },
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: Colors.grey.shade400),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: Text(
-                    'Clear',
-                    style: AppFonts.poppins(
-                      fontSize: 14,
-                      color: Colors.grey.shade700,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    // Apply filters logic here
-                    setState(() {});
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange.shade600,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: Text(
-                    'Apply',
-                    style: AppFonts.poppins(
-                      fontSize: 14,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Step 2: Comprehensive Summary Cards Row
-  Widget _buildSummaryCards(
-    AgentViewModel agent,
-    InventoryViewModel inventory,
-    RentalViewModel rental,
-    TodoViewModel todo,
-    TradingViewModel trading,
-    ExpenditureViewModel expenditure,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Summary for ${_dateRange}',
-          style: AppFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 16),
-        
-        // Horizontal scrollable row of cards
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Agent Working Cards
-              _buildSummaryCard(
-                title: 'Total Transfers',
-                value: agent.transfers.length.toString(),
-                icon: Icons.swap_horiz,
-                color: Colors.blue.shade700,
-                backgroundColor: Colors.orange.shade50,
-              ),
-              _buildSummaryCard(
-                title: 'Pending Transfers',
-                value: agent.transfers.where((t) => t.status?.toLowerCase() == 'pending').length.toString(),
-                icon: Icons.pending,
-                color: Colors.orange.shade700,
-                backgroundColor: Colors.orange.shade50,
-              ),
-              
-              // Inventory Cards
-              _buildSummaryCard(
-                title: 'Total Inventory',
-                value: inventory.allItems.length.toString(),
-                icon: Icons.inventory,
-                color: Colors.purple.shade700,
-                backgroundColor: Colors.orange.shade50,
-              ),
-              _buildSummaryCard(
-                title: 'Sold Inventory',
-                value: inventory.allItems.where((i) => i.saleStatus.toLowerCase() == 'sold').length.toString(),
-                icon: Icons.sell,
-                color: Colors.green.shade700,
-                backgroundColor: Colors.orange.shade50,
-              ),
-              _buildSummaryCard(
-                title: 'Available Inventory',
-                value: inventory.allItems.where((i) => i.saleStatus.toLowerCase() == 'not sold').length.toString(),
-                icon: Icons.check_circle,
-                color: Colors.teal.shade700,
-                backgroundColor: Colors.orange.shade50,
-              ),
-              
-              // Expenditure Card
-              _buildSummaryCard(
-                title: 'Total Expenditure',
-                value: _formatCurrency(_calculateTotalExpenditure(expenditure)),
-                icon: Icons.receipt_long,
-                color: Colors.red.shade700,
-                backgroundColor: Colors.orange.shade50,
-              ),
-              
-              // Trading Cards
-              _buildSummaryCard(
-                title: 'Total Buying',
-                value: _formatCurrency(_calculateTotalBuying(trading.entries)),
-                icon: Icons.shopping_cart,
-                color: Colors.green.shade700,
-                backgroundColor: Colors.orange.shade50,
-              ),
-              _buildSummaryCard(
-                title: 'Total Selling',
-                value: _formatCurrency(_calculateTotalSelling(trading.entries)),
-                icon: Icons.sell,
-                color: Colors.orange.shade700,
-                backgroundColor: Colors.orange.shade50,
+              const Icon(Icons.clear, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Clear Filters',
+                style: AppFonts.poppins(
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
@@ -498,162 +187,349 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  Widget _buildSummaryCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required Color backgroundColor,
-  }) {
-    return Container(
-      width: 160,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: backgroundColor.withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                icon,
-                color: color,
-                size: 20,
-              ),
-              const Spacer(),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: AppFonts.poppins(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: color,
+  Widget _buildSearchAndFilterSection() {
+    return Consumer<ReportsViewModel>(
+      builder: (context, viewModel, child) {
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Search Bar
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search reports...',
+                    prefixIcon: const Icon(Icons.search, color: Color(0xFF4A90E2)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF4A90E2)),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  onChanged: (value) {
+                    viewModel.searchQuery = value;
+                  },
+                ),
+                const SizedBox(height: 16),
+                
+                // Module and Date Range Filters
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth > 800) {
+                      // Desktop layout: Row
+                      return Row(
+                        children: [
+                          Expanded(child: _buildModuleDropdown(viewModel)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildDateRangeDropdown(viewModel)),
+                        ],
+                      );
+                    } else {
+                      // Mobile layout: Column
+                      return Column(
+                        children: [
+                          _buildModuleDropdown(viewModel),
+                          const SizedBox(height: 12),
+                          _buildDateRangeDropdown(viewModel),
+                        ],
+                      );
+                    }
+                  },
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: AppFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Colors.black87,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  // Step 3: Data Table Section with Export Buttons
-  Widget _buildDataTableSection(
-    AgentViewModel agent,
-    InventoryViewModel inventory,
-    RentalViewModel rental,
-    TodoViewModel todo,
-    TradingViewModel trading,
-    ExpenditureViewModel expenditure,
-  ) {
-    final data = _getModuleData(agent, inventory, rental, todo, trading, expenditure);
-    final moduleName = _selectedModule;
-    
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+  Widget _buildModuleDropdown(ReportsViewModel viewModel) {
+    return DropdownButtonFormField<String>(
+      value: viewModel.selectedModule,
+      decoration: InputDecoration(
+        labelText: 'Report Type',
+        hintText: 'Select module',
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFF4A90E2)),
+        ),
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with title and export buttons
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '$moduleName DATA (${data.length})',
-                  style: AppFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
+      items: viewModel.modules.map((module) => DropdownMenuItem(
+        value: module,
+        child: Text(module),
+      )).toList(),
+      onChanged: (value) {
+        if (value != null) {
+          viewModel.selectedModule = value;
+        }
+      },
+    );
+  }
+
+  Widget _buildDateRangeDropdown(ReportsViewModel viewModel) {
+    return DropdownButtonFormField<String>(
+      value: viewModel.dateRange,
+      decoration: InputDecoration(
+        labelText: 'Date Range',
+        hintText: 'Select range',
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFF4A90E2)),
+        ),
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      items: viewModel.dateRanges.map((range) => DropdownMenuItem(
+        value: range,
+        child: Text(range),
+      )).toList(),
+      onChanged: (value) {
+        if (value != null) {
+          viewModel.dateRange = value;
+        }
+      },
+    );
+  }
+  Widget _buildSummaryCards() {
+    return Consumer<ReportsViewModel>(
+      builder: (context, viewModel, child) {
+        final stats = viewModel.getSummaryStatistics();
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Summary for ${viewModel.dateRange}',
+              style: AppFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // Horizontal scrollable row of cards
+            SizedBox(
+              height: 120,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: _buildSummaryCardsList(viewModel, stats),
                 ),
               ),
-              // PDF Export Button
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: IconButton(
-                  onPressed: () => _exportToPDF(data, moduleName),
-                  icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-                  tooltip: 'Export to PDF',
-                ),
-              ),
-              const SizedBox(width: 8),
-              // CSV Export Button
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: IconButton(
-                  onPressed: () => _exportToCSV(data, moduleName),
-                  icon: const Icon(Icons.table_chart, color: Colors.white),
-                  tooltip: 'Export to CSV',
-                ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  List<Widget> _buildSummaryCardsList(ReportsViewModel viewModel, Map<String, dynamic> stats) {
+    final module = viewModel.selectedModule;
+    
+    switch (module) {
+      case 'Agent Working':
+        return [
+          _buildSummaryCard(
+            title: 'Total Transfers',
+            value: stats['total'] ?? '0',
+            icon: Icons.swap_horiz,
+            color: Colors.blue.shade700,
+            backgroundColor: Colors.orange.shade50,
+          ),
+          _buildSummaryCard(
+            title: 'Pending Transfers',
+            value: stats['pending'] ?? '0',
+            icon: Icons.pending,
+            color: Colors.orange.shade700,
+            backgroundColor: Colors.orange.shade50,
+          ),
+        ];
+      case 'Inventory':
+        return [
+          _buildSummaryCard(
+            title: 'Total Inventory',
+            value: stats['total'] ?? '0',
+            icon: Icons.inventory,
+            color: Colors.purple.shade700,
+            backgroundColor: Colors.orange.shade50,
+          ),
+          _buildSummaryCard(
+            title: 'Sold Items',
+            value: stats['sold'] ?? '0',
+            icon: Icons.sell,
+            color: Colors.green.shade700,
+            backgroundColor: Colors.orange.shade50,
+          ),
+          _buildSummaryCard(
+            title: 'Available Items',
+            value: stats['available'] ?? '0',
+            icon: Icons.check_circle,
+            color: Colors.teal.shade700,
+            backgroundColor: Colors.orange.shade50,
+          ),
+        ];
+      case 'Expenditure':
+        return [
+          _buildSummaryCard(
+            title: 'Total Expenditure',
+            value: stats['total'] ?? 'Rs 0',
+            icon: Icons.receipt_long,
+            color: Colors.red.shade700,
+            backgroundColor: Colors.orange.shade50,
+          ),
+        ];
+      case 'Trading':
+        return [
+          _buildSummaryCard(
+            title: 'Total Buying',
+            value: stats['buying'] ?? 'Rs 0',
+            icon: Icons.shopping_cart,
+            color: Colors.green.shade700,
+            backgroundColor: Colors.orange.shade50,
+          ),
+          _buildSummaryCard(
+            title: 'Total Selling',
+            value: stats['selling'] ?? 'Rs 0',
+            icon: Icons.sell,
+            color: Colors.orange.shade700,
+            backgroundColor: Colors.orange.shade50,
+          ),
+        ];
+      default:
+        return [
+          _buildSummaryCard(
+            title: 'Total Records',
+            value: stats['total'] ?? '0',
+            icon: Icons.analytics,
+            color: Colors.blue.shade700,
+            backgroundColor: Colors.orange.shade50,
+          ),
+        ];
+    }
+  }
+
+  Widget _buildDataTable() {
+    return Consumer<ReportsViewModel>(
+      builder: (context, viewModel, child) {
+        final data = viewModel.paginatedReportsData;
+        final moduleName = viewModel.selectedModule;
+        final columns = viewModel.getTableColumns();
+        
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          
-          // Data Table
-          if (data.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(40),
-              child: Center(
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.inbox_outlined,
-                      size: 48,
-                      color: Colors.grey.shade400,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'No data found for $_selectedModule',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header with title and export buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '$moduleName DATA (${viewModel.filteredReportsData.length})',
                       style: AppFonts.poppins(
                         fontSize: 16,
-                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  // PDF Export Button
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: IconButton(
+                      onPressed: () => _exportToPDF(viewModel.filteredReportsData, moduleName),
+                      icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+                      tooltip: 'Export to PDF',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // CSV Export Button
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: IconButton(
+                      onPressed: () => _exportToCSV(viewModel.filteredReportsData, moduleName),
+                      icon: const Icon(Icons.table_chart, color: Colors.white),
+                      tooltip: 'Export to CSV',
+                    ),
+                  ),
+                ],
               ),
-            )
-          else
-            _buildDataTable(data),
-        ],
-      ),
+              const SizedBox(height: 16),
+              
+              // Data Table
+              if (data.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(40),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.inbox_outlined,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No data found for $moduleName',
+                          style: AppFonts.poppins(
+                            fontSize: 16,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                _buildDataTableContent(data, columns),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildDataTable(List<Map<String, dynamic>> data) {
-    final columns = _getTableColumns();
-    
+  Widget _buildDataTableContent(List<Map<String, dynamic>> data, List<Map<String, dynamic>> columns) {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade200),
@@ -722,203 +598,78 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  List<Map<String, dynamic>> _getModuleData(
-    AgentViewModel agent,
-    InventoryViewModel inventory,
-    RentalViewModel rental,
-    TodoViewModel todo,
-    TradingViewModel trading,
-    ExpenditureViewModel expenditure,
-  ) {
-    switch (_selectedModule) {
-      case 'Agent Working':
-        return agent.transfers.map((transfer) => {
-          'name': transfer.name ?? '-',
-          'status': transfer.status ?? '-',
-          'category': transfer.category ?? '-',
-          'date': transfer.transferDate ?? '-',
-        }).toList();
-      case 'Inventory':
-        return inventory.allItems.map((item) => {
-          'name': item.clientName ?? '-',
-          'status': item.saleStatus ?? '-',
-          'price': item.price?.toString() ?? '-',
-          'type': item.type?.toString() ?? '-',
-        }).toList();
-      case 'Rental':
-        return rental.rentalItems.map((rental) => {
-          'name': rental['name'] ?? '-',
-          'status': rental['status'] ?? '-',
-          'price': rental['price']?.toString() ?? '-',
-          'date': rental['created_at'] ?? '-',
-        }).toList();
-      case 'To-Do':
-        return todo.reminders.map((reminder) => {
-          'title': reminder.reminderTitle ?? '-',
-          'date': reminder.reminderDate ?? '-',
-          'time': reminder.reminderTime ?? '-',
-          'status': reminder.notificationStatus ?? '-',
-        }).toList();
-      case 'Trading':
-        return trading.entries.map((entry) => {
-          'person': entry.personName ?? '-',
-          'estate': entry.estateName ?? '-',
-          'type': entry.entryType ?? '-',
-          'price': entry.totalPrice?.toString() ?? '-',
-        }).toList();
-      case 'Expenditure':
-        final allExpenses = [...expenditure.officeExpenses, ...expenditure.projectExpenses];
-        return allExpenses.map((expense) => {
-          'title': expense.description ?? '-',
-          'amount': expense.amount?.toString() ?? '-',
-          'category': expense.category ?? '-',
-          'date': expense.date ?? '-',
-        }).toList();
-      default:
-        return [];
-    }
-  }
-
-  List<Map<String, dynamic>> _getTableColumns() {
-    switch (_selectedModule) {
-      case 'Agent Working':
-        return [
-          {'title': 'Name', 'key': 'name', 'flex': 2},
-          {'title': 'Status', 'key': 'status', 'flex': 1},
-          {'title': 'Category', 'key': 'category', 'flex': 2},
-          {'title': 'Date', 'key': 'date', 'flex': 1},
-        ];
-      case 'Inventory':
-        return [
-          {'title': 'Item Name', 'key': 'name', 'flex': 2},
-          {'title': 'Status', 'key': 'status', 'flex': 1},
-          {'title': 'Price', 'key': 'price', 'flex': 1},
-          {'title': 'Type', 'key': 'type', 'flex': 1},
-        ];
-      case 'Rental':
-        return [
-          {'title': 'Name', 'key': 'name', 'flex': 2},
-          {'title': 'Status', 'key': 'status', 'flex': 1},
-          {'title': 'Price', 'key': 'price', 'flex': 1},
-          {'title': 'Date', 'key': 'date', 'flex': 1},
-        ];
-      case 'To-Do':
-        return [
-          {'title': 'Title', 'key': 'title', 'flex': 2},
-          {'title': 'Date', 'key': 'date', 'flex': 1},
-          {'title': 'Time', 'key': 'time', 'flex': 1},
-          {'title': 'Status', 'key': 'status', 'flex': 1},
-        ];
-      case 'Trading':
-        return [
-          {'title': 'Person', 'key': 'person', 'flex': 2},
-          {'title': 'Estate', 'key': 'estate', 'flex': 2},
-          {'title': 'Type', 'key': 'type', 'flex': 1},
-          {'title': 'Price', 'key': 'price', 'flex': 1},
-        ];
-      case 'Expenditure':
-        return [
-          {'title': 'Title', 'key': 'title', 'flex': 2},
-          {'title': 'Amount', 'key': 'amount', 'flex': 1},
-          {'title': 'Category', 'key': 'category', 'flex': 1},
-          {'title': 'Date', 'key': 'date', 'flex': 1},
-        ];
-      default:
-        return [];
-    }
-  }
-
-  // Helper Methods
-  Future<void> _selectDate(bool isFromDate) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
+  Widget _buildSummaryCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+    required Color backgroundColor,
+  }) {
+    return Container(
+      width: 160,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: backgroundColor.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                icon,
+                color: color,
+                size: 20,
+              ),
+              const Spacer(),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: AppFonts.poppins(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: AppFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+      ),
     );
-    
-    if (picked != null) {
-      setState(() {
-        if (isFromDate) {
-          _fromDate = picked;
-        } else {
-          _toDate = picked;
-        }
-      });
-    }
   }
 
-  void _updateDateRange() {
-    final now = DateTime.now();
-    switch (_dateRange) {
-      case 'Daily':
-        _fromDate = now;
-        _toDate = now;
-        break;
-      case 'Weekly':
-        _fromDate = now.subtract(const Duration(days: 7));
-        _toDate = now;
-        break;
-      case 'Monthly':
-        _fromDate = DateTime(now.year, now.month - 1, now.day);
-        _toDate = now;
-        break;
-      case 'All Time':
-      default:
-        _fromDate = null;
-        _toDate = null;
-        break;
-    }
+  Widget _buildPaginationCard() {
+    return Consumer<ReportsViewModel>(
+      builder: (context, viewModel, child) {
+        return CustomPaginationCard(
+          currentPage: viewModel.currentPage,
+          totalItems: viewModel.filteredReportsData.length,
+          itemsPerPage: viewModel.itemsPerPage,
+          onPageChanged: (page) => viewModel.setPage(page),
+          onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
+        );
+      },
+    );
   }
 
-  double _calculateTotalExpenditure(ExpenditureViewModel expenditure) {
-    final allExpenses = [...expenditure.officeExpenses, ...expenditure.projectExpenses];
-    double total = 0.0;
-    for (final expense in allExpenses) {
-      total += expense.amount ?? 0.0;
-    }
-    return total;
-  }
-
-  double _calculateTotalBuying(List entries) {
-    double total = 0.0;
-    for (final entry in entries) {
-      final entryType = entry.entryType?.toString().toLowerCase() ?? '';
-      if (['buy', 'hp', 'kp', 'purchase'].contains(entryType)) {
-        final price = double.tryParse(entry.totalPrice?.toString() ?? '0') ?? 0.0;
-        total += price;
-      }
-    }
-    return total;
-  }
-
-  double _calculateTotalSelling(List entries) {
-    double total = 0.0;
-    for (final entry in entries) {
-      final entryType = entry.entryType?.toString().toLowerCase() ?? '';
-      if (['sell', 'aemp', 'sale'].contains(entryType)) {
-        final price = double.tryParse(entry.totalPrice?.toString() ?? '0') ?? 0.0;
-        total += price;
-      }
-    }
-    return total;
-  }
-
-  String _formatCurrency(double amount) {
-    return 'Rs ${amount.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (match) => ',',
-    )}';
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}-${date.month}-${date.year}';
-  }
 
   // Export Methods
   Future<void> _exportToCSV(List<Map<String, dynamic>> data, String moduleName) async {
     try {
-      final columns = _getTableColumns();
+      final viewModel = _viewModel;
+      final columns = viewModel.getTableColumns();
       final List<List<String>> csvData = [];
       
       // Add header
@@ -932,37 +683,35 @@ class _ReportsPageState extends State<ReportsPage> {
       
       final csv = const ListToCsvConverter().convert(csvData);
       
+      // Save file
+      final fileName = '${moduleName.toLowerCase().replaceAll(' ', '_')}_report.csv';
       final result = await getSaveLocation(
-        suggestedName: '${moduleName}_report.csv',
         acceptedTypeGroups: [
           const XTypeGroup(
             label: 'CSV files',
             extensions: ['csv'],
+            mimeTypes: ['text/csv'],
           ),
         ],
+        suggestedName: fileName,
       );
       
-      if (result != null) {
-        final file = XFile.fromData(
-          Uint8List.fromList(csv.codeUnits),
-          name: '${moduleName}_report.csv',
-        );
+      if (result != null && mounted) {
+        final file = XFile.fromData(Uint8List.fromList(csv.codeUnits));
         await file.saveTo(result.path);
         
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('CSV exported successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('CSV exported successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error exporting CSV: $e'),
+            content: Text('Failed to export CSV: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -972,8 +721,10 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Future<void> _exportToPDF(List<Map<String, dynamic>> data, String moduleName) async {
     try {
+      final viewModel = _viewModel;
+      final columns = viewModel.getTableColumns();
+      
       final pdf = pw.Document();
-      final columns = _getTableColumns();
       
       pdf.addPage(
         pw.Page(
@@ -982,25 +733,22 @@ class _ReportsPageState extends State<ReportsPage> {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text(
-                  '$moduleName Report',
-                  style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+                pw.Header(
+                  level: 0,
+                  child: pw.Text('$moduleName Report', 
+                    style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)
+                  ),
                 ),
                 pw.SizedBox(height: 20),
                 pw.Table.fromTextArray(
-                  context: context,
-                  data: [
-                    columns.map((col) => col['title'] as String).toList(),
-                    ...data.map((item) => columns.map((col) => item[col['key']]?.toString() ?? '').toList()),
-                  ],
-                  border: pw.TableBorder.all(),
+                  headers: columns.map((col) => col['title'] as String).toList(),
+                  data: data.map((item) => 
+                    columns.map((col) => item[col['key']]?.toString() ?? '').toList()
+                  ).toList(),
+                  border: pw.TableBorder.all(width: 1, color: PdfColors.grey),
                   headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                  cellAlignments: {
-                    0: pw.Alignment.centerLeft,
-                    1: pw.Alignment.centerLeft,
-                    2: pw.Alignment.centerLeft,
-                    3: pw.Alignment.centerLeft,
-                  },
+                  cellStyle: const pw.TextStyle(),
+                  cellPadding: const pw.EdgeInsets.all(5),
                 ),
               ],
             );
@@ -1008,38 +756,37 @@ class _ReportsPageState extends State<ReportsPage> {
         ),
       );
       
+      final bytes = await pdf.save();
+      
+      // Save file
+      final fileName = '${moduleName.toLowerCase().replaceAll(' ', '_')}_report.pdf';
       final result = await getSaveLocation(
-        suggestedName: '${moduleName}_report.pdf',
         acceptedTypeGroups: [
           const XTypeGroup(
             label: 'PDF files',
             extensions: ['pdf'],
+            mimeTypes: ['application/pdf'],
           ),
         ],
+        suggestedName: fileName,
       );
       
-      if (result != null) {
-        final file = XFile.fromData(
-          await pdf.save(),
-          name: '${moduleName}_report.pdf',
-          mimeType: 'application/pdf',
-        );
+      if (result != null && mounted) {
+        final file = XFile.fromData(bytes);
         await file.saveTo(result.path);
         
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('PDF exported successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('PDF exported successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error exporting PDF: $e'),
+            content: Text('Failed to export PDF: $e'),
             backgroundColor: Colors.red,
           ),
         );

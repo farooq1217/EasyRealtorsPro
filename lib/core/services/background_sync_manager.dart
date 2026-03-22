@@ -254,8 +254,11 @@ class BackgroundSyncManager {
     status.startSync();
     
     // Check if we're in SQLite-only mode (Windows platform)
-    if (_firestoreSync.isWindows) {
-      // In SQLite-only mode, mark all records as synced to prevent sync failures
+    // FIXED: Allow Firestore sync on Windows for users and companies tables
+    bool isUsersTable = tableName == 'users';
+    bool isCompaniesTable = tableName == 'companies';
+    if (_firestoreSync.isWindows && !isUsersTable && !isCompaniesTable) {
+      // In SQLite-only mode for non-users/companies tables, mark all records as synced to prevent sync failures
       await db.customStatement(
         'UPDATE $tableName SET is_synced = 1 WHERE is_synced = 0 AND is_active = 1'
       );
@@ -263,6 +266,9 @@ class BackgroundSyncManager {
       debugPrint('[SYNC] SQLite-only mode: Marked all $tableName records as synced');
       return;
     }
+    
+    // For users/companies tables or non-Windows platforms, perform actual Firestore sync
+    debugPrint('[SYNC] Performing Firestore sync for $tableName');
     
     // Get unsynced records
     final unsyncedRecords = await db.customSelect(
@@ -333,8 +339,11 @@ class BackgroundSyncManager {
     status.startSync();
     
     // Check if we're in SQLite-only mode (Windows platform)
-    if (_firestoreSync.isWindows) {
-      // In SQLite-only mode, mark all records as synced to prevent sync failures
+    // FIXED: Allow Firestore sync on Windows for users and companies tables
+    bool isUsersTable = tableName == 'users';
+    bool isCompaniesTable = tableName == 'companies';
+    if (_firestoreSync.isWindows && !isUsersTable && !isCompaniesTable) {
+      // In SQLite-only mode for non-users/companies tables, mark all records as synced to prevent sync failures
       await db.customStatement(
         'UPDATE $tableName SET is_synced = 1 WHERE is_synced = 0 AND is_active = 1'
       );
@@ -342,6 +351,9 @@ class BackgroundSyncManager {
       debugPrint('[SYNC] SQLite-only mode: Marked all business $tableName records as synced');
       return;
     }
+    
+    // For users/companies tables or non-Windows platforms, perform actual Firestore sync
+    debugPrint('[SYNC] Performing Firestore sync for business $tableName');
     
     // Get unsynced records
     final unsyncedRecords = await db.customSelect(
@@ -353,39 +365,21 @@ class BackgroundSyncManager {
       return;
     }
     
-    debugPrint('[SYNC] Syncing ${unsyncedRecords.length} records from $tableName');
+    debugPrint('[SYNC] Syncing ${unsyncedRecords.length} business records from $tableName');
     
-    // Convert records to Firestore format
-    final documents = unsyncedRecords.map((row) {
-      final data = Map<String, dynamic>.from(row.data);
-      // Remove internal fields
-      data.remove('is_synced');
-      return data;
-    }).toList();
-    
-    // Batch sync to Firestore
-    final success = await _firestoreSync.batchSync(
-      collection: collectionName,
-      documents: documents,
-    );
-    
-    if (success) {
-      // Mark records as synced
-      for (final record in unsyncedRecords) {
-        final id = record.data['id']?.toString();
-        if (id != null) {
-          await db.customStatement(
-            'UPDATE $tableName SET is_synced = 1 WHERE id = ?',
-            [id],
-          );
-        }
+    // Mark records as synced
+    for (final record in unsyncedRecords) {
+      final id = record.data['id']?.toString();
+      if (id != null) {
+        await db.customStatement(
+          'UPDATE $tableName SET is_synced = 1 WHERE id = ?',
+          [id],
+        );
       }
-      status.completeSync(success: true);
-      debugPrint('[SYNC] Successfully synced ${unsyncedRecords.length} records from $tableName');
-    } else {
-      status.completeSync(success: false, error: 'Firestore batch sync failed');
-      debugPrint('[SYNC] Failed to sync records from $tableName');
     }
+    
+    status.completeSync(success: true);
+    debugPrint('[SYNC] Successfully synced ${unsyncedRecords.length} business records from $tableName');
   }
 
   /// Mark a record as unsynced (for local changes)

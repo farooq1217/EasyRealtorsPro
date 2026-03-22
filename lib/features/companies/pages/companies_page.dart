@@ -32,6 +32,7 @@ import '../../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../widgets/image_upload_widget.dart' show ImageUploadWidget;
 import '../../../core/shared_utils.dart' show TopRightSearch;
+import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
 
 class CompaniesPage extends StatefulWidget {
   final AppDatabase db;
@@ -107,64 +108,121 @@ class _CompaniesPageState extends State<CompaniesPage> {
             floatingActionButton: _shouldShowAddButton(viewModel) ? _buildFloatingActionButton(viewModel) : null,
             body: Column(
               children: [
-                // Header Separation Gap
-                const SizedBox(height: 12),
-                
-                // Module Header as Separate Floating Pill with Gradient
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 24),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        const Color(0xFFFF6B35), // Orange
-                        const Color(0xFF4A90E2), // Blue
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(25),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      // Centered Companies Title
-                      Expanded(
-                        child: Center(
-                          child: Text(
-                            'Companies',
-                            style: AppFonts.poppins(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                // Scrollable Content Area (Header, Stats, List)
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        // Header Separation Gap
+                        const SizedBox(height: 12),
+                        
+                        // Module Header as Separate Floating Pill with Gradient
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 24),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [
+                                const Color(0xFFFF6B35), // Orange
+                                const Color(0xFF4A90E2), // Blue
+                              ],
                             ),
+                            borderRadius: BorderRadius.circular(25),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              // Centered Companies Title
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    'Companies',
+                                    style: AppFonts.poppins(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              
+                              // Sync and Search
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Sync Button
+                                  IconButton(
+                                    onPressed: () async {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Syncing companies from Firestore...')),
+                                      );
+                                      try {
+                                        await viewModel.syncFromFirestore();
+                                        await viewModel.initialize(); // Refresh data
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Companies sync completed!'),
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Sync failed: $e'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                    icon: const Icon(Icons.cloud_download, color: Colors.white, size: 20),
+                                    tooltip: 'Sync from Firestore',
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: Colors.white.withOpacity(0.2),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Global Search
+                                  TopRightSearch(
+                                    onChanged: (query) => viewModel.setSearchQuery(query),
+                                    hintText: 'Search companies...',
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      
-                      // Global Search
-                      TopRightSearch(
-                        onChanged: (query) => viewModel.setSearchQuery(query),
-                        hintText: 'Search companies...',
-                      ),
-                    ],
+                        
+                        // Statistics Cards
+                        _buildStatisticsCards(context, viewModel),
+                        
+                        // Company List
+                        viewModel.paginatedCompanies.isEmpty
+                            ? _buildEmptyState(context, viewModel)
+                            : _buildCompanyList(context, viewModel),
+                      ],
+                    ),
                   ),
                 ),
                 
-                // Statistics Cards
-                _buildStatisticsCards(context, viewModel),
-                
-                // Company List
-                Expanded(
-                  child: viewModel.filteredCompanies.isEmpty
-                      ? _buildEmptyState(context, viewModel)
-                      : _buildCompanyList(context, viewModel),
+                // Pagination (Fixed at bottom)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  child: _buildPaginationCard(),
                 ),
               ],
             ),
@@ -320,10 +378,12 @@ class _CompaniesPageState extends State<CompaniesPage> {
 
   Widget _buildCompanyList(BuildContext context, CompanyViewModel viewModel) {
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.all(12),
-      itemCount: viewModel.filteredCompanies.length,
+      itemCount: viewModel.paginatedCompanies.length,
       itemBuilder: (context, index) {
-        final company = viewModel.filteredCompanies[index];
+        final company = viewModel.paginatedCompanies[index];
         return _buildCompanyCard(context, company, viewModel);
       },
     );
@@ -899,6 +959,20 @@ class _CompaniesPageState extends State<CompaniesPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPaginationCard() {
+    return Consumer<CompanyViewModel>(
+      builder: (context, viewModel, child) {
+        return CustomPaginationCard(
+          currentPage: viewModel.currentPage,
+          totalItems: viewModel.filteredCompanies.length,
+          itemsPerPage: viewModel.itemsPerPage,
+          onPageChanged: (page) => viewModel.setPage(page),
+          onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
+        );
+      },
     );
   }
 
