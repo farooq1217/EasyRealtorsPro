@@ -561,8 +561,14 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                 indicatorWeight: 3,
                 labelColor: Colors.purple,
                 unselectedLabelColor: Colors.white.withOpacity(0.7),
-                labelStyle: AppFonts.poppins(fontWeight: FontWeight.w600),
-                unselectedLabelStyle: AppFonts.poppins(fontWeight: FontWeight.w400),
+                labelStyle: AppFonts.poppins(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18.0,
+                ),
+                unselectedLabelStyle: AppFonts.poppins(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 16.0,
+                ),
                 tabs: const [
                   Tab(text: 'Transfer'),
                   Tab(text: 'Client Requirements'),
@@ -586,11 +592,31 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                   ],
                 ),
               ),
-              child: TabBarView(
-                controller: _tabController,
+              child: Column(
                 children: [
-                  _buildTransferContent(),
-                  _buildClientRequirementContent(),
+                  // This is the ONLY Expanded widget. It pushes pagination to the bottom.
+                  Expanded(
+                    child: SingleChildScrollView(
+                      // This makes the WHOLE page scroll together
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Conditionally render the active list directly here instead of TabBarView
+                          _tabController.index == 0 
+                              ? _buildTransferContent() 
+                              : _buildClientRequirementContent(),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Fixed Pagination at the bottom
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    child: Consumer<AgentViewModel>(
+                      builder: (context, viewModel, child) => _buildPaginationCard(viewModel),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -678,26 +704,14 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         
         return filteredPaginatedTransfers.isEmpty
             ? _buildEmptyState('No transfers found')
-            : Column(
-                children: [
-                  Expanded(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(16),
-                      itemCount: filteredPaginatedTransfers.length,
-                      itemBuilder: (context, index) {
-                        final transfer = filteredPaginatedTransfers[index];
-                        return _buildTransferCard(transfer);
-                      },
-                    ),
-                  ),
-                  // Pagination Card (Fixed at bottom)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    child: _buildPaginationCard(viewModel),
-                  ),
-                ],
+            : ListView.builder(
+                shrinkWrap: true, // CRITICAL
+                physics: const NeverScrollableScrollPhysics(), // CRITICAL
+                itemCount: filteredPaginatedTransfers.length,
+                itemBuilder: (context, index) {
+                  final transfer = filteredPaginatedTransfers[index];
+                  return _buildTransferCard(transfer);
+                },
               );
       },
     );
@@ -716,26 +730,14 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         
         return filteredPaginatedRequirements.isEmpty
             ? _buildEmptyState('No client requirements found')
-            : Column(
-                children: [
-                  Expanded(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(16),
-                      itemCount: filteredPaginatedRequirements.length,
-                      itemBuilder: (context, index) {
-                        final requirement = filteredPaginatedRequirements[index];
-                        return _buildRequirementCard(requirement);
-                      },
-                    ),
-                  ),
-                  // Pagination Card (Fixed at bottom)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    child: _buildPaginationCard(viewModel),
-                  ),
-                ],
+            : ListView.builder(
+                shrinkWrap: true, // CRITICAL
+                physics: const NeverScrollableScrollPhysics(), // CRITICAL
+                itemCount: filteredPaginatedRequirements.length,
+                itemBuilder: (context, index) {
+                  final requirement = filteredPaginatedRequirements[index];
+                  return _buildRequirementCard(requirement);
+                },
               );
       },
     );

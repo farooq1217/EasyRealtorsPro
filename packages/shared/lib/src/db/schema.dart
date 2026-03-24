@@ -307,6 +307,7 @@ class ExpenditureSubItems extends Table {
   TextColumn get parentId => text().references(Expenditures, #id)(); // Foreign key to main expenditure
   TextColumn get description => text()();
   RealColumn get amount => real()();
+  TextColumn get category => text().nullable()(); // Category field for sub-items
   TextColumn get companyId => text().nullable()();
   TextColumn get createdBy => text().nullable()();
   TextColumn get createdAt => text().nullable()();

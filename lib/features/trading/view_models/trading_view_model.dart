@@ -38,6 +38,7 @@ class TradingViewModel extends ChangeNotifier {
   String _statusFilter = 'All';
   String _dateRangeFilter = 'All';
   String _entryTypeFilter = 'All';
+  String _currentCategory = 'File'; // Current active tab category
   
   // Pagination state
   int _currentPage = 1;
@@ -69,6 +70,7 @@ class TradingViewModel extends ChangeNotifier {
   String get statusFilter => _statusFilter;
   String get dateRangeFilter => _dateRangeFilter;
   String get entryTypeFilter => _entryTypeFilter;
+  String get currentCategory => _currentCategory;
   
   Map<String, dynamic>? get currentUser => _currentUser;
   String? get userCompanyId => _userCompanyId;
@@ -77,9 +79,9 @@ class TradingViewModel extends ChangeNotifier {
   // Pagination getters
   int get currentPage => _currentPage;
   int get itemsPerPage => _itemsPerPage;
-  int get totalPages => (_getFilteredEntries().length / _itemsPerPage).ceil();
+  int get totalPages => (_getFilteredEntriesByCategory(_currentCategory).length / _itemsPerPage).ceil();
   List<TradingEntry> get paginatedEntries {
-    final filteredEntries = _getFilteredEntries();
+    final filteredEntries = _getFilteredEntriesByCategory(_currentCategory);
     final startIndex = (_currentPage - 1) * _itemsPerPage;
     return filteredEntries.skip(startIndex).take(_itemsPerPage).toList();
   }
@@ -231,10 +233,12 @@ class TradingViewModel extends ChangeNotifier {
           // Immediate UI sync: Add to local list immediately
           _entries.insert(0, entryWithContext);
           debugPrint('TradingViewModel: Added entry to local list immediately - new count: ${_entries.length}');
+          debugPrint('TradingViewModel: Entry category: ${entryWithContext.category}, Current tab: $_currentCategory');
           
           // Notify listeners immediately for instant UI update
           if (!_isDisposed) {
             notifyListeners();
+            debugPrint('TradingViewModel: Notified listeners after adding entry');
           }
           
           // Statistics will update automatically via stream
@@ -467,9 +471,28 @@ class TradingViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Set current category (for tab switching)
+  void setCurrentCategory(String category) {
+    if (_currentCategory != category) {
+      _currentCategory = category;
+      _currentPage = 1; // Reset to page 1 when category changes
+      notifyListeners();
+      debugPrint('TradingViewModel: Category changed to $category, reset to page 1');
+    }
+  }
+
   // Get filtered entries based on search and filters
   List<TradingEntry> _getFilteredEntries() {
+    return _getFilteredEntriesByCategory(null); // Get all filtered entries
+  }
+
+  // Get filtered entries by specific category (null for all categories)
+  List<TradingEntry> _getFilteredEntriesByCategory(String? category) {
     var filtered = _entries.where((entry) {
+      // Category filter (if specified)
+      if (category != null && entry.category != category) {
+        return false;
+      }
       // Search filter
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
@@ -603,7 +626,8 @@ class TradingViewModel extends ChangeNotifier {
 
   // Pagination methods
   void setPage(int page) {
-    if (page >= 1 && page <= totalPages) {
+    final maxPage = (_getFilteredEntriesByCategory(_currentCategory).length / _itemsPerPage).ceil();
+    if (page >= 1 && page <= maxPage) {
       _currentPage = page;
       notifyListeners();
     }

@@ -34,15 +34,18 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   final f = NumberFormat.currency(symbol: 'Rs ', decimalDigits: 2);
   
   // Category options for different types
-  static const List<String> officeCategories = ['Bills', 'House', 'Toiletry', 'Health', 'Communications', 'Food'];
+  static const List<String> officeCategories = ["Utility bills", "Rent", "Fuel", "Food", "Salary", "Transport", "Grocery", "Others"];
   static const List<String> projectCategories = ['Eating out', 'Transport', 'Taxi', 'Gifts', 'Entertainment'];
   
   // Form controllers
   final _amountController = TextEditingController();
   final _categoryController = TextEditingController();
+  final _projectNameController = TextEditingController(); // New controller for project names
+  final _customCategoryController = TextEditingController(); // Controller for custom category when "Others" is selected
   DateTime? _selectedDate;
   String? _selectedCategory;
   String _currentFormType = 'office'; // 'office' or 'project'
+  bool _showCustomCategoryField = false; // Flag to show/hide custom category field
 
   @override
   void initState() {
@@ -71,6 +74,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     _viewModel.dispose();
     _amountController.dispose();
     _categoryController.dispose();
+    _projectNameController.dispose(); // Dispose project name controller
+    _customCategoryController.dispose(); // Dispose custom category controller
     super.dispose();
   }
 
@@ -140,17 +145,17 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                     ),
                     bottom: TabBar(
                       controller: _tabController,
-                      indicatorColor: const Color(0xFFFF6B35),
+                      indicatorColor: Colors.purple,
                       indicatorWeight: 3,
-                      labelColor: Colors.white,
-                      unselectedLabelColor: Colors.white70,
+                      labelColor: Colors.purple,
+                      unselectedLabelColor: Colors.white.withOpacity(0.7),
                       labelStyle: AppFonts.poppins(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18.0,
                       ),
                       unselectedLabelStyle: AppFonts.poppins(
                         fontWeight: FontWeight.w500,
-                        fontSize: 14,
+                        fontSize: 16.0,
                       ),
                       tabs: const [
                         Tab(text: 'Office Expense'),
@@ -238,8 +243,9 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                     ),
                   ),
                   floatingActionButton: FloatingActionButton.extended(
-                    onPressed: () => _showExpenseDialog(context, viewModel, 
-                      _tabController.index == 0 ? 'office' : 'project'),
+                    onPressed: () => _tabController.index == 0 
+                        ? _showExpenseDialog(context, viewModel, 'office')
+                        : _showAddProjectDialog(context, viewModel), // New project dialog
                     label: Text('ADD'),
                     icon: const Icon(Icons.add),
                     backgroundColor: const Color(0xFFFF6B35),
@@ -494,11 +500,17 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
         return false;
       }
       
+      // Determine the final category value
+      String finalCategory = _selectedCategory!;
+      if (_selectedCategory == "Others" && _customCategoryController.text.isNotEmpty) {
+        finalCategory = _customCategoryController.text.trim();
+      }
+      
       // CRITICAL DEBUGGING: Print expenditure data before saving
       final expenseData = {
         'type': _currentFormType,
-        'category': _selectedCategory,
-        'description': _selectedCategory!, // Use category as description
+        'category': finalCategory,
+        'description': finalCategory, // Use final category as description
         'amount': amount,
         'date': DateFormat('yyyy-MM-dd').format(_selectedDate!),
         'categoryType': _currentFormType == 'office' ? 'office_expense' : 'project_expense',
@@ -508,8 +520,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       // Use ViewModel's saveExpenseWithCategory method with validated data
       final success = await viewModel.saveExpenseWithCategory(
         _currentFormType == 'office' ? 'office_expense' : 'project_expense', // CRITICAL: Ensure proper category type
-        _selectedCategory,
-        description: _selectedCategory!, // Use category as description
+        finalCategory,
+        description: finalCategory, // Use final category as description
         amount: amount,
         selectedDate: _selectedDate!,
       );
@@ -525,11 +537,88 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
         // 2. Trigger ViewModel data refresh (primary mechanism)
         viewModel.refreshData();
         
-        // 3. Clear form
+        // Clear form
         _amountController.clear();
         _categoryController.clear();
+        _customCategoryController.clear();
         _selectedDate = null;
         _selectedCategory = null;
+        _showCustomCategoryField = false;
+      }
+      
+      return success;
+    } catch (e) {
+      debugPrint('Error saving expense: $e');
+      _showErrorSnackBar('Failed to save expense');
+      return false;
+    }
+  }
+
+  // Save expense method with provided final category value (for dialog use)
+  Future<bool> _saveExpenseWithValues(ExpenditureViewModel viewModel, String finalCategory) async {
+    try {
+      final amountText = _amountController.text.trim();
+      
+      // Validation - Description removed
+      if (amountText.isEmpty) {
+        _showErrorSnackBar('Please enter an amount');
+        return false;
+      }
+      
+      final amount = double.tryParse(amountText);
+      if (amount == null || amount <= 0) {
+        _showErrorSnackBar('Please enter a valid amount');
+        return false;
+      }
+      
+      if (_selectedDate == null) {
+        _showErrorSnackBar('Please select a date');
+        return false;
+      }
+      
+      if (finalCategory.isEmpty) {
+        _showErrorSnackBar('Please select a category');
+        return false;
+      }
+      
+      // CRITICAL DEBUGGING: Print expenditure data before saving
+      final expenseData = {
+        'type': _currentFormType,
+        'category': finalCategory,
+        'description': finalCategory, // Use final category as description
+        'amount': amount,
+        'date': DateFormat('yyyy-MM-dd').format(_selectedDate!),
+        'categoryType': _currentFormType == 'office' ? 'office_expense' : 'project_expense',
+      };
+      print("Expenditure Save Attempt: $expenseData");
+      
+      // Use ViewModel's saveExpenseWithCategory method with validated data
+      final success = await viewModel.saveExpenseWithCategory(
+        _currentFormType == 'office' ? 'office_expense' : 'project_expense', // CRITICAL: Ensure proper category type
+        finalCategory,
+        description: finalCategory, // Use final category as description
+        amount: amount,
+        selectedDate: _selectedDate!,
+      );
+      
+      if (success) {
+        // CRITICAL: Immediate UI refresh through multiple mechanisms
+        
+        // 1. Force immediate page refresh (backup mechanism)
+        if (mounted) {
+          setState(() {});
+        }
+        
+        // 2. Trigger ViewModel data refresh (primary mechanism)
+        viewModel.refreshData();
+        
+        // Clear form
+        _amountController.clear();
+        _categoryController.clear();
+        _customCategoryController.clear();
+        _selectedDate = null;
+        _selectedCategory = null;
+        _showCustomCategoryField = false;
       }
       
       return success;
@@ -555,25 +644,33 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     // Reset form
     _amountController.clear();
     _categoryController.clear();
+    _customCategoryController.clear();
     _selectedDate = DateTime.now(); // Auto-fill with current date
-    _selectedCategory = null;
+    _selectedCategory = type == 'office' ? officeCategories.first : null; // Set default to first item for office
     _currentFormType = type;
+    _showCustomCategoryField = false;
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
-            maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
-          ),
-          child: StatefulBuilder(
-            builder: (dialogContext, state) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+      builder: (dialogContext) {
+        // CRITICAL: Use local dialog state variables instead of parent widget state
+        String? localSelectedCategory = type == 'office' ? officeCategories.first : null; // Set default to first item for office
+        bool localShowCustomCategoryField = false;
+        final localCustomCategoryController = TextEditingController();
+        
+        return Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+              maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+            ),
+            child: StatefulBuilder(
+              builder: (dialogContext, setStateDialog) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   // Header with gradient background
                   Container(
                     padding: const EdgeInsets.all(20),
@@ -681,7 +778,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                           ),
                           const SizedBox(height: 8),
                           DropdownButton<String>(
-                            value: _selectedCategory,
+                            value: localSelectedCategory,
                             hint: Text(
                               "Select category",
                               style: AppFonts.poppins(color: Colors.grey.shade500),
@@ -698,13 +795,48 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                               );
                             }).toList(),
                             onChanged: (value) {
-                              setDialogState(() {
-                                _selectedCategory = value;
-                                _categoryController.text = value ?? '';
+                              setStateDialog(() {
+                                localSelectedCategory = value;
+                                // Show custom category field if "Others" is selected
+                                localShowCustomCategoryField = (value == "Others");
+                                if (!localShowCustomCategoryField) {
+                                  localCustomCategoryController.clear();
+                                }
                               });
                             },
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 8),
+                          // Custom Category Field (shown when "Others" is selected)
+                          if (localShowCustomCategoryField) ...[
+                            Text(
+                              "Custom Category",
+                              style: AppFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: localCustomCategoryController,
+                              decoration: InputDecoration(
+                                hintText: 'Enter custom category',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(color: Colors.grey.shade300),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                              ),
+                              style: AppFonts.poppins(fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(height: 16),
+                          ] else
+                            const SizedBox(height: 16),
                           
                           // Amount Field
                           Text(
@@ -790,9 +922,21 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                             child: ElevatedButton(
                               onPressed: () async {
                                 // Show loading state
-                                setDialogState(() {});
+                                setStateDialog(() {});
                                 
-                                final success = await _saveExpense(viewModel);
+                                // Update parent widget state with local values
+                                setState(() {
+                                  _selectedCategory = localSelectedCategory;
+                                  _categoryController.text = localSelectedCategory ?? '';
+                                });
+                                
+                                // Determine final category value
+                                String finalCategory = localSelectedCategory ?? '';
+                                if (localSelectedCategory == "Others" && localCustomCategoryController.text.isNotEmpty) {
+                                  finalCategory = localCustomCategoryController.text.trim();
+                                }
+                                
+                                final success = await _saveExpenseWithValues(viewModel, finalCategory);
                                 
                                 if (success && dialogContext.mounted) {
                                   // CRITICAL: Auto-close dialog immediately on success
@@ -847,6 +991,245 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                 ],
               );
             },
+          ),
+        ),
+      );
+      }
+    );
+  }
+
+  // New method for adding projects as simple name buckets
+  void _showAddProjectDialog(BuildContext context, ExpenditureViewModel viewModel) {
+    // Auto-generate project name
+    _projectNameController.text = "Project ${viewModel.projectExpenses.length + 1}";
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.5, // Smaller height for simpler form
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with gradient background
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.assignment,
+                        color: Colors.blue.shade600,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        "Add Project",
+                        style: AppFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Form Content - Only Project Name Field
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Project Name Field
+                      Text(
+                        "Project Name",
+                        style: AppFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _projectNameController,
+                        decoration: InputDecoration(
+                          hintText: 'Enter project name',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                        ),
+                        style: AppFonts.poppins(fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Helper text
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue.shade600, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "A project acts as a bucket to organize related expenses. You can add expenses to this project later.",
+                                style: AppFonts.poppins(
+                                  fontSize: 12,
+                                  color: Colors.blue.shade700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Action Buttons
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: AppFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final projectName = _projectNameController.text.trim();
+                          if (projectName.isEmpty) {
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Please enter a project name',
+                                  style: AppFonts.poppins(),
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
+
+                          try {
+                            // Call new addProject method (to be implemented in ViewModel)
+                            await viewModel.addProject(projectName);
+                            
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                            
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Project "$projectName" created successfully!',
+                                    style: AppFonts.poppins(),
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (dialogContext.mounted) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Error creating project: $e',
+                                    style: AppFonts.poppins(),
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF6B35),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Text(
+                          'Create Project',
+                          style: AppFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1228,181 +1611,129 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
             ],
           ),
         );
-  }
+                    }
   
+  // Method to show add sub-item dialog
   void _showAddSubItemDialog(BuildContext context, ExpenditureViewModel viewModel) {
-    viewModel.clearSubItemForm();
-    
-    showModalBottomSheet(
+    // Define the exact category items as requested
+    const List<String> categoryItems = [
+      "Civil work material",
+      "Sanitary material", 
+      "Electric material",
+      "Steel work material",
+      "Wood work material",
+      "Labor",
+      "Transport",
+      "Utility bill",
+      "Rental tools",
+      "Other"
+    ];
+
+    String? selectedCategory;
+    final customCategoryController = TextEditingController();
+    bool showCustomCategory = false;
+
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            left: 20,
-            right: 20,
-            top: 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Add Sub-Item'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                  TextField(
+                    controller: viewModel.itemDescriptionController,
+                    decoration: InputDecoration(
+                      labelText: 'Description',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  SizedBox(height: 16),
+                  TextField(
+                    controller: viewModel.itemAmountController,
+                    decoration: InputDecoration(
+                      labelText: 'Amount',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  SizedBox(height: 16),
+                  // Category Dropdown
+                  DropdownButtonFormField<String>(
+                    value: selectedCategory,
+                    decoration: InputDecoration(
+                      labelText: 'Category',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: categoryItems.map((String category) {
+                      return DropdownMenuItem<String>(
+                        value: category,
+                        child: Text(category),
+                      );
+                    }).toList(),
+                    onChanged: (String? newValue) {
+                      setState(() {
+                        selectedCategory = newValue;
+                        showCustomCategory = (newValue == "Other");
+                        if (!showCustomCategory) {
+                          customCategoryController.clear();
+                        }
+                      });
+                    },
+                  ),
+                  // Show custom category field when "Other" is selected
+                  if (showCustomCategory) ...[
+                    SizedBox(height: 16),
+                    TextField(
+                      controller: customCategoryController,
+                      decoration: InputDecoration(
+                        labelText: 'Enter Custom Category',
+                        border: OutlineInputBorder(),
+                        hintText: 'Specify custom category...',
                       ),
-                      borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(
-                      Icons.receipt_long,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    "Add Sub-Item",
-                    style: AppFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  ],
                 ],
               ),
-              const SizedBox(height: 24),
-              
-              Text(
-                "Description",
-                style: AppFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade700,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text('Cancel'),
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: viewModel.itemDescriptionController,
-                decoration: InputDecoration(
-                  hintText: 'Enter sub-item description',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                  ),
+                ElevatedButton(
+                  onPressed: () async {
+                    // Determine final category value
+                    String finalCategory = '';
+                    if (selectedCategory != null) {
+                      if (selectedCategory == "Other" && customCategoryController.text.isNotEmpty) {
+                        finalCategory = customCategoryController.text.trim();
+                      } else if (selectedCategory != "Other") {
+                        finalCategory = selectedCategory!;
+                      }
+                    }
+
+                    // Set the category in the view model before saving
+                    viewModel.setSelectedSubItemCategory(finalCategory.isEmpty ? null : finalCategory);
+                    
+                    final success = await viewModel.saveSubItem(widget.expense.id);
+                    if (success && dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+                  },
+                  child: Text('Save Item'),
                 ),
-                textCapitalization: TextCapitalization.sentences,
-              ),
-              const SizedBox(height: 16),
-              
-              Text(
-                "Amount",
-                style: AppFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: viewModel.itemAmountController,
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  hintText: 'Enter amount',
-                  prefixText: 'Rs ',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: BorderSide(color: Colors.grey.shade400),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: Text(
-                        "Cancel",
-                        style: AppFonts.poppins(
-                          color: Colors.grey.shade700,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          final success = await viewModel.saveSubItem(widget.expense.id);
-                          if (success && context.mounted) {
-                            Navigator.pop(context);
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: Text(
-                          "Save Item",
-                          style: AppFonts.poppins(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
   
-  Future<void> _handleDeleteSubItem(BuildContext context, ExpenditureViewModel viewModel, domain.ExpenditureSubItem item) async {
+  // Method to handle delete sub-item
+  Future<void> _handleDeleteSubItem(BuildContext context, ExpenditureViewModel viewModel, dynamic item) async {
     final confirm = await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(

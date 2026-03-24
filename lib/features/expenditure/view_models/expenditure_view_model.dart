@@ -50,6 +50,8 @@ class ExpenditureViewModel extends ChangeNotifier {
   List<domain.ExpenditureSubItem> _subItems = [];
   final TextEditingController _itemDescriptionController = TextEditingController();
   final TextEditingController _itemAmountController = TextEditingController();
+  final TextEditingController _itemCategoryController = TextEditingController(); // New category controller
+  String? _selectedItemCategory; // Track selected category for "Other" option
   
   // Stream subscriptions
   StreamSubscription<List<domain.ExpenditureItem>>? _officeExpensesSubscription;
@@ -72,6 +74,8 @@ class ExpenditureViewModel extends ChangeNotifier {
   List<domain.ExpenditureSubItem> get subItems => _subItems;
   TextEditingController get itemDescriptionController => _itemDescriptionController;
   TextEditingController get itemAmountController => _itemAmountController;
+  TextEditingController get itemCategoryController => _itemCategoryController; // New getter
+  String? get selectedItemCategory => _selectedItemCategory; // New getter
   ExpenditureRepository get repository => _repository; // Expose repository
   
   // Computed properties
@@ -334,6 +338,52 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
+  // New method to add a project as a simple bucket (no amount, date, or category)
+  Future<bool> addProject(String projectName) async {
+    try {
+      // CRITICAL: Ensure Firebase calls are on main thread for Windows compatibility
+      if (io.Platform.isWindows) {
+        // On Windows, ensure we're on the main thread for Firebase operations
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      
+      final companyId = RoleUtils.getUserCompanyId(_user);
+      if (companyId == null) {
+        _showErrorSnackBar('Unable to determine company');
+        return false;
+      }
+      
+      // Create project as a special type of expenditure with zero amount and current date
+      final project = domain.ExpenditureItem(
+        id: const Uuid().v4(),
+        date: DateFormat('yyyy-MM-dd').format(DateTime.now()), // Current date for metadata only
+        description: projectName, // Project name as description
+        amount: 0.0, // Zero amount - projects are just buckets
+        categoryType: 'project_bucket', // New type to distinguish from project expenses
+        category: null, // No category for project buckets
+        companyId: companyId,
+        createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
+        isActive: true,
+        isSynced: true,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      print("Project Repository Save: ${project.toMap()}");
+      
+      await _repository.addExpenditure(project);
+      
+      // Show success message
+      _showSuccessSnackBar('Project "$projectName" created successfully');
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error creating project: $e');
+      _showErrorSnackBar('Failed to create project: $e');
+      return false;
+    }
+  }
+
   // New method to save expense with category - accepts form data as parameters
   Future<bool> saveExpenseWithCategory(String type, String? category, {
     required String description,
@@ -418,6 +468,14 @@ class ExpenditureViewModel extends ChangeNotifier {
   void clearSubItemForm() {
     _itemDescriptionController.clear();
     _itemAmountController.clear();
+    _itemCategoryController.clear(); // Clear category controller
+    _selectedItemCategory = null; // Reset selected category
+    notifyListeners();
+  }
+
+  // Method to set selected sub-item category from dialog
+  void setSelectedSubItemCategory(String? category) {
+    _selectedItemCategory = category;
     notifyListeners();
   }
 
@@ -429,11 +487,21 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
     
     try {
+      // Use the category that was set by the dialog
+      final category = _selectedItemCategory;
+          
+      // Category is optional - allow saving without it
+      if (category != null && category.isEmpty) {
+        _showErrorSnackBar('Invalid category');
+        return false;
+      }
+      
       final subItem = domain.ExpenditureSubItem(
         id: const Uuid().v4(),
         parentId: parentId,
         description: _itemDescriptionController.text.trim(),
         amount: double.parse(_itemAmountController.text.trim()),
+        category: category, // Category field (nullable)
         companyId: RoleUtils.getUserCompanyId(_user) ?? '',
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
@@ -447,6 +515,8 @@ class ExpenditureViewModel extends ChangeNotifier {
       // Clear form
       _itemDescriptionController.clear();
       _itemAmountController.clear();
+      _itemCategoryController.clear();
+      _selectedItemCategory = null;
       
       return true;
     } catch (e) {
@@ -549,6 +619,7 @@ class ExpenditureViewModel extends ChangeNotifier {
     _dateController.dispose();
     _itemDescriptionController.dispose();
     _itemAmountController.dispose();
+    _itemCategoryController.dispose(); // Dispose category controller
     
     super.dispose();
   }

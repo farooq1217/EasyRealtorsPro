@@ -214,8 +214,14 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
             indicatorWeight: 3,
             labelColor: Colors.purple,
             unselectedLabelColor: Colors.white.withOpacity(0.7),
-            labelStyle: AppFonts.poppins(fontWeight: FontWeight.w600),
-            unselectedLabelStyle: AppFonts.poppins(fontWeight: FontWeight.w400),
+            labelStyle: AppFonts.poppins(
+              fontWeight: FontWeight.bold,
+              fontSize: 18.0,
+            ),
+            unselectedLabelStyle: AppFonts.poppins(
+              fontWeight: FontWeight.w500,
+              fontSize: 16.0,
+            ),
             tabs: const [
               Tab(text: 'Files'),
               Tab(text: 'Property'),

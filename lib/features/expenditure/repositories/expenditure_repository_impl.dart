@@ -42,10 +42,10 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<List<domain.ExpenditureItem>> getProjectExpenses(String companyId) async {
     try {
-      // CRITICAL: Query for project_expense type to match what we're saving
+      // CRITICAL: Query for project_expense and project_bucket types to match what we're saving
       final rows = await db.customSelect(
-        'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ?) ORDER BY date DESC',
-        variables: [d.Variable.withString(companyId), d.Variable.withString('project_expense'), d.Variable.withString('project')],
+        'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ? OR category_type = ?) ORDER BY date DESC',
+        variables: [d.Variable.withString(companyId), d.Variable.withString('project_expense'), d.Variable.withString('project'), d.Variable.withString('project_bucket')],
       ).get();
       
       return rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList();
@@ -163,11 +163,11 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
 
   @override
   Stream<List<domain.ExpenditureItem>> watchProjectExpenses(String companyId) {
-    // CRITICAL: Stream for project_expense type to match what we're saving
+    // CRITICAL: Stream for project_expense and project_bucket types to match what we're saving
     return db
         .customSelect(
-          'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ?) ORDER BY date DESC',
-          variables: [d.Variable.withString(companyId), d.Variable.withString('project_expense'), d.Variable.withString('project')],
+          'SELECT * FROM Expenditures WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ? OR category_type = ?) ORDER BY date DESC',
+          variables: [d.Variable.withString(companyId), d.Variable.withString('project_expense'), d.Variable.withString('project'), d.Variable.withString('project_bucket')],
         )
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
@@ -237,6 +237,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
           parentId: subItem.parentId,
           description: subItem.description,
           amount: subItem.amount,
+          // category: subItem.category == null ? const d.Value.absent() : d.Value(subItem.category!), // Temporarily commented
           companyId: subItem.companyId == null ? const d.Value.absent() : d.Value(subItem.companyId!),
           createdBy: subItem.createdBy == null ? const d.Value.absent() : d.Value(subItem.createdBy!),
           isActive: d.Value(subItem.isActive),

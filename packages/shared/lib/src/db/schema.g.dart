@@ -23,7 +23,38 @@ class $CompaniesTable extends Companies
   @override
   late final GeneratedColumn<String> status = GeneratedColumn<String>(
       'status', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('active'));
+  static const VerificationMeta _emailMeta = const VerificationMeta('email');
+  @override
+  late final GeneratedColumn<String> email = GeneratedColumn<String>(
+      'email', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _addressMeta =
+      const VerificationMeta('address');
+  @override
+  late final GeneratedColumn<String> address = GeneratedColumn<String>(
+      'address', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _contactMeta =
+      const VerificationMeta('contact');
+  @override
+  late final GeneratedColumn<String> contact = GeneratedColumn<String>(
+      'contact', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _descriptionMeta =
+      const VerificationMeta('description');
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+      'description', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _logoUrlMeta =
+      const VerificationMeta('logoUrl');
+  @override
+  late final GeneratedColumn<String> logoUrl = GeneratedColumn<String>(
+      'logo_url', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _metadataMeta =
       const VerificationMeta('metadata');
   @override
@@ -68,17 +99,40 @@ class $CompaniesTable extends Companies
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("is_synced" IN (0, 1))'),
       defaultValue: const Constant(true));
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
+  static const VerificationMeta _createdByMeta =
+      const VerificationMeta('createdBy');
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+      'created_by', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
         name,
         status,
+        email,
+        address,
+        contact,
+        description,
+        logoUrl,
         metadata,
         maxUserLimit,
         subscriptionTier,
         createdAt,
         updatedAt,
-        isSynced
+        isSynced,
+        isActive,
+        createdBy
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -104,8 +158,28 @@ class $CompaniesTable extends Companies
     if (data.containsKey('status')) {
       context.handle(_statusMeta,
           status.isAcceptableOrUnknown(data['status']!, _statusMeta));
-    } else if (isInserting) {
-      context.missing(_statusMeta);
+    }
+    if (data.containsKey('email')) {
+      context.handle(
+          _emailMeta, email.isAcceptableOrUnknown(data['email']!, _emailMeta));
+    }
+    if (data.containsKey('address')) {
+      context.handle(_addressMeta,
+          address.isAcceptableOrUnknown(data['address']!, _addressMeta));
+    }
+    if (data.containsKey('contact')) {
+      context.handle(_contactMeta,
+          contact.isAcceptableOrUnknown(data['contact']!, _contactMeta));
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+          _descriptionMeta,
+          description.isAcceptableOrUnknown(
+              data['description']!, _descriptionMeta));
+    }
+    if (data.containsKey('logo_url')) {
+      context.handle(_logoUrlMeta,
+          logoUrl.isAcceptableOrUnknown(data['logo_url']!, _logoUrlMeta));
     }
     if (data.containsKey('metadata')) {
       context.handle(_metadataMeta,
@@ -139,6 +213,14 @@ class $CompaniesTable extends Companies
       context.handle(_isSyncedMeta,
           isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta));
     }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(_createdByMeta,
+          createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta));
+    }
     return context;
   }
 
@@ -154,6 +236,16 @@ class $CompaniesTable extends Companies
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       status: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      email: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}email']),
+      address: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}address']),
+      contact: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}contact']),
+      description: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}description']),
+      logoUrl: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}logo_url']),
       metadata: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}metadata']),
       maxUserLimit: attachedDatabase.typeMapping
@@ -166,6 +258,10 @@ class $CompaniesTable extends Companies
           .read(DriftSqlType.string, data['${effectivePrefix}updated_at'])!,
       isSynced: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_synced'])!,
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
+      createdBy: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}created_by']),
     );
   }
 
@@ -179,28 +275,57 @@ class Company extends DataClass implements Insertable<Company> {
   final String id;
   final String name;
   final String status;
+  final String? email;
+  final String? address;
+  final String? contact;
+  final String? description;
+  final String? logoUrl;
   final String? metadata;
   final int maxUserLimit;
   final String subscriptionTier;
   final String createdAt;
   final String updatedAt;
   final bool isSynced;
+  final bool isActive;
+  final String? createdBy;
   const Company(
       {required this.id,
       required this.name,
       required this.status,
+      this.email,
+      this.address,
+      this.contact,
+      this.description,
+      this.logoUrl,
       this.metadata,
       required this.maxUserLimit,
       required this.subscriptionTier,
       required this.createdAt,
       required this.updatedAt,
-      required this.isSynced});
+      required this.isSynced,
+      required this.isActive,
+      this.createdBy});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
     map['status'] = Variable<String>(status);
+    if (!nullToAbsent || email != null) {
+      map['email'] = Variable<String>(email);
+    }
+    if (!nullToAbsent || address != null) {
+      map['address'] = Variable<String>(address);
+    }
+    if (!nullToAbsent || contact != null) {
+      map['contact'] = Variable<String>(contact);
+    }
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    if (!nullToAbsent || logoUrl != null) {
+      map['logo_url'] = Variable<String>(logoUrl);
+    }
     if (!nullToAbsent || metadata != null) {
       map['metadata'] = Variable<String>(metadata);
     }
@@ -209,6 +334,10 @@ class Company extends DataClass implements Insertable<Company> {
     map['created_at'] = Variable<String>(createdAt);
     map['updated_at'] = Variable<String>(updatedAt);
     map['is_synced'] = Variable<bool>(isSynced);
+    map['is_active'] = Variable<bool>(isActive);
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
     return map;
   }
 
@@ -217,6 +346,20 @@ class Company extends DataClass implements Insertable<Company> {
       id: Value(id),
       name: Value(name),
       status: Value(status),
+      email:
+          email == null && nullToAbsent ? const Value.absent() : Value(email),
+      address: address == null && nullToAbsent
+          ? const Value.absent()
+          : Value(address),
+      contact: contact == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contact),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      logoUrl: logoUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(logoUrl),
       metadata: metadata == null && nullToAbsent
           ? const Value.absent()
           : Value(metadata),
@@ -225,6 +368,10 @@ class Company extends DataClass implements Insertable<Company> {
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       isSynced: Value(isSynced),
+      isActive: Value(isActive),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
     );
   }
 
@@ -235,12 +382,19 @@ class Company extends DataClass implements Insertable<Company> {
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       status: serializer.fromJson<String>(json['status']),
+      email: serializer.fromJson<String?>(json['email']),
+      address: serializer.fromJson<String?>(json['address']),
+      contact: serializer.fromJson<String?>(json['contact']),
+      description: serializer.fromJson<String?>(json['description']),
+      logoUrl: serializer.fromJson<String?>(json['logoUrl']),
       metadata: serializer.fromJson<String?>(json['metadata']),
       maxUserLimit: serializer.fromJson<int>(json['maxUserLimit']),
       subscriptionTier: serializer.fromJson<String>(json['subscriptionTier']),
       createdAt: serializer.fromJson<String>(json['createdAt']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
       isSynced: serializer.fromJson<bool>(json['isSynced']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
     );
   }
   @override
@@ -250,12 +404,19 @@ class Company extends DataClass implements Insertable<Company> {
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
       'status': serializer.toJson<String>(status),
+      'email': serializer.toJson<String?>(email),
+      'address': serializer.toJson<String?>(address),
+      'contact': serializer.toJson<String?>(contact),
+      'description': serializer.toJson<String?>(description),
+      'logoUrl': serializer.toJson<String?>(logoUrl),
       'metadata': serializer.toJson<String?>(metadata),
       'maxUserLimit': serializer.toJson<int>(maxUserLimit),
       'subscriptionTier': serializer.toJson<String>(subscriptionTier),
       'createdAt': serializer.toJson<String>(createdAt),
       'updatedAt': serializer.toJson<String>(updatedAt),
       'isSynced': serializer.toJson<bool>(isSynced),
+      'isActive': serializer.toJson<bool>(isActive),
+      'createdBy': serializer.toJson<String?>(createdBy),
     };
   }
 
@@ -263,28 +424,48 @@ class Company extends DataClass implements Insertable<Company> {
           {String? id,
           String? name,
           String? status,
+          Value<String?> email = const Value.absent(),
+          Value<String?> address = const Value.absent(),
+          Value<String?> contact = const Value.absent(),
+          Value<String?> description = const Value.absent(),
+          Value<String?> logoUrl = const Value.absent(),
           Value<String?> metadata = const Value.absent(),
           int? maxUserLimit,
           String? subscriptionTier,
           String? createdAt,
           String? updatedAt,
-          bool? isSynced}) =>
+          bool? isSynced,
+          bool? isActive,
+          Value<String?> createdBy = const Value.absent()}) =>
       Company(
         id: id ?? this.id,
         name: name ?? this.name,
         status: status ?? this.status,
+        email: email.present ? email.value : this.email,
+        address: address.present ? address.value : this.address,
+        contact: contact.present ? contact.value : this.contact,
+        description: description.present ? description.value : this.description,
+        logoUrl: logoUrl.present ? logoUrl.value : this.logoUrl,
         metadata: metadata.present ? metadata.value : this.metadata,
         maxUserLimit: maxUserLimit ?? this.maxUserLimit,
         subscriptionTier: subscriptionTier ?? this.subscriptionTier,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         isSynced: isSynced ?? this.isSynced,
+        isActive: isActive ?? this.isActive,
+        createdBy: createdBy.present ? createdBy.value : this.createdBy,
       );
   Company copyWithCompanion(CompaniesCompanion data) {
     return Company(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       status: data.status.present ? data.status.value : this.status,
+      email: data.email.present ? data.email.value : this.email,
+      address: data.address.present ? data.address.value : this.address,
+      contact: data.contact.present ? data.contact.value : this.contact,
+      description:
+          data.description.present ? data.description.value : this.description,
+      logoUrl: data.logoUrl.present ? data.logoUrl.value : this.logoUrl,
       metadata: data.metadata.present ? data.metadata.value : this.metadata,
       maxUserLimit: data.maxUserLimit.present
           ? data.maxUserLimit.value
@@ -295,6 +476,8 @@ class Company extends DataClass implements Insertable<Company> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
     );
   }
 
@@ -304,19 +487,41 @@ class Company extends DataClass implements Insertable<Company> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('status: $status, ')
+          ..write('email: $email, ')
+          ..write('address: $address, ')
+          ..write('contact: $contact, ')
+          ..write('description: $description, ')
+          ..write('logoUrl: $logoUrl, ')
           ..write('metadata: $metadata, ')
           ..write('maxUserLimit: $maxUserLimit, ')
           ..write('subscriptionTier: $subscriptionTier, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('isSynced: $isSynced')
+          ..write('isSynced: $isSynced, ')
+          ..write('isActive: $isActive, ')
+          ..write('createdBy: $createdBy')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, status, metadata, maxUserLimit,
-      subscriptionTier, createdAt, updatedAt, isSynced);
+  int get hashCode => Object.hash(
+      id,
+      name,
+      status,
+      email,
+      address,
+      contact,
+      description,
+      logoUrl,
+      metadata,
+      maxUserLimit,
+      subscriptionTier,
+      createdAt,
+      updatedAt,
+      isSynced,
+      isActive,
+      createdBy);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -324,75 +529,116 @@ class Company extends DataClass implements Insertable<Company> {
           other.id == this.id &&
           other.name == this.name &&
           other.status == this.status &&
+          other.email == this.email &&
+          other.address == this.address &&
+          other.contact == this.contact &&
+          other.description == this.description &&
+          other.logoUrl == this.logoUrl &&
           other.metadata == this.metadata &&
           other.maxUserLimit == this.maxUserLimit &&
           other.subscriptionTier == this.subscriptionTier &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.isSynced == this.isSynced);
+          other.isSynced == this.isSynced &&
+          other.isActive == this.isActive &&
+          other.createdBy == this.createdBy);
 }
 
 class CompaniesCompanion extends UpdateCompanion<Company> {
   final Value<String> id;
   final Value<String> name;
   final Value<String> status;
+  final Value<String?> email;
+  final Value<String?> address;
+  final Value<String?> contact;
+  final Value<String?> description;
+  final Value<String?> logoUrl;
   final Value<String?> metadata;
   final Value<int> maxUserLimit;
   final Value<String> subscriptionTier;
   final Value<String> createdAt;
   final Value<String> updatedAt;
   final Value<bool> isSynced;
+  final Value<bool> isActive;
+  final Value<String?> createdBy;
   final Value<int> rowid;
   const CompaniesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.status = const Value.absent(),
+    this.email = const Value.absent(),
+    this.address = const Value.absent(),
+    this.contact = const Value.absent(),
+    this.description = const Value.absent(),
+    this.logoUrl = const Value.absent(),
     this.metadata = const Value.absent(),
     this.maxUserLimit = const Value.absent(),
     this.subscriptionTier = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.isSynced = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.createdBy = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CompaniesCompanion.insert({
     required String id,
     required String name,
-    required String status,
+    this.status = const Value.absent(),
+    this.email = const Value.absent(),
+    this.address = const Value.absent(),
+    this.contact = const Value.absent(),
+    this.description = const Value.absent(),
+    this.logoUrl = const Value.absent(),
     this.metadata = const Value.absent(),
     this.maxUserLimit = const Value.absent(),
     this.subscriptionTier = const Value.absent(),
     required String createdAt,
     required String updatedAt,
     this.isSynced = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.createdBy = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         name = Value(name),
-        status = Value(status),
         createdAt = Value(createdAt),
         updatedAt = Value(updatedAt);
   static Insertable<Company> custom({
     Expression<String>? id,
     Expression<String>? name,
     Expression<String>? status,
+    Expression<String>? email,
+    Expression<String>? address,
+    Expression<String>? contact,
+    Expression<String>? description,
+    Expression<String>? logoUrl,
     Expression<String>? metadata,
     Expression<int>? maxUserLimit,
     Expression<String>? subscriptionTier,
     Expression<String>? createdAt,
     Expression<String>? updatedAt,
     Expression<bool>? isSynced,
+    Expression<bool>? isActive,
+    Expression<String>? createdBy,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (status != null) 'status': status,
+      if (email != null) 'email': email,
+      if (address != null) 'address': address,
+      if (contact != null) 'contact': contact,
+      if (description != null) 'description': description,
+      if (logoUrl != null) 'logo_url': logoUrl,
       if (metadata != null) 'metadata': metadata,
       if (maxUserLimit != null) 'max_user_limit': maxUserLimit,
       if (subscriptionTier != null) 'subscription_tier': subscriptionTier,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (isSynced != null) 'is_synced': isSynced,
+      if (isActive != null) 'is_active': isActive,
+      if (createdBy != null) 'created_by': createdBy,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -401,23 +647,37 @@ class CompaniesCompanion extends UpdateCompanion<Company> {
       {Value<String>? id,
       Value<String>? name,
       Value<String>? status,
+      Value<String?>? email,
+      Value<String?>? address,
+      Value<String?>? contact,
+      Value<String?>? description,
+      Value<String?>? logoUrl,
       Value<String?>? metadata,
       Value<int>? maxUserLimit,
       Value<String>? subscriptionTier,
       Value<String>? createdAt,
       Value<String>? updatedAt,
       Value<bool>? isSynced,
+      Value<bool>? isActive,
+      Value<String?>? createdBy,
       Value<int>? rowid}) {
     return CompaniesCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       status: status ?? this.status,
+      email: email ?? this.email,
+      address: address ?? this.address,
+      contact: contact ?? this.contact,
+      description: description ?? this.description,
+      logoUrl: logoUrl ?? this.logoUrl,
       metadata: metadata ?? this.metadata,
       maxUserLimit: maxUserLimit ?? this.maxUserLimit,
       subscriptionTier: subscriptionTier ?? this.subscriptionTier,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isSynced: isSynced ?? this.isSynced,
+      isActive: isActive ?? this.isActive,
+      createdBy: createdBy ?? this.createdBy,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -433,6 +693,21 @@ class CompaniesCompanion extends UpdateCompanion<Company> {
     }
     if (status.present) {
       map['status'] = Variable<String>(status.value);
+    }
+    if (email.present) {
+      map['email'] = Variable<String>(email.value);
+    }
+    if (address.present) {
+      map['address'] = Variable<String>(address.value);
+    }
+    if (contact.present) {
+      map['contact'] = Variable<String>(contact.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (logoUrl.present) {
+      map['logo_url'] = Variable<String>(logoUrl.value);
     }
     if (metadata.present) {
       map['metadata'] = Variable<String>(metadata.value);
@@ -452,6 +727,12 @@ class CompaniesCompanion extends UpdateCompanion<Company> {
     if (isSynced.present) {
       map['is_synced'] = Variable<bool>(isSynced.value);
     }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -464,12 +745,19 @@ class CompaniesCompanion extends UpdateCompanion<Company> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('status: $status, ')
+          ..write('email: $email, ')
+          ..write('address: $address, ')
+          ..write('contact: $contact, ')
+          ..write('description: $description, ')
+          ..write('logoUrl: $logoUrl, ')
           ..write('metadata: $metadata, ')
           ..write('maxUserLimit: $maxUserLimit, ')
           ..write('subscriptionTier: $subscriptionTier, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('isSynced: $isSynced, ')
+          ..write('isActive: $isActive, ')
+          ..write('createdBy: $createdBy, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -11293,25 +11581,39 @@ abstract class _$AppDatabase extends GeneratedDatabase {
 typedef $$CompaniesTableCreateCompanionBuilder = CompaniesCompanion Function({
   required String id,
   required String name,
-  required String status,
+  Value<String> status,
+  Value<String?> email,
+  Value<String?> address,
+  Value<String?> contact,
+  Value<String?> description,
+  Value<String?> logoUrl,
   Value<String?> metadata,
   Value<int> maxUserLimit,
   Value<String> subscriptionTier,
   required String createdAt,
   required String updatedAt,
   Value<bool> isSynced,
+  Value<bool> isActive,
+  Value<String?> createdBy,
   Value<int> rowid,
 });
 typedef $$CompaniesTableUpdateCompanionBuilder = CompaniesCompanion Function({
   Value<String> id,
   Value<String> name,
   Value<String> status,
+  Value<String?> email,
+  Value<String?> address,
+  Value<String?> contact,
+  Value<String?> description,
+  Value<String?> logoUrl,
   Value<String?> metadata,
   Value<int> maxUserLimit,
   Value<String> subscriptionTier,
   Value<String> createdAt,
   Value<String> updatedAt,
   Value<bool> isSynced,
+  Value<bool> isActive,
+  Value<String?> createdBy,
   Value<int> rowid,
 });
 
@@ -11352,6 +11654,21 @@ class $$CompaniesTableFilterComposer
   ColumnFilters<String> get status => $composableBuilder(
       column: $table.status, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<String> get email => $composableBuilder(
+      column: $table.email, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get address => $composableBuilder(
+      column: $table.address, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get contact => $composableBuilder(
+      column: $table.contact, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get logoUrl => $composableBuilder(
+      column: $table.logoUrl, builder: (column) => ColumnFilters(column));
+
   ColumnFilters<String> get metadata => $composableBuilder(
       column: $table.metadata, builder: (column) => ColumnFilters(column));
 
@@ -11370,6 +11687,12 @@ class $$CompaniesTableFilterComposer
 
   ColumnFilters<bool> get isSynced => $composableBuilder(
       column: $table.isSynced, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+      column: $table.createdBy, builder: (column) => ColumnFilters(column));
 
   Expression<bool> usersRefs(
       Expression<bool> Function($$UsersTableFilterComposer f) f) {
@@ -11411,6 +11734,21 @@ class $$CompaniesTableOrderingComposer
   ColumnOrderings<String> get status => $composableBuilder(
       column: $table.status, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get email => $composableBuilder(
+      column: $table.email, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get address => $composableBuilder(
+      column: $table.address, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get contact => $composableBuilder(
+      column: $table.contact, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get logoUrl => $composableBuilder(
+      column: $table.logoUrl, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get metadata => $composableBuilder(
       column: $table.metadata, builder: (column) => ColumnOrderings(column));
 
@@ -11430,6 +11768,12 @@ class $$CompaniesTableOrderingComposer
 
   ColumnOrderings<bool> get isSynced => $composableBuilder(
       column: $table.isSynced, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+      column: $table.createdBy, builder: (column) => ColumnOrderings(column));
 }
 
 class $$CompaniesTableAnnotationComposer
@@ -11450,6 +11794,21 @@ class $$CompaniesTableAnnotationComposer
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
 
+  GeneratedColumn<String> get email =>
+      $composableBuilder(column: $table.email, builder: (column) => column);
+
+  GeneratedColumn<String> get address =>
+      $composableBuilder(column: $table.address, builder: (column) => column);
+
+  GeneratedColumn<String> get contact =>
+      $composableBuilder(column: $table.contact, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+      column: $table.description, builder: (column) => column);
+
+  GeneratedColumn<String> get logoUrl =>
+      $composableBuilder(column: $table.logoUrl, builder: (column) => column);
+
   GeneratedColumn<String> get metadata =>
       $composableBuilder(column: $table.metadata, builder: (column) => column);
 
@@ -11467,6 +11826,12 @@ class $$CompaniesTableAnnotationComposer
 
   GeneratedColumn<bool> get isSynced =>
       $composableBuilder(column: $table.isSynced, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
 
   Expression<T> usersRefs<T extends Object>(
       Expression<T> Function($$UsersTableAnnotationComposer a) f) {
@@ -11516,48 +11881,76 @@ class $$CompaniesTableTableManager extends RootTableManager<
             Value<String> id = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<String> status = const Value.absent(),
+            Value<String?> email = const Value.absent(),
+            Value<String?> address = const Value.absent(),
+            Value<String?> contact = const Value.absent(),
+            Value<String?> description = const Value.absent(),
+            Value<String?> logoUrl = const Value.absent(),
             Value<String?> metadata = const Value.absent(),
             Value<int> maxUserLimit = const Value.absent(),
             Value<String> subscriptionTier = const Value.absent(),
             Value<String> createdAt = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
             Value<bool> isSynced = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
+            Value<String?> createdBy = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               CompaniesCompanion(
             id: id,
             name: name,
             status: status,
+            email: email,
+            address: address,
+            contact: contact,
+            description: description,
+            logoUrl: logoUrl,
             metadata: metadata,
             maxUserLimit: maxUserLimit,
             subscriptionTier: subscriptionTier,
             createdAt: createdAt,
             updatedAt: updatedAt,
             isSynced: isSynced,
+            isActive: isActive,
+            createdBy: createdBy,
             rowid: rowid,
           ),
           createCompanionCallback: ({
             required String id,
             required String name,
-            required String status,
+            Value<String> status = const Value.absent(),
+            Value<String?> email = const Value.absent(),
+            Value<String?> address = const Value.absent(),
+            Value<String?> contact = const Value.absent(),
+            Value<String?> description = const Value.absent(),
+            Value<String?> logoUrl = const Value.absent(),
             Value<String?> metadata = const Value.absent(),
             Value<int> maxUserLimit = const Value.absent(),
             Value<String> subscriptionTier = const Value.absent(),
             required String createdAt,
             required String updatedAt,
             Value<bool> isSynced = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
+            Value<String?> createdBy = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               CompaniesCompanion.insert(
             id: id,
             name: name,
             status: status,
+            email: email,
+            address: address,
+            contact: contact,
+            description: description,
+            logoUrl: logoUrl,
             metadata: metadata,
             maxUserLimit: maxUserLimit,
             subscriptionTier: subscriptionTier,
             createdAt: createdAt,
             updatedAt: updatedAt,
             isSynced: isSynced,
+            isActive: isActive,
+            createdBy: createdBy,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

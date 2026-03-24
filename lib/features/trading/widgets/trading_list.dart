@@ -88,6 +88,8 @@ class _TradingListState extends State<TradingList> {
     // Main content with error boundary
     try {
       return ListView.builder(
+        shrinkWrap: true, // CRITICAL: Required when inside SingleChildScrollView
+        physics: const NeverScrollableScrollPhysics(), // CRITICAL: Required when inside SingleChildScrollView
         itemCount: widget.entries.length,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         itemBuilder: (context, index) {

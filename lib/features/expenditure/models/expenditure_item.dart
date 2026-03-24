@@ -165,6 +165,7 @@ class ExpenditureSubItem extends Equatable {
   final String parentId;
   final String description;
   final double amount;
+  final String? category; // New category field
   final String? companyId;
   final String? createdBy;
   final bool isActive;
@@ -177,6 +178,7 @@ class ExpenditureSubItem extends Equatable {
     required this.parentId,
     required this.description,
     required this.amount,
+    this.category, // New category field
     this.companyId,
     this.createdBy,
     this.isActive = true,
@@ -190,6 +192,7 @@ class ExpenditureSubItem extends Equatable {
     String? parentId,
     String? description,
     double? amount,
+    String? category, // New category field
     String? companyId,
     String? createdBy,
     bool? isActive,
@@ -202,6 +205,7 @@ class ExpenditureSubItem extends Equatable {
       parentId: parentId ?? this.parentId,
       description: description ?? this.description,
       amount: amount ?? this.amount,
+      category: category ?? this.category, // New category field
       companyId: companyId ?? this.companyId,
       createdBy: createdBy ?? this.createdBy,
       isActive: isActive ?? this.isActive,
@@ -217,6 +221,7 @@ class ExpenditureSubItem extends Equatable {
       'parent_id': parentId,
       'description': description,
       'amount': amount,
+      'category': category, // New category field
       'company_id': companyId,
       'created_by': createdBy,
       'is_active': isActive ? 1 : 0,
@@ -240,6 +245,7 @@ class ExpenditureSubItem extends Equatable {
       parentId: (map['parent_id'] ?? '').toString(),
       description: (map['description'] ?? '').toString(),
       amount: parsedAmount,
+      category: (map['category'])?.toString(), // New category field
       companyId: (map['company_id'])?.toString(),
       createdBy: (map['created_by'])?.toString(),
       isActive: (map['is_active'] is int ? map['is_active'] == 1 : map['is_active'] == true) ?? true,
@@ -255,6 +261,7 @@ class ExpenditureSubItem extends Equatable {
         parentId,
         description,
         amount,
+        category, // New category field
         companyId,
         createdBy,
         isActive,

@@ -34,6 +34,14 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        // Update ViewModel category when tab changes
+        final newCategory = _tabController.index == 0 ? 'File' : 'Form';
+        viewModel.setCurrentCategory(newCategory);
+      }
+    });
+    
     viewModel = Provider.of<TradingViewModel>(context, listen: false);
     
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -41,6 +49,8 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
         try {
           await viewModel.reinitializeIfNeeded();
           await viewModel.loadEntries();
+          // Set initial category after loading
+          viewModel.setCurrentCategory('File');
         } catch (e) {
           debugPrint("Error loading data: $e");
           // Yahan error handle karein takay UI block na ho
@@ -79,8 +89,18 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
           elevation: 0,
           bottom: TabBar(
             controller: _tabController,
-            indicatorColor: Colors.white,
-            labelStyle: AppFonts.poppins(fontWeight: FontWeight.bold),
+            indicatorColor: Colors.purple,
+            indicatorWeight: 3,
+            labelColor: Colors.purple,
+            unselectedLabelColor: Colors.white.withOpacity(0.7),
+            labelStyle: AppFonts.poppins(
+              fontWeight: FontWeight.bold,
+              fontSize: 18.0,
+            ),
+            unselectedLabelStyle: AppFonts.poppins(
+              fontWeight: FontWeight.w500,
+              fontSize: 16.0,
+            ),
             tabs: const [
               Tab(text: 'File'),
               Tab(text: 'Form'),
@@ -104,101 +124,26 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
         ),
         body: Consumer<TradingViewModel>(
           builder: (context, viewModel, child) {
-            return Column(
+            return Column( // Main body Column
               children: [
-                const SizedBox(height: 12),
-                // Filter Section
-Container(
-  padding: const EdgeInsets.all(16),
-  color: Colors.white,
-  child: Column(
-    children: [
-      Row(
-        children: [
-          _buildFilterDropdown(
-            label: 'Date Range',
-            value: _dateRangeFilter,
-            icon: Icons.calendar_today,
-            items: ['All', 'Today', 'This Week', 'This Month', 'This Year'],
-            onChanged: (val) {
-              setState(() => _dateRangeFilter = val!);
-              viewModel.filterByDateRange(val!);
-            },
-          ),
-          const SizedBox(width: 12),
-          _buildFilterDropdown(
-            label: 'Select payment option',
-            value: _entryTypeFilter,
-            icon: Icons.category,
-            items: ['All', 'HP', 'KP', 'MP', 'NMP', 'NNMP', 'BOP', 'SOP', 'AEMP'],
-            onChanged: (val) {
-              if (val != null) {
-                setState(() => _entryTypeFilter = val);
-                viewModel.filterByEntryType(val);
-              }
-            },
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      
-      // YAHAN FIX HAI: Status dropdown ko Row mein wrap kar diya hai
-      Row(
-        children: [
-          _buildFilterDropdown(
-            label: 'Status',
-            value: _statusFilter,
-            icon: Icons.info_outline,
-            items: ['All', 'Pending', 'Completed', 'Cancelled'],
-            onChanged: (val) {
-              setState(() => _statusFilter = val!);
-              viewModel.filterByStatus(val!);
-            },
-          ),
-        ],
-      ),
-      
-      if (_dateRangeFilter != 'All' || _entryTypeFilter != 'All' || _statusFilter != 'All')
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: () {
-              setState(() {
-                _dateRangeFilter = 'All';
-                _entryTypeFilter = 'All';
-                _statusFilter = 'All';
-              });
-              viewModel.clearFilters();
-            },
-            icon: const Icon(Icons.clear, size: 16),
-            label: const Text('Clear Filters'),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFFF6B35),
-            ),
-          ),
-        ),
-    ],
-  ),
-),
-                // Scrollable Content Area
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      // File Tab - Show only File entries
-                      Container(
-                        height: double.infinity,
-                        child: _buildEntriesList(viewModel, 'File'),
-                      ),
-                      // Form Tab - Show only Form entries  
-                      Container(
-                        height: double.infinity,
-                        child: _buildEntriesList(viewModel, 'Form'),
-                      ),
-                    ],
+                Expanded( // 1. This ONLY goes here to take available space and push pagination down
+                  child: SingleChildScrollView( // 2. Makes WHOLE page scroll together
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildHeaderAndTabs(), // Your top search, headers, or tabs
+                        _buildFilters(),       // Any dropdowns/filters
+                        
+                        // 3. The inner ListView/GridView MUST NOT be wrapped in Expanded
+                        _tabController.index == 0 
+                            ? _buildEntriesList(viewModel, 'File')
+                            : _buildEntriesList(viewModel, 'Form'),
+                      ],
+                    ),
                   ),
                 ),
-                // Pagination Card (Fixed at bottom)
+                // 4. Pagination stays safely at absolute bottom
                 Container(
                   padding: const EdgeInsets.all(16),
                   child: _buildPaginationCard(viewModel),
@@ -223,6 +168,90 @@ Container(
     );
   }
 
+
+  Widget _buildHeaderAndTabs() {
+    return Column(
+      children: [
+        // TabBar is already in AppBar, so no need to rebuild here
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget _buildFilters() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: Colors.white,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _buildFilterDropdown(
+                label: 'Date Range',
+                value: _dateRangeFilter,
+                icon: Icons.calendar_today,
+                items: ['All', 'Today', 'This Week', 'This Month', 'This Year'],
+                onChanged: (val) {
+                  setState(() => _dateRangeFilter = val!);
+                  viewModel.filterByDateRange(val!);
+                },
+              ),
+              const SizedBox(width: 12),
+              _buildFilterDropdown(
+                label: 'Select payment option',
+                value: _entryTypeFilter,
+                icon: Icons.category,
+                items: ['All', 'HP', 'KP', 'MP', 'NMP', 'NNMP', 'BOP', 'SOP', 'AEMP'],
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _entryTypeFilter = val);
+                    viewModel.filterByEntryType(val);
+                  }
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          // Status dropdown in Row
+          Row(
+            children: [
+              _buildFilterDropdown(
+                label: 'Status',
+                value: _statusFilter,
+                icon: Icons.info_outline,
+                items: ['All', 'Pending', 'Completed', 'Cancelled'],
+                onChanged: (val) {
+                  setState(() => _statusFilter = val!);
+                  viewModel.filterByStatus(val!);
+                },
+              ),
+            ],
+          ),
+          
+          if (_dateRangeFilter != 'All' || _entryTypeFilter != 'All' || _statusFilter != 'All')
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _dateRangeFilter = 'All';
+                    _entryTypeFilter = 'All';
+                    _statusFilter = 'All';
+                  });
+                  viewModel.clearFilters();
+                },
+                icon: const Icon(Icons.clear, size: 16),
+                label: const Text('Clear Filters'),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFFF6B35),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   // Get current active tab name
   String _getCurrentTab() {
@@ -257,14 +286,10 @@ Container(
       return const Center(child: CircularProgressIndicator());
     }
     
-    // Filter paginated entries by category using the new category field from TradingEntry
-    final filteredPaginatedEntries = viewModel.paginatedEntries.where((entry) {
-      // Use the category field from TradingEntry model
-      return entry.category == category;
-    }).toList();
-    
+    // The paginatedEntries are now already filtered by category in the ViewModel
+    // No need to filter again here
     return TradingList(
-      entries: filteredPaginatedEntries,
+      entries: viewModel.paginatedEntries, // Already filtered by currentCategory
       onDelete: (entryId) => viewModel.deleteEntry(entryId),
       isLoading: false,
       onStatusUpdate: (entryId, newStatus) => viewModel.updateEntryStatus(entryId, newStatus, context: context),
@@ -331,6 +356,7 @@ Container(
                     padding: const EdgeInsets.all(20),
                     child: GenericTradingForm(
                       viewModel: viewModel,
+                      initialCategory: viewModel.currentCategory, // Pass current tab category
                       onSave: (entry) async {
                         try {
                           // Await the save operation without passing context
@@ -395,8 +421,8 @@ Container(
   }
 
   Widget _buildPaginationCard(TradingViewModel viewModel) {
-    // Get total filtered entries for pagination
-    final totalFilteredEntries = viewModel.entries.length;
+    // Get total filtered entries for current category pagination
+    final totalFilteredEntries = _getFilteredEntriesCount(viewModel);
     
     return CustomPaginationCard(
       currentPage: viewModel.currentPage,
@@ -405,5 +431,63 @@ Container(
       onPageChanged: (page) => viewModel.setPage(page),
       onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
     );
+  }
+
+  // Helper method to get filtered entries count for current category
+  int _getFilteredEntriesCount(TradingViewModel viewModel) {
+    final allEntries = viewModel.entries;
+    final currentCategory = viewModel.currentCategory;
+    
+    return allEntries.where((entry) {
+      // Apply same filtering logic as in ViewModel but only count
+      if (entry.category != currentCategory) return false;
+      
+      // Apply other filters (search, status, date range, entry type)
+      if (viewModel.searchQuery.isNotEmpty) {
+        final query = viewModel.searchQuery.toLowerCase();
+        final matchesSearch = entry.personName.toLowerCase().contains(query) ||
+            entry.estateName.toLowerCase().contains(query) ||
+            entry.mobileNo.toLowerCase().contains(query);
+        if (!matchesSearch) return false;
+      }
+      
+      if (viewModel.statusFilter != 'All' && viewModel.statusFilter.isNotEmpty) {
+        if (entry.status.toLowerCase() != viewModel.statusFilter.toLowerCase()) return false;
+      }
+      
+      // Date range filter (simplified for counting)
+      if (viewModel.dateRangeFilter != 'All' && viewModel.dateRangeFilter.isNotEmpty) {
+        final now = DateTime.now();
+        bool matchesDateRange = false;
+        
+        switch (viewModel.dateRangeFilter) {
+          case 'Today':
+            matchesDateRange = entry.date.year == now.year && 
+                             entry.date.month == now.month && 
+                             entry.date.day == now.day;
+            break;
+          case 'This Week':
+            final weekStart = now.subtract(Duration(days: now.weekday - 1));
+            final weekEnd = weekStart.add(const Duration(days: 7));
+            matchesDateRange = entry.date.isAfter(weekStart) && entry.date.isBefore(weekEnd);
+            break;
+          case 'This Month':
+            matchesDateRange = entry.date.year == now.year && entry.date.month == now.month;
+            break;
+          case 'This Year':
+            matchesDateRange = entry.date.year == now.year;
+            break;
+          default:
+            matchesDateRange = true;
+        }
+        if (!matchesDateRange) return false;
+      }
+      
+      if (viewModel.entryTypeFilter != 'All' && viewModel.entryTypeFilter.isNotEmpty) {
+        if (entry.entryType != viewModel.entryTypeFilter) return false;
+      }
+      
+      return true;
+    }).length;
   }
 }
