@@ -189,51 +189,21 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                     ),
                     child: Column(
                       children: [
-                        // Tab Content with StreamBuilder for real-time updates
+                        // Tab Content using ViewModel state
                         Expanded(
                           child: TabBarView(
                             controller: _tabController,
                             children: [
-                              // Office Expenses Tab with StreamBuilder
-                              StreamBuilder<List<domain.ExpenditureItem>>(
-                                stream: _viewModel.repository.watchOfficeExpenses(
-                                  RoleUtils.getUserCompanyId(_viewModel.user) ?? ''
-                                ),
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState == ConnectionState.waiting) {
-                                    return const Center(child: CircularProgressIndicator());
-                                  }
-                                  if (snapshot.hasError) {
-                                    return Center(
-                                      child: Text(
-                                        'Error loading office expenses',
-                                        style: AppFonts.poppins(color: Colors.red),
-                                      ),
-                                    );
-                                  }
-                                  final officeExpenses = snapshot.data ?? [];
-                                  return _buildListView(context, officeExpenses, "Office");
+                              // Office Expenses Tab using ViewModel state
+                              Consumer<ExpenditureViewModel>(
+                                builder: (context, viewModel, child) {
+                                  return _buildListView(context, viewModel.filteredOfficeExpenses, "Office");
                                 },
                               ),
-                              // Project Expenses Tab with StreamBuilder
-                              StreamBuilder<List<domain.ExpenditureItem>>(
-                                stream: _viewModel.repository.watchProjectExpenses(
-                                  RoleUtils.getUserCompanyId(_viewModel.user) ?? ''
-                                ),
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState == ConnectionState.waiting) {
-                                    return const Center(child: CircularProgressIndicator());
-                                  }
-                                  if (snapshot.hasError) {
-                                    return Center(
-                                      child: Text(
-                                        'Error loading project expenses',
-                                        style: AppFonts.poppins(color: Colors.red),
-                                      ),
-                                    );
-                                  }
-                                  final projectExpenses = snapshot.data ?? [];
-                                  return _buildListView(context, projectExpenses, "Project");
+                              // Project Expenses Tab using ViewModel state
+                              Consumer<ExpenditureViewModel>(
+                                builder: (context, viewModel, child) {
+                                  return _buildListView(context, viewModel.filteredProjectExpenses, "Project");
                                 },
                               ),
                             ],
@@ -527,16 +497,6 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       );
       
       if (success) {
-        // CRITICAL: Immediate UI refresh through multiple mechanisms
-        
-        // 1. Force immediate page refresh (backup mechanism)
-        if (mounted) {
-          setState(() {});
-        }
-        
-        // 2. Trigger ViewModel data refresh (primary mechanism)
-        viewModel.refreshData();
-        
         // Clear form
         _amountController.clear();
         _categoryController.clear();
@@ -602,16 +562,6 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       );
       
       if (success) {
-        // CRITICAL: Immediate UI refresh through multiple mechanisms
-        
-        // 1. Force immediate page refresh (backup mechanism)
-        if (mounted) {
-          setState(() {});
-        }
-        
-        // 2. Trigger ViewModel data refresh (primary mechanism)
-        viewModel.refreshData();
-        
         // Clear form
         _amountController.clear();
         _categoryController.clear();

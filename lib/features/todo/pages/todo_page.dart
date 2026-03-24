@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute, kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart';
 // REMOVED: Firestore dependencies for SQLite-only operation
@@ -42,7 +43,6 @@ class ToDoPage extends StatefulWidget {
 }
 
 class _ToDoPageState extends State<ToDoPage> {
-  late TodoViewModel _viewModel;
   bool _loading = true;
   // REMOVED: Firestore-related state variables for SQLite-only operation
   // bool _firestoreReady = false;
@@ -78,14 +78,33 @@ class _ToDoPageState extends State<ToDoPage> {
   @override
   void initState() {
     super.initState();
-    _viewModel = TodoViewModel(repository: TodoRepositoryImpl(widget.db));
     _dateController.text = DateFormat('dd MMM yyyy').format(_selectedDate);
-    Future.microtask(() async {
+    
+    // Load current user first, then trigger initial data fetch
+    _loadCurrentUser().then((_) {
+      if (mounted) {
+        _triggerInitialDataLoad();
+      }
+    });
+  }
+
+  /// Trigger initial data load for TodoViewModel
+  void _triggerInitialDataLoad() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      await _loadCurrentUser();
-      // REMOVED: Firestore verification for SQLite-only operation
-      // await _verifyFirestoreReady();
-      await _loadTasks();
+      
+      if (_currentUser == null) {
+        debugPrint('TodoPage: Cannot load tasks - no current user');
+        return;
+      }
+      
+      final userId = _currentUser!['id']?.toString() ?? '';
+      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      
+      debugPrint('TodoPage: Triggering initial data load for user: $userId, company: $companyId, date: $_selectedDate');
+      
+      // Trigger initial data fetch on the global TodoViewModel instance
+      Provider.of<TodoViewModel>(context, listen: false).loadTasks(userId, companyId);
     });
   }
 
@@ -164,7 +183,7 @@ class _ToDoPageState extends State<ToDoPage> {
         _dateController.text = DateFormat('dd MMM yyyy').format(picked);
       });
       // Update ViewModel with new date before loading tasks
-      _viewModel.setSelectedDate(_selectedDate);
+      Provider.of<TodoViewModel>(context, listen: false).setSelectedDate(_selectedDate);
       await _loadTasks();
     }
   }
@@ -177,7 +196,10 @@ class _ToDoPageState extends State<ToDoPage> {
     final userId = _currentUser!['id']?.toString() ?? '';
     final companyId = RoleUtils.getUserCompanyId(_currentUser);
     
-    await _viewModel.loadTasks(userId, companyId);
+    debugPrint('TodoPage: Loading tasks for user: $userId, company: $companyId, date: $_selectedDate');
+    
+    // Call the global TodoViewModel's loadTasks method
+    await Provider.of<TodoViewModel>(context, listen: false).loadTasks(userId, companyId);
   }
 
   Color _getStatusColor(String status) {
@@ -225,7 +247,7 @@ class _ToDoPageState extends State<ToDoPage> {
   void dispose() {
     _dateController.dispose();
     _searchController.dispose();
-    _viewModel.dispose();
+    // TODO: Dispose TodoViewModel from global provider if needed
     super.dispose();
   }
 
@@ -246,7 +268,7 @@ class _ToDoPageState extends State<ToDoPage> {
           final userId = _currentUser!['id']?.toString() ?? '';
           final companyId = RoleUtils.getUserCompanyId(_currentUser);
           
-          await _viewModel.addReminder(
+          await Provider.of<TodoViewModel>(context, listen: false).addReminder(
             userId: userId,
             companyId: companyId,
             title: title,
@@ -292,9 +314,9 @@ class _ToDoPageState extends State<ToDoPage> {
                   icon: Icon(Icons.more_vert, color: Colors.grey.shade600),
                   onSelected: (value) async {
                     if (value == 'delete') {
-                      await _viewModel.deleteReminder(reminder.reminderId);
+                      await Provider.of<TodoViewModel>(context, listen: false).deleteReminder(reminder.reminderId);
                     } else if (value == 'toggle') {
-                      await _viewModel.toggleReminderStatus(
+                      await Provider.of<TodoViewModel>(context, listen: false).toggleReminderStatus(
                         reminder.reminderId, 
                         !reminder.is_active,
                       );
@@ -426,14 +448,55 @@ class _ToDoPageState extends State<ToDoPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title - Most prominent
-            Text(
-              task['title'] as String? ?? 'N/A',
-              style: AppFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey.shade900,
-              ),
+            // Title with menu button
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    task['title'] as String? ?? 'N/A',
+                    style: AppFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade900,
+                    ),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert, color: Colors.grey.shade600),
+                  onSelected: (value) async {
+                    final taskId = task['id'];
+                    final category = task['category'] ?? task['source'];
+                    
+                    if (value == 'delete') {
+                      // For aggregated tasks, show a message directing to original module
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Please delete this $category task from the original module'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    } else if (value == 'toggle') {
+                      // For aggregated tasks, show a message directing to original module
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Please update status from the original $category module'),
+                          backgroundColor: Colors.blue,
+                        ),
+                      );
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'toggle',
+                      child: Text('Update Status'),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             // Details - Smaller and lighter
@@ -544,7 +607,7 @@ class _ToDoPageState extends State<ToDoPage> {
                     hintText: 'Search tasks...',
                     onChanged: (q) {
                       if (!mounted) return;
-                      _viewModel.setSearchQuery(q);
+                      Provider.of<TodoViewModel>(context, listen: false).setSearchQuery(q);
                     },
                   ),
                 ),
@@ -622,7 +685,7 @@ class _ToDoPageState extends State<ToDoPage> {
                   _selectedDate = DateTime.now();
                   _dateController.text = DateFormat('dd MMM yyyy').format(_selectedDate);
                 });
-                _viewModel.setSelectedDate(_selectedDate);
+                Provider.of<TodoViewModel>(context, listen: false).setSelectedDate(_selectedDate);
                 _loadTasks();
               },
             ),
@@ -638,15 +701,15 @@ class _ToDoPageState extends State<ToDoPage> {
           ],
         ),
         const SizedBox(height: 16),
-        Builder(
-          builder: (context) {
-            final allTasks = _viewModel.allTasks;
+        Consumer<TodoViewModel>(
+          builder: (context, viewModel, child) {
+            final allTasks = viewModel.allTasks;
             
             if (allTasks.isNotEmpty) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                  _viewModel.searchQuery.isEmpty
+                  viewModel.searchQuery.isEmpty
                       ? '${allTasks.length} task${allTasks.length == 1 ? '' : 's'} scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}'
                       : '${allTasks.length} task${allTasks.length == 1 ? '' : 's'} found',
                   style: AppFonts.poppins(
@@ -665,9 +728,9 @@ class _ToDoPageState extends State<ToDoPage> {
   }
 
   Widget _buildTaskList() {
-    return Builder(
-      builder: (context) {
-        final allTasks = _viewModel.allTasks;
+    return Consumer<TodoViewModel>(
+      builder: (context, viewModel, child) {
+        final allTasks = viewModel.allTasks;
         
         if (allTasks.isEmpty) {
           return Center(
@@ -675,21 +738,21 @@ class _ToDoPageState extends State<ToDoPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  _viewModel.searchQuery.isNotEmpty ? Icons.search_off : Icons.checklist,
+                  viewModel.searchQuery.isNotEmpty ? Icons.search_off : Icons.checklist,
                   size: 64,
                   color: Colors.grey.shade400,
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  _viewModel.searchQuery.isNotEmpty
-                      ? 'No tasks found for "${_viewModel.searchQuery}"'
+                  viewModel.searchQuery.isNotEmpty
+                      ? 'No tasks found for "${viewModel.searchQuery}"'
                       : 'No tasks scheduled for ${DateFormat('dd MMM yyyy').format(_selectedDate)}',
                   style: AppFonts.poppins(
                     fontSize: 18,
                     color: Colors.grey.shade600,
                   ),
                 ),
-                if (_viewModel.searchQuery.isEmpty) ...[
+                if (viewModel.searchQuery.isEmpty) ...[
                   const SizedBox(height: 8),
                   Text(
                     'Tasks from Trading and Agent Working modules will appear here',

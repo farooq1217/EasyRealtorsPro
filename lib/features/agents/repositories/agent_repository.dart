@@ -73,6 +73,9 @@ abstract class AgentRepository {
   
   Future<void> deleteComment(String id);
   
+  // Delete working progress item
+  Future<void> deleteItem(String id);
+  
   // Image operations
   Future<List<String>> getImages(String parentId);
   

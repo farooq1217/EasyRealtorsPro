@@ -544,14 +544,28 @@ class AgentViewModel extends ChangeNotifier {
         throw Exception('Failed to save transfer to database');
       }
 
-      print("AgentViewModel: Transfer saved successfully");
+      print("AgentViewModel: Transfer saved successfully - ID: $id");
       debugPrint('AgentViewModel: Transfer saved successfully - ID: $id');
+
+      // FOOLPROOF FIX: Manually fetch fresh data and update state
+      final freshCompanyId = RoleUtils.getUserCompanyId(_currentUser);
+      if (freshCompanyId != null) {
+        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+        
+        final freshTransfers = await _repository.getTransfers(
+          companyId: freshCompanyId,
+          isSuperAdmin: isSuperAdmin,
+          searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+        );
+        
+        _transfers = freshTransfers;
+        
+        debugPrint('AgentViewModel: Manual refresh completed after transfer - ${freshTransfers.length} items');
+        notifyListeners(); // Force UI rebuild immediately
+      }
 
       // Clear form
       _clearTransferForm();
-      
-      // Reload transfers
-      await loadTransfers();
       
       return true;
     } catch (e) {
@@ -562,6 +576,17 @@ class AgentViewModel extends ChangeNotifier {
     } finally {
       _loading = false;
       notifyListeners();
+    }
+  }
+
+  // Delete working progress item
+  Future<void> deleteItem(String id) async {
+    try {
+      await _repository.deleteItem(id);
+    } catch (e) {
+      _error = 'Failed to delete item: $e';
+      debugPrint('Error deleting item: $e');
+      rethrow;
     }
   }
 
@@ -616,11 +641,25 @@ class AgentViewModel extends ChangeNotifier {
       
       debugPrint('AgentViewModel: Client requirement saved successfully - Source: $_requirementSource');
 
+      // FOOLPROOF FIX: Manually fetch fresh data and update state
+      final freshCompanyId = RoleUtils.getUserCompanyId(_currentUser);
+      if (freshCompanyId != null) {
+        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+        
+        final freshRequirements = await _repository.getClientRequirements(
+          companyId: freshCompanyId,
+          isSuperAdmin: isSuperAdmin,
+          searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+        );
+        
+        _clientRequirements = freshRequirements;
+        
+        debugPrint('AgentViewModel: Manual refresh completed after client requirement - ${freshRequirements.length} items');
+        notifyListeners(); // Force UI rebuild immediately
+      }
+
       // Clear form
       _clearRequirementForm();
-      
-      // Reload client requirements
-      await loadClientRequirements();
       
       return true;
     } catch (e) {

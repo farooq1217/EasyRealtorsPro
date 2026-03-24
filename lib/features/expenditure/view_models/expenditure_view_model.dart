@@ -330,6 +330,20 @@ class ExpenditureViewModel extends ChangeNotifier {
       clearForm();
       _showSuccessSnackBar('$type expense added successfully');
       
+      // FOOLPROOF FIX: Manually fetch fresh data and update state
+      final freshCompanyId = RoleUtils.getUserCompanyId(_user);
+      if (freshCompanyId != null) {
+        final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
+        final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
+        
+        _officeExpenses = freshOfficeExpenses;
+        _projectExpenses = freshProjectExpenses;
+        _applySearchFilter(); // Apply search filter to fresh data
+        
+        debugPrint('ExpenditureViewModel: Manual refresh completed - office: ${freshOfficeExpenses.length}, projects: ${freshProjectExpenses.length}');
+        notifyListeners(); // Force UI rebuild immediately
+      }
+      
       return true;
     } catch (e) {
       debugPrint('Error saving expense: $e');
@@ -375,6 +389,20 @@ class ExpenditureViewModel extends ChangeNotifier {
       
       // Show success message
       _showSuccessSnackBar('Project "$projectName" created successfully');
+      
+      // FOOLPROOF FIX: Manually fetch fresh data and update state
+      final freshCompanyId = RoleUtils.getUserCompanyId(_user);
+      if (freshCompanyId != null) {
+        final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
+        final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
+        
+        _officeExpenses = freshOfficeExpenses;
+        _projectExpenses = freshProjectExpenses;
+        _applySearchFilter(); // Apply search filter to fresh data
+        
+        debugPrint('ExpenditureViewModel: Manual refresh completed after project creation - office: ${freshOfficeExpenses.length}, projects: ${freshProjectExpenses.length}');
+        notifyListeners(); // Force UI rebuild immediately
+      }
       
       return true;
     } catch (e) {
@@ -430,6 +458,20 @@ class ExpenditureViewModel extends ChangeNotifier {
         _showSuccessSnackBar('$type expense added successfully');
       }
       
+      // FOOLPROOF FIX: Manually fetch fresh data and update state
+      final freshCompanyId = RoleUtils.getUserCompanyId(_user);
+      if (freshCompanyId != null) {
+        final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
+        final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
+        
+        _officeExpenses = freshOfficeExpenses;
+        _projectExpenses = freshProjectExpenses;
+        _applySearchFilter(); // Apply search filter to fresh data
+        
+        debugPrint('ExpenditureViewModel: Manual refresh completed after expense save - office: ${freshOfficeExpenses.length}, projects: ${freshProjectExpenses.length}');
+        notifyListeners(); // Force UI rebuild immediately
+      }
+      
       return true;
     } catch (e) {
       debugPrint('Error saving expense: $e');
@@ -442,6 +484,21 @@ class ExpenditureViewModel extends ChangeNotifier {
     try {
       await _repository.deleteExpenditure(id);
       _showSuccessSnackBar('Expense deleted successfully');
+      
+      // FOOLPROOF FIX: Manually fetch fresh data and update state
+      final freshCompanyId = RoleUtils.getUserCompanyId(_user);
+      if (freshCompanyId != null) {
+        final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
+        final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
+        
+        _officeExpenses = freshOfficeExpenses;
+        _projectExpenses = freshProjectExpenses;
+        _applySearchFilter(); // Apply search filter to fresh data
+        
+        debugPrint('ExpenditureViewModel: Manual refresh completed after deletion - office: ${freshOfficeExpenses.length}, projects: ${freshProjectExpenses.length}');
+        notifyListeners(); // Force UI rebuild immediately
+      }
+      
       return true;
     } catch (e) {
       debugPrint('Error deleting expense: $e');

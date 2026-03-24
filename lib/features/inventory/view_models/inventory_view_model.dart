@@ -143,12 +143,8 @@ class InventoryViewModel extends ChangeNotifier {
       debugPrint('InventoryViewModel: Type-safe societies mapping completed, societies count: ${_societies.length}');
       debugPrint('InventoryViewModel: Final societies list: ${_societies.map((s) => '${s['id']}:${s['name']}').toList()}');
       
-      // AUTO-SELECTION: If there is only one society and no society is currently selected, auto-select it
-      if (_societies.isNotEmpty && _societies.length == 1 && _selectedSocietyId == null) {
-        final singleSociety = _societies.first;
-        debugPrint('InventoryViewModel: Auto-selecting single society: ${singleSociety['name']} (${singleSociety['id']})');
-        setSelectedSociety(singleSociety['id']);
-      }
+      // REMOVED AUTO-SELECTION: Do not auto-select any society
+      // _selectedSocietyId should remain null to show "All Society" by default
       
       _isLoadingSocieties = false;
       
@@ -249,33 +245,44 @@ class InventoryViewModel extends ChangeNotifier {
       _selectedSocietyId = societyId;
       debugPrint('InventoryViewModel: Updated _selectedSocietyId to: $_selectedSocietyId');
       
-      // 2. Clear the existing blocks list and immediately call notifyListeners() 
-      // so the UI shows the "Loading..." state in the Block dropdown
-      _blocks = [];
-      _selectedBlockId = null; // Reset block selection when society changes
-      debugPrint('InventoryViewModel: Cleared blocks list and block selection');
+      // CRITICAL FIX: Reset Blocks if "All Society" is selected
+      if (societyId == null || societyId.isEmpty || societyId == 'All') {
+        _selectedBlockId = null; // Clear selected block
+        _blocks = []; // Clear the blocks list
+        debugPrint('InventoryViewModel: "All Society" selected - cleared blocks and block selection');
+        
+        // Notify listeners and refresh items
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          notifyListeners();
+        });
+        
+        // Load items without block filter
+        _currentPage = 1; // Reset to page 1 when filter changes
+        loadItems();
+        return;
+      }
       
-      // 3. Immediately call notifyListeners() to show loading state
+      // If a specific society IS selected:
+      _selectedBlockId = null; // Reset block selection
+      _blocks = []; // Clear blocks list temporarily
+      
+      // Immediately call notifyListeners() to show loading state
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         notifyListeners();
       });
-      debugPrint('InventoryViewModel: Notified listeners after clearing blocks');
       
-      // 4. If societyId is not null, await fresh blocks from repository and notify again
-      if (societyId != null) {
-        debugPrint('InventoryViewModel: SocietyId is not null, calling _loadBlocksForSociety');
-        _loadBlocksForSociety(societyId).then((_) {
-          // Additional notification after blocks are loaded
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            notifyListeners();
-          });
-          debugPrint('InventoryViewModel: Additional notification after blocks loaded');
+      // Load blocks for the specific society
+      debugPrint('InventoryViewModel: Loading blocks for society: $societyId');
+      _loadBlocksForSociety(societyId).then((_) {
+        // Additional notification after blocks are loaded
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          notifyListeners();
         });
-      } else {
-        debugPrint('InventoryViewModel: SocietyId is null, not loading blocks');
-      }
+        debugPrint('InventoryViewModel: Blocks loaded for society: $societyId');
+      });
       
       // Load items with new filters
       _currentPage = 1; // Reset to page 1 when filter changes
@@ -385,12 +392,90 @@ class InventoryViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> updateItem(String id, InventoryItem item) async {
+    try {
+      // CRITICAL: Set loading state immediately to prevent UI flicker
+      _isLoading = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
+      
+      // Update from repository
+      await _inventoryRepository.updateItem(item);
+      
+      // CRITICAL: Manual refresh - fetch updated list immediately
+      _allItems = await _inventoryRepository.getFilteredItems(
+        type: _selectedType,
+        searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+        societyId: _selectedSocietyId,
+        blockId: _selectedBlockId,
+        statusFilter: _selectedStatusFilter,
+      );
+      _filteredItems = _allItems;
+      
+      // Reset pagination to first page after update
+      _currentPage = 1;
+      
+      // CRITICAL: Notify listeners to update UI instantly
+      _isLoading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
+      
+      debugPrint('InventoryViewModel: Item updated successfully, UI refreshed');
+    } catch (e) {
+      debugPrint('Error updating inventory item: $e');
+      _isLoading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
+      rethrow; // Let UI handle error
+    }
+  }
+
   Future<void> deleteItem(String id) async {
     try {
+      // CRITICAL: Set loading state immediately to prevent UI flicker
+      _isLoading = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
+      
+      // Delete from repository
       await _inventoryRepository.deleteItem(id);
-      await loadItems(); // Reload to reflect changes
+      
+      // CRITICAL: Manual refresh - fetch updated list immediately
+      _allItems = await _inventoryRepository.getFilteredItems(
+        type: _selectedType,
+        searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+        societyId: _selectedSocietyId,
+        blockId: _selectedBlockId,
+        statusFilter: _selectedStatusFilter,
+      );
+      _filteredItems = _allItems;
+      
+      // Reset pagination to first page after deletion
+      _currentPage = 1;
+      
+      // CRITICAL: Notify listeners to update UI instantly
+      _isLoading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
+      
+      debugPrint('InventoryViewModel: Item deleted successfully, UI refreshed');
     } catch (e) {
       debugPrint('Error deleting inventory item: $e');
+      _isLoading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        notifyListeners();
+      });
       rethrow; // Let UI handle error
     }
   }

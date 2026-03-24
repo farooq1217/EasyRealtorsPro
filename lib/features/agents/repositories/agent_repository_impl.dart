@@ -599,6 +599,24 @@ class AgentRepositoryImpl implements AgentRepository {
   }
 
   @override
+  Future<void> deleteItem(String id) async {
+    try {
+      // Delete from SQLite
+      await db.customStatement('DELETE FROM working_progress WHERE id = ?', [id]);
+      
+      // Delete from Firestore if allowed
+      await _executeFirestoreOperation(() async {
+        final firestore = FirebaseFirestore.instance;
+        await firestore.collection('working_progress').doc(id).delete();
+      });
+      
+    } catch (e) {
+      debugPrint('Error deleting item: $e');
+      rethrow;
+    }
+  }
+
+  @override
   Future<List<String>> getImages(String parentId) async {
     try {
       // For now, return empty list - images are stored as part of the main record

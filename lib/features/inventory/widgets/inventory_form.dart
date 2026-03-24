@@ -439,45 +439,89 @@ class _InventoryFormState extends State<InventoryForm> {
       final imageUrlsJson = imageUrlsToJson(uploadedUrls);
       
       InventoryItem item;
-      if (viewModel.selectedType == InventoryType.file) {
-        item = InventoryItem.file(
-          id: id,
-          clientName: ownerCtl.text.trim(),
-          referenceNo: plotNoCtl.text.trim(),
-          societyId: viewModel.selectedSocietyId ?? '',
-          blockId: viewModel.selectedBlockId,
-          saleStatus: selStatus ?? 'Not Sold',
-          remarks: remarksCtl.text.trim(), // Keep remarks regardless of images
-          cnic: cnicCtl.text.trim(),
-          companyId: companyId ?? '',
-          updatedAt: DateTime.now(),
-          createdAt: DateTime.now(),
-          fileNo: fileNoCtl.text.trim(),
-          mobileNo: contactCtl.text.trim(),
-          path: sizeCtl.text.trim(),
-          imageUrls: uploadedUrls,
-        );
+      if (widget.existing != null) {
+        // It's an EDIT operation - use updateItem with existing ID
+        if (viewModel.selectedType == InventoryType.file) {
+          item = InventoryItem.file(
+            id: widget.existing!.id, // Use existing ID
+            clientName: ownerCtl.text.trim(),
+            referenceNo: plotNoCtl.text.trim(),
+            societyId: viewModel.selectedSocietyId ?? '',
+            blockId: viewModel.selectedBlockId,
+            saleStatus: selStatus ?? 'Not Sold',
+            remarks: remarksCtl.text.trim(),
+            cnic: cnicCtl.text.trim(),
+            companyId: companyId ?? '',
+            updatedAt: DateTime.now(),
+            createdAt: widget.existing!.createdAt, // Keep original creation date
+            fileNo: fileNoCtl.text.trim(),
+            mobileNo: contactCtl.text.trim(),
+            path: sizeCtl.text.trim(),
+            imageUrls: uploadedUrls,
+          );
+        } else {
+          item = InventoryItem.property(
+            id: widget.existing!.id, // Use existing ID
+            clientName: ownerCtl.text.trim(),
+            referenceNo: plotNoCtl.text.trim(),
+            societyId: viewModel.selectedSocietyId ?? '',
+            blockId: viewModel.selectedBlockId,
+            saleStatus: selStatus ?? 'Not Sold',
+            remarks: remarksCtl.text.trim(),
+            cnic: cnicCtl.text.trim(),
+            companyId: companyId ?? '',
+            updatedAt: DateTime.now(),
+            createdAt: widget.existing!.createdAt, // Keep original creation date
+            propertyName: contactCtl.text.trim(),
+            demand: int.tryParse(demandCtl.text.trim()) ?? 0,
+            price: int.tryParse(sizeCtl.text.trim()) ?? 0,
+            imageUrls: uploadedUrls,
+          );
+        }
+        
+        await viewModel.updateItem(widget.existing!.id, item);
       } else {
-        item = InventoryItem.property(
-          id: id,
-          clientName: ownerCtl.text.trim(),
-          referenceNo: plotNoCtl.text.trim(),
-          societyId: viewModel.selectedSocietyId ?? '',
-          blockId: viewModel.selectedBlockId,
-          saleStatus: selStatus ?? 'Not Sold',
-          remarks: remarksCtl.text.trim(), // Keep remarks regardless of images
-          cnic: cnicCtl.text.trim(),
-          companyId: companyId ?? '',
-          updatedAt: DateTime.now(),
-          createdAt: DateTime.now(),
-          propertyName: contactCtl.text.trim(),
-          demand: int.tryParse(demandCtl.text.trim()) ?? 0,
-          price: int.tryParse(sizeCtl.text.trim()) ?? 0,
-          imageUrls: uploadedUrls,
-        );
+        // It's an ADD operation
+        if (viewModel.selectedType == InventoryType.file) {
+          item = InventoryItem.file(
+            id: id,
+            clientName: ownerCtl.text.trim(),
+            referenceNo: plotNoCtl.text.trim(),
+            societyId: viewModel.selectedSocietyId ?? '',
+            blockId: viewModel.selectedBlockId,
+            saleStatus: selStatus ?? 'Not Sold',
+            remarks: remarksCtl.text.trim(),
+            cnic: cnicCtl.text.trim(),
+            companyId: companyId ?? '',
+            updatedAt: DateTime.now(),
+            createdAt: DateTime.now(),
+            fileNo: fileNoCtl.text.trim(),
+            mobileNo: contactCtl.text.trim(),
+            path: sizeCtl.text.trim(),
+            imageUrls: uploadedUrls,
+          );
+        } else {
+          item = InventoryItem.property(
+            id: id,
+            clientName: ownerCtl.text.trim(),
+            referenceNo: plotNoCtl.text.trim(),
+            societyId: viewModel.selectedSocietyId ?? '',
+            blockId: viewModel.selectedBlockId,
+            saleStatus: selStatus ?? 'Not Sold',
+            remarks: remarksCtl.text.trim(),
+            cnic: cnicCtl.text.trim(),
+            companyId: companyId ?? '',
+            updatedAt: DateTime.now(),
+            createdAt: DateTime.now(),
+            propertyName: contactCtl.text.trim(),
+            demand: int.tryParse(demandCtl.text.trim()) ?? 0,
+            price: int.tryParse(sizeCtl.text.trim()) ?? 0,
+            imageUrls: uploadedUrls,
+          );
+        }
+        
+        await viewModel.saveItem(item);
       }
-      
-      await viewModel.saveItem(item);
       
       if (!mounted) return;
       setState(() {

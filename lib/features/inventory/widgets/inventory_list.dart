@@ -7,6 +7,7 @@ import '../models/inventory_item.dart';
 import '../view_models/inventory_view_model.dart';
 import 'inventory_detail_page.dart';
 import 'inventory_details_modal.dart';
+import 'inventory_form.dart';
 import '../../../core/phone_actions.dart' show showPhoneActionSheet;
 import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
 
@@ -88,7 +89,10 @@ class _InventoryListState extends State<InventoryList> {
                                 'Block',
                                 viewModel.getAvailableBlocks(),
                                 viewModel.selectedBlockId,
-                                (value) => viewModel.setSelectedBlock(value),
+                                // CRITICAL FIX: Disable Block dropdown if no specific society is selected
+                                (viewModel.selectedSocietyId == null || viewModel.selectedSocietyId == 'All') 
+                                    ? null // This disables the dropdown
+                                    : (String? value) => viewModel.setSelectedBlock(value),
                               ),
                             ),
                           ),
@@ -174,38 +178,50 @@ class _InventoryListState extends State<InventoryList> {
     String label,
     List<Map<String, String>> items,
     String? selectedValue,
-    Function(String?) onChanged,
+    void Function(String?)? onChanged,
   ) {
     final hasItems = items.isNotEmpty;
+    final isDisabled = onChanged == null; // Check if dropdown is disabled
+    
     // Always show dropdown with placeholder, even when loading or empty
     final List<Map<String, String?>> displayItems = hasItems
         ? [
             {'id': null, 'name': 'All $label'}, // Add "All" option to clear filter
             ...items.map((item) => {'id': item['id'], 'name': item['name']}),
           ]
-        : [{'id': null, 'name': 'Select $label'}];
+        : [{'id': null, 'name': isDisabled ? 'Select a Society first' : 'Select $label'}];
     
-    // Validate the selected value against actual items (not including "All" option)
-    final validValue = hasItems && items.any((i) => i['id'] == selectedValue) ? selectedValue : null;
+    // CRITICAL FIX: Show "All Society" when selectedValue is null
+    // The dropdown will automatically select the first item with value=null when selectedValue is null
+    final displayValue = selectedValue;
     
     return DropdownButtonFormField<String?>(
-      value: validValue, // Use validated value
+      value: displayValue, // Use display value to show "All Society" when null
       onChanged: hasItems ? onChanged : null,
       decoration: InputDecoration(
         labelText: label,
-        hintText: 'Select $label',
+        hintText: isDisabled ? 'Select a Society first' : 'Select $label',
         prefixIcon: const Icon(Icons.list),
         border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: isDisabled ? Colors.grey.shade100 : Colors.white,
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+        ),
       ),
       items: displayItems.map((i) {
         final itemId = i['id'];
         final itemName = i['name'] ?? '';
         return DropdownMenuItem<String?>(
           value: itemId,
-          child: Text(itemName),
-          enabled: hasItems,
+          child: Text(
+            itemName,
+            style: TextStyle(
+              color: isDisabled ? Colors.grey.shade500 : null,
+            ),
+          ),
+          enabled: hasItems && !isDisabled,
         );
       }).toList(),
     );
@@ -252,6 +268,26 @@ class _InventoryListState extends State<InventoryList> {
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                     overflow: TextOverflow.ellipsis,
                   ),
+                ),
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert, color: Colors.grey.shade600),
+                  onSelected: (value) async {
+                    if (value == 'edit') {
+                      _showEditForm(context, item, viewModel);
+                    } else if (value == 'delete') {
+                      await _deleteItem(context, item, viewModel);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Text('Edit'),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -391,6 +427,101 @@ class _InventoryListState extends State<InventoryList> {
     );
   }
 
+  // Show edit form dialog
+  void _showEditForm(BuildContext context, InventoryItem item, InventoryViewModel viewModel) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+          ),
+          child: Column(
+            children: [
+              // Header with back button
+              Container(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                    ),
+                    const Spacer(),
+                  ],
+                ),
+              ),
+              // Scrollable form content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: ChangeNotifierProvider.value(
+                    value: viewModel,
+                    child: InventoryForm(
+                      existing: item,
+                      onSave: () { 
+                        Navigator.of(dialogContext).pop(); 
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Delete item with confirmation
+  Future<void> _deleteItem(BuildContext context, InventoryItem item, InventoryViewModel viewModel) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Item'),
+        content: Text('Are you sure you want to delete this ${item.type.name}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await viewModel.deleteItem(item.id);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Item deleted successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error deleting item: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   Widget _buildPaginationCard(InventoryViewModel viewModel) {
     // Filter items by selected type for pagination
     final filteredItemsForType = viewModel.filteredItems
@@ -411,6 +542,6 @@ class _InfoEntry {
   final String label;
   final String value;
   final TextStyle? style;
-
-  _InfoEntry(this.label, this.value, {this.style});
+  
+  const _InfoEntry(this.label, this.value, {this.style});
 }
