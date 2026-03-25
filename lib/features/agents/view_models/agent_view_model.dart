@@ -34,10 +34,6 @@ class AgentViewModel extends ChangeNotifier {
   Map<String, dynamic>? _currentUser;
   String? _error;
 
-  // Stream subscriptions for real-time updates
-  StreamSubscription<List<WorkingProgressData>>? _transfersSubscription;
-  StreamSubscription<List<WorkingProgressData>>? _requirementsSubscription;
-
   // Form controllers
   final TextEditingController dateCtl = TextEditingController();
   final TextEditingController plotCtl = TextEditingController();
@@ -214,28 +210,16 @@ class AgentViewModel extends ChangeNotifier {
       final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       
-      // Cancel existing subscription
-      await _transfersSubscription?.cancel();
-      
-      // Set up new stream subscription
-      _transfersSubscription = _repository.watchTransfers(
+      // FOOLPROOF: Manual fetch instead of stream
+      _transfers = await _repository.getTransfers(
         companyId: companyId,
         isSuperAdmin: isSuperAdmin,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
-      ).listen(
-        (transfers) {
-          _transfers = transfers;
-          _loadingTransfers = false;
-          notifyListeners();
-          debugPrint('AgentViewModel: Transfers stream updated - ${transfers.length} items');
-        },
-        onError: (e) {
-          _error = 'Failed to load transfers: $e';
-          _loadingTransfers = false;
-          debugPrint('Error in transfers stream: $e');
-          notifyListeners();
-        },
       );
+      
+      _loadingTransfers = false;
+      notifyListeners();
+      debugPrint('AgentViewModel: Transfers loaded manually - ${_transfers.length} items');
     } catch (e) {
       _error = 'Failed to load transfers: $e';
       _loadingTransfers = false;
@@ -244,7 +228,7 @@ class AgentViewModel extends ChangeNotifier {
     }
   }
 
-  // Load client requirements with stream-based real-time updates
+  // Load client requirements with manual fetch
   Future<void> loadClientRequirements() async {
     _loadingRequirements = true;
     _error = null;
@@ -254,28 +238,16 @@ class AgentViewModel extends ChangeNotifier {
       final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
       final companyId = RoleUtils.getUserCompanyId(_currentUser);
       
-      // Cancel existing subscription
-      await _requirementsSubscription?.cancel();
-      
-      // Set up new stream subscription
-      _requirementsSubscription = _repository.watchClientRequirements(
+      // FOOLPROOF: Manual fetch instead of stream
+      _clientRequirements = await _repository.getClientRequirements(
         companyId: companyId,
         isSuperAdmin: isSuperAdmin,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
-      ).listen(
-        (requirements) {
-          _clientRequirements = requirements;
-          _loadingRequirements = false;
-          notifyListeners();
-          debugPrint('AgentViewModel: Client requirements stream updated - ${requirements.length} items');
-        },
-        onError: (e) {
-          _error = 'Failed to load client requirements: $e';
-          _loadingRequirements = false;
-          debugPrint('Error in client requirements stream: $e');
-          notifyListeners();
-        },
       );
+      
+      _loadingRequirements = false;
+      notifyListeners();
+      debugPrint('AgentViewModel: Client requirements loaded manually - ${_clientRequirements.length} items');
     } catch (e) {
       _error = 'Failed to load client requirements: $e';
       _loadingRequirements = false;
@@ -344,10 +316,6 @@ class AgentViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    // Cancel stream subscriptions to prevent memory leaks
-    _transfersSubscription?.cancel();
-    _requirementsSubscription?.cancel();
-    
     // Dispose controllers
     dateCtl.dispose();
     plotCtl.dispose();
@@ -469,7 +437,7 @@ class AgentViewModel extends ChangeNotifier {
       return false;
     }
 
-    if (_selectedDate == null) {
+    if (_selectedDate == null && dateCtl.text.isEmpty) {
       _error = 'Please select a date';
       notifyListeners();
       return false;
@@ -506,7 +474,10 @@ class AgentViewModel extends ChangeNotifier {
       final safeEmail = emailKey.replaceAll('/', '_');
       final ts = DateTime.now().millisecondsSinceEpoch.toString();
       final id = safeEmail.isNotEmpty ? '${safeEmail}_$ts' : ts;
-      final transferDate = DateFormat('yyyy-MM-dd').format(_selectedDate!);
+      final userId = _currentUser?['id']?.toString() ?? 'unknown';
+      final transferDate = _selectedDate != null 
+        ? DateFormat('yyyy-MM-dd').format(_selectedDate!)
+        : DateFormat('yyyy-MM-dd').format(DateTime.now());
       final nextWorkingDateStr = _nextWorkingDate != null 
           ? DateFormat('yyyy-MM-dd').format(_nextWorkingDate!)
           : null;
@@ -583,9 +554,183 @@ class AgentViewModel extends ChangeNotifier {
   Future<void> deleteItem(String id) async {
     try {
       await _repository.deleteItem(id);
+      
+      // CRITICAL: Manually fetch fresh data immediately
+      _transfers = await _repository.getTransfers(
+        companyId: RoleUtils.getUserCompanyId(_currentUser),
+        isSuperAdmin: RoleUtils.isSuperAdmin(_currentUser),
+      ); 
+      _clientRequirements = await _repository.getClientRequirements(
+        companyId: RoleUtils.getUserCompanyId(_currentUser),
+        isSuperAdmin: RoleUtils.isSuperAdmin(_currentUser),
+      );
+
+      notifyListeners(); // Instantly update UI
     } catch (e) {
       _error = 'Failed to delete item: $e';
       debugPrint('Error deleting item: $e');
+      rethrow;
+    }
+  }
+
+  // Update transfer
+  Future<bool> updateTransfer(String id) async {
+    print("AgentViewModel: updateTransfer() called. Starting validation...");
+    
+    if (!PermissionHelper.canAddModule(_currentUser, 'agent_working')) {
+      _error = 'Permission Denied';
+      notifyListeners();
+      return false;
+    }
+
+    if (_selectedDate == null && dateCtl.text.isEmpty) {
+      _error = 'Please select a date';
+      notifyListeners();
+      return false;
+    }
+
+    // Validate category requirement
+    if (_transferCategory == null || _transferCategory!.isEmpty) {
+      _error = 'Please select a category';
+      notifyListeners();
+      return false;
+    }
+
+    // Validate "Other" category field
+    if (_transferCategory == 'other' && transferOtherCategoryCtl.text.trim().isEmpty) {
+      _error = 'Please specify the category when "Other" is selected';
+      notifyListeners();
+      return false;
+    }
+
+    // Validate "Other" size field
+    if (_transferSize == 'other' && transferOtherSizeCtl.text.trim().isEmpty) {
+      _error = 'Please specify the size when "Other" is selected';
+      notifyListeners();
+      return false;
+    }
+
+    print("AgentViewModel: Validation passed. Proceeding with update...");
+    _loading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final transferDate = _selectedDate != null 
+        ? DateFormat('yyyy-MM-dd').format(_selectedDate!)
+        : DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final nextWorkingDateStr = _nextWorkingDate != null 
+          ? DateFormat('yyyy-MM-dd').format(_nextWorkingDate!)
+          : null;
+      
+      // Use custom category if "Other" is selected and custom value is provided
+      final categoryToSave = _transferCategory == 'other' && transferOtherCategoryCtl.text.trim().isNotEmpty
+          ? transferOtherCategoryCtl.text.trim()
+          : _transferCategory;
+      
+      // Use custom size if "Other" is selected
+      final sizeToSave = _transferSize == 'other'
+          ? transferOtherSizeCtl.text.trim()
+          : _transferSize;
+
+      print("AgentViewModel: About to update transfer with ID: $id");
+      print("AgentViewModel: Category: $categoryToSave, Size: $sizeToSave");
+
+      await _repository.updateEntry(
+        id: id,
+        name: clientNameCtl.text.trim(),
+        status: 'Pending',
+        remarks: commentsCtl.text.trim().isEmpty ? null : commentsCtl.text.trim(),
+        transferDate: transferDate,
+        nextWorkingDate: nextWorkingDateStr,
+        category: categoryToSave,
+        plotNo: plotCtl.text.trim().isEmpty ? null : plotCtl.text.trim(),
+        registryNumber: registryCtl.text.trim().isEmpty ? null : registryCtl.text.trim(),
+        size: sizeToSave,
+        clientMobile: clientMobileCtl.text.trim().isEmpty ? null : clientMobileCtl.text.trim(),
+        images: _transferImages,
+      );
+
+      print("AgentViewModel: Transfer updated successfully - ID: $id");
+      debugPrint('AgentViewModel: Transfer updated successfully - ID: $id');
+
+      // FOOLPROOF FIX: Manually fetch fresh data and update state
+      final freshCompanyId = RoleUtils.getUserCompanyId(_currentUser);
+      if (freshCompanyId != null) {
+        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+        
+        final freshTransfers = await _repository.getTransfers(
+          companyId: freshCompanyId,
+          isSuperAdmin: isSuperAdmin,
+          searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+        );
+        
+        _transfers = freshTransfers;
+        
+        debugPrint('AgentViewModel: Manual refresh completed after transfer update - ${freshTransfers.length} items');
+        notifyListeners(); // Force UI rebuild immediately
+      }
+
+      // Clear form
+      _clearTransferForm();
+      
+      return true;
+    } catch (e) {
+      print("AgentViewModel: Error updating transfer: $e");
+      _error = 'Failed to update transfer: $e';
+      debugPrint('Error updating transfer: $e');
+      return false;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  // Update working progress item
+  Future<void> updateEntry({
+    required String id,
+    String? name,
+    String? status,
+    String? remarks,
+    String? transferDate,
+    String? nextWorkingDate,
+    String? category,
+    String? plotNo,
+    String? registryNumber,
+    String? size,
+    String? clientMobile,
+    List<String>? images,
+  }) async {
+    try {
+      await _repository.updateEntry(
+        id: id,
+        name: name,
+        status: status,
+        remarks: remarks,
+        transferDate: transferDate,
+        nextWorkingDate: nextWorkingDate,
+        category: category,
+        plotNo: plotNo,
+        registryNumber: registryNumber,
+        size: size,
+        clientMobile: clientMobile,
+        images: images,
+      );
+      
+      // CRITICAL: Manually fetch fresh data immediately
+      _transfers = await _repository.getTransfers(
+        companyId: RoleUtils.getUserCompanyId(_currentUser),
+        isSuperAdmin: RoleUtils.isSuperAdmin(_currentUser),
+      ); 
+      _clientRequirements = await _repository.getClientRequirements(
+        companyId: RoleUtils.getUserCompanyId(_currentUser),
+        isSuperAdmin: RoleUtils.isSuperAdmin(_currentUser),
+      );
+
+      notifyListeners(); // Instantly update UI
+    } catch (e) {
+      _error = 'Failed to update item: $e';
+      debugPrint('Error updating item: $e');
       rethrow;
     }
   }
@@ -600,7 +745,7 @@ class AgentViewModel extends ChangeNotifier {
       return false;
     }
 
-    if (_reqSelectedDate == null) {
+    if (_reqSelectedDate == null && reqDateCtl.text.isEmpty) {
       _error = 'Please select a date';
       notifyListeners();
       return false;
@@ -622,7 +767,10 @@ class AgentViewModel extends ChangeNotifier {
       final safeEmail = emailKey.replaceAll('/', '_');
       final ts = DateTime.now().millisecondsSinceEpoch.toString();
       final id = safeEmail.isNotEmpty ? '${safeEmail}_$ts' : ts;
-      final transferDate = DateFormat('yyyy-MM-dd').format(_reqSelectedDate!);
+      final userId = _currentUser?['id']?.toString() ?? 'unknown';
+      final transferDate = _reqSelectedDate != null 
+        ? DateFormat('yyyy-MM-dd').format(_reqSelectedDate!)
+        : DateFormat('yyyy-MM-dd').format(DateTime.now());
       final nextWorkingDateStr = _reqNextWorkingDate != null 
           ? DateFormat('yyyy-MM-dd').format(_reqNextWorkingDate!)
           : null;
@@ -672,6 +820,85 @@ class AgentViewModel extends ChangeNotifier {
     }
   }
 
+  // Update client requirement
+  Future<bool> updateClientRequirement(String id) async {
+    print("AgentViewModel: updateClientRequirement() called. Starting validation...");
+    
+    if (!PermissionHelper.canAddModule(_currentUser, 'agent_working')) {
+      _error = 'Permission Denied';
+      notifyListeners();
+      return false;
+    }
+
+    if (_reqSelectedDate == null && reqDateCtl.text.isEmpty) {
+      _error = 'Please select a date';
+      notifyListeners();
+      return false;
+    }
+
+    if (_requirementSource == null || _requirementSource!.isEmpty) {
+      _error = 'Please select a source (Direct, Agent, Website, Social Media, or Referral)';
+      notifyListeners();
+      return false;
+    }
+
+    print("AgentViewModel: Validation passed. Proceeding with update...");
+    _loading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final transferDate = _reqSelectedDate != null 
+        ? DateFormat('yyyy-MM-dd').format(_reqSelectedDate!)
+        : DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final nextWorkingDateStr = _reqNextWorkingDate != null 
+          ? DateFormat('yyyy-MM-dd').format(_reqNextWorkingDate!)
+          : null;
+
+      await _repository.updateEntry(
+        id: id,
+        name: reqClientNameCtl.text.trim(),
+        status: 'Pending',
+        remarks: reqCommentsCtl.text.trim().isEmpty ? null : reqCommentsCtl.text.trim(),
+        transferDate: transferDate,
+        nextWorkingDate: nextWorkingDateStr,
+        category: _requirementSource, // Use source as category for client requirements
+        images: _clientRequirementImages,
+      );
+      
+      debugPrint('AgentViewModel: Client requirement updated successfully - Source: $_requirementSource');
+
+      // FOOLPROOF FIX: Manually fetch fresh data and update state
+      final freshCompanyId = RoleUtils.getUserCompanyId(_currentUser);
+      if (freshCompanyId != null) {
+        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+        
+        final freshRequirements = await _repository.getClientRequirements(
+          companyId: freshCompanyId,
+          isSuperAdmin: isSuperAdmin,
+          searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
+        );
+        
+        _clientRequirements = freshRequirements;
+        
+        debugPrint('AgentViewModel: Manual refresh completed after client requirement update - ${freshRequirements.length} items');
+        notifyListeners(); // Force UI rebuild immediately
+      }
+
+      // Clear form
+      _clearRequirementForm();
+      
+      return true;
+    } catch (e) {
+      _error = 'Failed to update client requirement: $e';
+      debugPrint('Error updating client requirement: $e');
+      return false;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   // Update status
   Future<bool> updateStatus({
     required String id,
@@ -709,6 +936,7 @@ class AgentViewModel extends ChangeNotifier {
       final safeEmail = emailKey.replaceAll('/', '_');
       final ts = DateTime.now().millisecondsSinceEpoch.toString();
       final id = safeEmail.isNotEmpty ? '${safeEmail}_$ts' : ts;
+      final userId = _currentUser?['id']?.toString() ?? 'unknown';
 
       await _repository.addComment(
         id: id,
@@ -821,11 +1049,12 @@ class AgentViewModel extends ChangeNotifier {
     transferOtherCategoryCtl.clear();
     transferOtherSizeCtl.clear();
     
-    _transferCategory = null;
-    _transferSize = null;
+    // Reset state variables
     _selectedDate = null;
     _selectedTime = null;
     _nextWorkingDate = null;
+    _transferCategory = null;
+    _transferSize = null;
     _transferImages = [];
     
     notifyListeners();
@@ -835,15 +1064,22 @@ class AgentViewModel extends ChangeNotifier {
     reqClientNameCtl.clear();
     reqCommentsCtl.clear();
     reqNextWorkingDateCtl.clear();
+    reqBudgetMinCtl.clear();
+    reqBudgetMaxCtl.clear();
     
-    _requirementCategory = null;
-    _requirementSource = 'Direct'; // Set default value
+    // Reset state variables
     _reqSelectedDate = null;
     _reqSelectedTime = null;
     _reqNextWorkingDate = null;
+    _requirementSource = null;
     _clientRequirementImages = [];
-    _error = null;
+    
+    notifyListeners();
   }
+
+  // Public clear methods for form initialization
+  void clearTransferForm() => _clearTransferForm();
+  void clearRequirementForm() => _clearRequirementForm();
 
   // Pagination methods
   void setPage(int page) {

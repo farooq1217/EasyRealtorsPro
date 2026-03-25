@@ -92,6 +92,9 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   FirestoreSyncState _syncState = FirestoreSyncState();
   String? _currentFilter;
 
+  // FIXED: Move property type state to class level to persist across dialog opens
+  ValueNotifier<String>? _propertyTypeState;
+
   // SQLite-only flag
   static const bool _sqliteOnlyMode = true;
 
@@ -185,7 +188,12 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
     if (!mounted) return;
 
     setState(() {
-      _rows = result.map((r) => Map<String, dynamic>.from(r.data)).toList();
+      _rows = result.map((r) {
+        final rowMap = Map<String, dynamic>.from(r.data);
+        debugPrint('=== LOADED ROW FROM DB ===');
+        debugPrint('Row ID: ${rowMap['id']}, Name: ${rowMap['name']}');
+        return rowMap;
+      }).toList();
       _loading = false;
     });
   }
@@ -193,6 +201,14 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   void _showAddFormDialog({Map<String, dynamic>? existing}) {
     setState(() {
       _editingRental = existing;
+      
+      // FIXED: Initialize class-level property type state
+      final validPropertyTypes = ['House', 'Shop', 'Plaza', 'Hall', 'Apartment', 'Office', 'Warehouse'];
+      String existingPropertyType = existing?['name']?.toString() ?? '';
+      _propertyTypeState = ValueNotifier<String>(
+        validPropertyTypes.contains(existingPropertyType) ? existingPropertyType : 'House'
+      );
+      
       if (existing != null && existing['id'] != null) {
         // Load images from Firestore when editing
         final existingId = existing['id'].toString();
@@ -333,10 +349,14 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   Widget _buildAddRentalForm([StateSetter? dialogSetState, BuildContext? dialogContext]) {
     final existing = _editingRental;
     
-    // Ensure property type is always valid
-    final validPropertyTypes = ['House', 'Shop', 'Plaza', 'Hall', 'Apartment', 'Office', 'Warehouse'];
-    String existingPropertyType = existing?['name']?.toString() ?? '';
-    String? _selectedPropertyType = validPropertyTypes.contains(existingPropertyType) ? existingPropertyType : 'House';
+    // Ensure property type state is initialized
+    if (_propertyTypeState == null) {
+      final validPropertyTypes = ['House', 'Shop', 'Plaza', 'Hall', 'Apartment', 'Office', 'Warehouse'];
+      String existingPropertyType = existing?['name']?.toString() ?? '';
+      _propertyTypeState = ValueNotifier<String>(
+        validPropertyTypes.contains(existingPropertyType) ? existingPropertyType : 'House'
+      );
+    }
     
     final addressCtl = TextEditingController(text: existing?['location']?.toString() ?? '');
     final ownerNameCtl = TextEditingController(text: existing?['owner_name']?.toString() ?? '');
@@ -409,25 +429,37 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                         runSpacing: 16,
                         children: [
                           fieldBox(
-                            DropdownButtonFormField<String>(
-                              value: _selectedPropertyType ?? 'House', // Set default to first item if null
-                              focusNode: propertyTypeFocus,
-                              decoration: _fieldDecoration('Property Type', isRequired: true),
-                              items: const [
-                                DropdownMenuItem(value: 'House', child: Text('House')),
-                                DropdownMenuItem(value: 'Shop', child: Text('Shop')),
-                                DropdownMenuItem(value: 'Plaza', child: Text('Plaza')),
-                                DropdownMenuItem(value: 'Hall', child: Text('Hall')),
-                                DropdownMenuItem(value: 'Apartment', child: Text('Apartment')),
-                                DropdownMenuItem(value: 'Office', child: Text('Office')),
-                                DropdownMenuItem(value: 'Warehouse', child: Text('Warehouse')),
-                              ],
-                              onChanged: (value) {
-                                if (dialogSetState != null) {
-                                  dialogSetState(() {
-                                    _selectedPropertyType = value;
-                                  });
-                                }
+                            ValueListenableBuilder<String>(
+                              valueListenable: _propertyTypeState!,
+                              builder: (context, propertyTypeValue, child) {
+                                debugPrint('=== VALUE LISTENABLE BUILDER ===');
+                                debugPrint('Current propertyTypeValue: $propertyTypeValue');
+                                return DropdownButtonFormField<String>(
+                                  value: propertyTypeValue.isNotEmpty ? propertyTypeValue : 'House', // Set default to first item if null
+                                  focusNode: propertyTypeFocus,
+                                  decoration: _fieldDecoration('Property Type', isRequired: true),
+                                  items: const [
+                                    DropdownMenuItem(value: 'House', child: Text('House')),
+                                    DropdownMenuItem(value: 'Shop', child: Text('Shop')),
+                                    DropdownMenuItem(value: 'Plaza', child: Text('Plaza')),
+                                    DropdownMenuItem(value: 'Hall', child: Text('Hall')),
+                                    DropdownMenuItem(value: 'Apartment', child: Text('Apartment')),
+                                    DropdownMenuItem(value: 'Office', child: Text('Office')),
+                                    DropdownMenuItem(value: 'Warehouse', child: Text('Warehouse')),
+                                  ],
+                                  onChanged: (value) {
+                                    debugPrint('=== DROPDOWN CHANGED ===');
+                                    debugPrint('New value: $value');
+                                    debugPrint('Before update - _propertyTypeState!.value: ${_propertyTypeState!.value}');
+                                    if (value != null) {
+                                      _propertyTypeState!.value = value; // Update ValueNotifier
+                                      debugPrint('After update - _propertyTypeState!.value: ${_propertyTypeState!.value}');
+                                      if (dialogSetState != null) {
+                                        dialogSetState(() {}); // Trigger dialog rebuild
+                                      }
+                                    }
+                                  },
+                                );
                               },
                             ),
                           ),
@@ -565,7 +597,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                           const SizedBox(width: 12),
                           ElevatedButton(
                             onPressed: () async {
-                              if (_selectedPropertyType == null || _selectedPropertyType!.trim().isEmpty) {
+                              if (_propertyTypeState!.value.trim().isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Please select property type'),
@@ -625,7 +657,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                               // Save data
                               final now = DateTime.now().toUtc();
                               final data = {
-                                'name': _selectedPropertyType!.trim(),
+                                'name': _propertyTypeState!.value.trim(), // FIXED: Use ValueNotifier value
                                 'location': addressCtl.text.trim(),
                                 'owner_name': ownerNameCtl.text.trim(),
                                 'contact_no': contactNoCtl.text.trim(),
@@ -636,6 +668,10 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                 'created_at': now.toIso8601String(),
                                 'updated_at': now.toIso8601String(),
                               };
+                              
+                              debugPrint('=== RENTAL SAVE DEBUG ===');
+                              debugPrint('Property Type being saved: ${data['name']}');
+                              debugPrint('_propertyTypeState!.value: ${_propertyTypeState!.value}');
 
                               try {
                                 if (existing != null && existing['id'] != null) {
@@ -696,7 +732,9 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                 }
 
                                 // Reload data
+                                debugPrint('=== RELOADING DATA AFTER SAVE ===');
                                 await _load();
+                                debugPrint('=== DATA RELOADED ===');
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(existing != null ? 'Rental item updated successfully' : 'Rental item added successfully'),
@@ -973,91 +1011,114 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                             return const SizedBox.shrink();
                           }
 
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                          return InkWell(
+                            onTap: () => _showDetailsPreviewDialog(context, row),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Card(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Stack(
                                 children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          name,
-                                          style: const TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
+                                  Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                name,
+                                                style: const TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: saleStatus == 'Sold'
+                                                    ? Colors.green
+                                                    : saleStatus == 'Maintenance'
+                                                        ? Colors.orange
+                                                        : Colors.blue,
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                saleStatus,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        _buildInfoRow(Icons.location_on, location),
+                                        _buildInfoRow(Icons.person, ownerName),
+                                        _buildInfoRow(Icons.phone, contactNo),
+                                        _buildInfoRow(Icons.attach_money, 'Rent: Rs$price'),
+                                        if (security.isNotEmpty && security != '0')
+                                          _buildInfoRow(Icons.security, 'Security: Rs$security'),
+                                        if (remarks.isNotEmpty)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 4),
+                                            child: Text(
+                                              'Remarks: $remarks',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: saleStatus == 'Sold'
-                                              ? Colors.green
-                                              : saleStatus == 'Maintenance'
-                                                  ? Colors.orange
-                                                  : Colors.blue,
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          saleStatus,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  _buildInfoRow(Icons.location_on, location),
-                                  _buildInfoRow(Icons.person, ownerName),
-                                  _buildInfoRow(Icons.phone, contactNo),
-                                  _buildInfoRow(Icons.attach_money, 'Rent: Rs$price'),
-                                  if (security.isNotEmpty && security != '0')
-                                    _buildInfoRow(Icons.security, 'Security: Rs$security'),
-                                  if (remarks.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Text(
-                                        'Remarks: $remarks',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.grey.shade600,
-                                        ),
-                                      ),
+                                      ],
                                     ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      const Spacer(),
-                                      // Action buttons
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            onPressed: () => _showAddFormDialog(existing: row),
-                                            icon: const Icon(Icons.edit),
-                                            tooltip: 'Edit',
+                                  ),
+                                  // 3-dot menu at top-right
+                                  Positioned(
+                                    top: 8,
+                                    right: 8,
+                                    child: PopupMenuButton<String>(
+                                      icon: const Icon(Icons.more_vert),
+                                      onSelected: (String value) {
+                                        if (value == 'edit') {
+                                          _showAddFormDialog(existing: row);
+                                        } else if (value == 'delete') {
+                                          _deleteRental(id);
+                                        }
+                                      },
+                                      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                                        const PopupMenuItem<String>(
+                                          value: 'edit',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.edit, color: Colors.blue, size: 20),
+                                              SizedBox(width: 8),
+                                              Text('Edit'),
+                                            ],
                                           ),
-                                          IconButton(
-                                            onPressed: () => _deleteRental(id),
-                                            icon: const Icon(Icons.delete),
-                                            tooltip: 'Delete',
+                                        ),
+                                        const PopupMenuItem<String>(
+                                          value: 'delete',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.delete, color: Colors.red, size: 20),
+                                              SizedBox(width: 8),
+                                              Text('Delete', style: TextStyle(color: Colors.red)),
+                                            ],
                                           ),
-                                        ],
-                                      ),
-                                    ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1164,6 +1225,538 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
         ),
       );
     }
+  }
+
+  void _showDetailsPreviewDialog(BuildContext context, Map<String, dynamic> item) {
+    final name = item['name']?.toString() ?? '';
+    final location = item['location']?.toString() ?? '';
+    final ownerName = item['owner_name']?.toString() ?? '';
+    final contactNo = item['contact_no']?.toString() ?? '';
+    final price = item['price']?.toString() ?? '';
+    final security = item['security']?.toString() ?? '';
+    final saleStatus = item['sale_status']?.toString() ?? '';
+    final remarks = item['remarks']?.toString() ?? '';
+    final id = item['id']?.toString() ?? '';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.8,
+          ),
+          decoration: BoxDecoration(
+            color: Theme.of(dialogContext).cardColor,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with title and close button
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFFF6B35), // Orange
+                      Color(0xFF4A90E2), // Blue
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.receipt_long,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Receipt Preview',
+                        style: AppFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white.withOpacity(0.2),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Body content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Property Information Section
+                      _buildDetailSection(
+                        'Property Information',
+                        [
+                          _buildDetailRow('Property Type', name),
+                          _buildDetailRow('Location', location),
+                          _buildDetailRow('Status', saleStatus),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      // Owner Information Section
+                      _buildDetailSection(
+                        'Owner Information',
+                        [
+                          _buildDetailRow('Owner Name', ownerName),
+                          _buildDetailRow('Contact Number', contactNo),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      // Financial Information Section
+                      _buildDetailSection(
+                        'Financial Information',
+                        [
+                          _buildDetailRow('Monthly Rent', 'Rs$price'),
+                          if (security.isNotEmpty && security != '0')
+                            _buildDetailRow('Security Deposit', 'Rs$security'),
+                        ],
+                      ),
+                      if (remarks.isNotEmpty) ...[
+                        const SizedBox(height: 24),
+                        _buildDetailSection(
+                          'Additional Remarks',
+                          [
+                            _buildDetailRow('Remarks', remarks),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      // Receipt Information
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.info_outline, color: Colors.grey.shade600, size: 20),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Receipt Information',
+                                  style: AppFonts.poppins(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            _buildDetailRow('Receipt ID', '#R$id'),
+                            _buildDetailRow('Generated Date', DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.now())),
+                            _buildDetailRow('Company', 'EasyRealtorsPro'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Footer with Generate PDF button
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
+                  ),
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      await _generateRentalPDF(item);
+                    },
+                    icon: const Icon(Icons.picture_as_pdf),
+                    label: Text(
+                      'Generate PDF',
+                      style: AppFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF6B35),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailSection(String title, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: AppFonts.poppins(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: children,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: AppFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+          const Text(': ', style: TextStyle(fontWeight: FontWeight.w600)),
+          Expanded(
+            child: Text(
+              value,
+              style: AppFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                color: Colors.grey.shade800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _generateRentalPDF(Map<String, dynamic> item) async {
+    final name = item['name']?.toString() ?? '';
+    final location = item['location']?.toString() ?? '';
+    final ownerName = item['owner_name']?.toString() ?? '';
+    final contactNo = item['contact_no']?.toString() ?? '';
+    final price = item['price']?.toString() ?? '';
+    final security = item['security']?.toString() ?? '';
+    final saleStatus = item['sale_status']?.toString() ?? '';
+    final remarks = item['remarks']?.toString() ?? '';
+    final id = item['id']?.toString() ?? '';
+
+    // Create PDF document
+    final pdf = pw.Document();
+
+    // Define custom colors
+    final primaryColor = PdfColor.fromInt(0xFFFF6B35); // Orange
+    final secondaryColor = PdfColor.fromInt(0xFF4A90E2); // Blue
+    final textColor = PdfColor.fromInt(0xFF333333);
+    final lightGray = PdfColor.fromInt(0xFFF5F5F5);
+
+    // Add page to PDF
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(40),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Header Section
+              pw.Container(
+                width: double.infinity,
+                decoration: pw.BoxDecoration(
+                  gradient: pw.LinearGradient(
+                    begin: pw.Alignment.topLeft,
+                    end: pw.Alignment.bottomRight,
+                    colors: [primaryColor, secondaryColor],
+                  ),
+                  borderRadius: pw.BorderRadius.circular(12),
+                ),
+                padding: const pw.EdgeInsets.all(20),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'Real Estate Management System',
+                      style: pw.TextStyle(
+                        fontSize: 24,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.white,
+                      ),
+                    ),
+                    pw.SizedBox(height: 8),
+                    pw.Text(
+                      'Rental Agreement / Receipt',
+                      style: pw.TextStyle(
+                        fontSize: 18,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 24),
+
+              // Receipt Information
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.all(16),
+                decoration: pw.BoxDecoration(
+                  color: lightGray,
+                  borderRadius: pw.BorderRadius.circular(8),
+                  border: pw.Border.all(color: PdfColors.grey300),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Row(
+                      children: [
+                        pw.Container(
+                          width: 16,
+                          height: 16,
+                          decoration: pw.BoxDecoration(
+                            color: PdfColors.grey600,
+                            shape: pw.BoxShape.circle,
+                          ),
+                        ),
+                        pw.SizedBox(width: 8),
+                        pw.Text(
+                          'Receipt Information',
+                          style: pw.TextStyle(
+                            fontSize: 16,
+                            fontWeight: pw.FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    pw.SizedBox(height: 12),
+                    _buildPDFRow('Receipt ID', '#R$id'),
+                    _buildPDFRow('Generated Date', DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.now())),
+                    _buildPDFRow('Company', 'EasyRealtorsPro'),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 24),
+
+              // Property Information Section
+              _buildPDFSection('Property Information', [
+                _buildPDFRow('Property Type', name),
+                _buildPDFRow('Location', location),
+                _buildPDFRow('Status', saleStatus),
+              ]),
+              pw.SizedBox(height: 24),
+
+              // Owner Information Section
+              _buildPDFSection('Owner Information', [
+                _buildPDFRow('Owner Name', ownerName),
+                _buildPDFRow('Contact Number', contactNo),
+              ]),
+              pw.SizedBox(height: 24),
+
+              // Financial Information Section
+              _buildPDFSection('Financial Information', [
+                _buildPDFRow('Monthly Rent', 'Rs$price'),
+                if (security.isNotEmpty && security != '0')
+                  _buildPDFRow('Security Deposit', 'Rs$security'),
+              ]),
+
+              // Remarks Section (if present)
+              if (remarks.isNotEmpty) ...[
+                pw.SizedBox(height: 24),
+                _buildPDFSection('Additional Remarks', [
+                  _buildPDFRow('Remarks', remarks),
+                ]),
+              ],
+
+              pw.Spacer(),
+
+              // Footer
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.symmetric(vertical: 16),
+                child: pw.Column(
+                  children: [
+                    pw.Divider(color: PdfColors.grey300),
+                    pw.SizedBox(height: 8),
+                    pw.Text(
+                      'This is a computer-generated receipt.',
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        color: PdfColors.grey600,
+                        fontStyle: pw.FontStyle.italic,
+                      ),
+                    ),
+                    pw.Text(
+                      'Generated on ${DateFormat('dd MMM yyyy \'at\' hh:mm a').format(DateTime.now())}',
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        color: PdfColors.grey600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    // Trigger printing dialog
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(),
+      name: 'Rental_Receipt_$id.pdf',
+    );
+  }
+
+  pw.Widget _buildPDFSection(String title, List<pw.Widget> children) {
+    return pw.Container(
+      width: double.infinity,
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            title,
+            style: pw.TextStyle(
+              fontSize: 18,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColor.fromInt(0xFF333333),
+            ),
+          ),
+          pw.SizedBox(height: 12),
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(16),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.white,
+              borderRadius: pw.BorderRadius.circular(8),
+              border: pw.Border.all(color: PdfColors.grey200),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: children,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildPDFRow(String label, String value) {
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 8),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: 120,
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(
+                fontSize: 12,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColor.fromInt(0xFF666666),
+              ),
+            ),
+          ),
+          pw.Text(
+            ': ',
+            style: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColor.fromInt(0xFF666666),
+            ),
+          ),
+          pw.Expanded(
+            child: pw.Text(
+              value,
+              style: pw.TextStyle(
+                fontSize: 12,
+                color: PdfColor.fromInt(0xFF333333),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

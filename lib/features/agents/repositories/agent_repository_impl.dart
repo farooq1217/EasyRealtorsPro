@@ -48,7 +48,10 @@ class AgentRepositoryImpl implements AgentRepository {
     try {
       // Build query with explicit type-safe mapping
       final clauses = <String>['1=1']; // Start with true clause
-      final vars = <d.Variable<String>>[];
+      final vars = <d.Variable<Object>>[];
+      
+      // CRITICAL FIX: Filter out soft-deleted items
+      clauses.add('is_active = 1');
       
       // Add company filter for non-super users
       if (!isSuperAdmin && companyId != null) {
@@ -116,7 +119,7 @@ class AgentRepositoryImpl implements AgentRepository {
     try {
       // Build query with explicit type-safe mapping
       final clauses = <String>['1=1']; // Start with true clause
-      final vars = <d.Variable<String>>[];
+      final vars = <d.Variable<Object>>[];
       
       // Add company filter for non-super users
       if (!isSuperAdmin && companyId != null) {
@@ -184,7 +187,10 @@ class AgentRepositoryImpl implements AgentRepository {
     try {
       // Build query with explicit type-safe mapping
       final clauses = <String>['1=1']; // Start with true clause
-      final vars = <d.Variable<String>>[];
+      final vars = <d.Variable<Object>>[];
+      
+      // CRITICAL FIX: Filter out soft-deleted items
+      clauses.add('is_active = 1');
       
       // Add company filter for non-super users
       if (!isSuperAdmin && companyId != null) {
@@ -251,7 +257,7 @@ class AgentRepositoryImpl implements AgentRepository {
     try {
       // Build query with explicit type-safe mapping
       final clauses = <String>['1=1']; // Start with true clause
-      final vars = <d.Variable<String>>[];
+      final vars = <d.Variable<Object>>[];
       
       // Add company filter for non-super users
       if (!isSuperAdmin && companyId != null) {
@@ -378,7 +384,7 @@ class AgentRepositoryImpl implements AgentRepository {
           // Mark as synced
           await db.customStatement(
             'UPDATE working_progress SET is_synced = 1 WHERE id = ?',
-            [id],
+            <Object>[id],
           );
           debugPrint('AgentRepository: Firestore sync successful for ID: $id');
         });
@@ -387,7 +393,7 @@ class AgentRepositoryImpl implements AgentRepository {
         // In SQLite-only mode, mark as synced immediately
         await db.customStatement(
           'UPDATE working_progress SET is_synced = 1 WHERE id = ?',
-          [id],
+          <Object>[id],
         );
         debugPrint('AgentRepository: Marked as synced in SQLite-only mode for ID: $id');
       }
@@ -458,7 +464,7 @@ class AgentRepositoryImpl implements AgentRepository {
         // Mark as synced
         await db.customStatement(
           'UPDATE working_progress SET is_synced = 1 WHERE id = ?',
-          [id],
+          <Object>[id],
         );
       });
       
@@ -486,7 +492,7 @@ class AgentRepositoryImpl implements AgentRepository {
       // Update SQLite
       await db.customStatement(
         'UPDATE working_progress SET status = ?, next_working_date = ?, updated_at = ?, is_synced = 0 WHERE id = ?',
-        [status, nextDateStr ?? '', nowIso, id],
+        <Object>[status, nextDateStr ?? '', nowIso, id],
       );
       
       // Update Firestore if allowed
@@ -501,7 +507,7 @@ class AgentRepositoryImpl implements AgentRepository {
         // Mark as synced
         await db.customStatement(
           'UPDATE working_progress SET is_synced = 1 WHERE id = ?',
-          [id],
+          <Object>[id],
         );
       });
       
@@ -516,7 +522,7 @@ class AgentRepositoryImpl implements AgentRepository {
     try {
       final result = await db.customSelect(
         'SELECT * FROM working_comments WHERE parent_id = ? ORDER BY updated_at DESC',
-        variables: [d.Variable.withString(parentId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(parentId)],
       ).get();
       
       // Explicit type-safe mapping
@@ -584,7 +590,7 @@ class AgentRepositoryImpl implements AgentRepository {
   Future<void> deleteComment(String id) async {
     try {
       // Delete from SQLite
-      await db.customStatement('DELETE FROM working_comments WHERE id = ?', [id]);
+      await db.customStatement('DELETE FROM working_comments WHERE id = ?', <Object>[id]);
       
       // Delete from Firestore if allowed
       await _executeFirestoreOperation(() async {
@@ -601,17 +607,123 @@ class AgentRepositoryImpl implements AgentRepository {
   @override
   Future<void> deleteItem(String id) async {
     try {
-      // Delete from SQLite
-      await db.customStatement('DELETE FROM working_progress WHERE id = ?', [id]);
+      debugPrint('AgentRepository: Attempting to delete item with ID: $id');
+      
+      // CRITICAL FIX: Clean ID and use soft delete instead of hard delete
+      final String cleanId = id.toString().trim();
+      debugPrint('Cleaned ID for delete: "$cleanId"');
+      
+      // Use soft delete (set is_active = 0) to match the trigger system
+      await db.customStatement(
+        'UPDATE working_progress SET is_active = 0, updated_at = ? WHERE id = ?',
+        <Object>[DateTime.now().toIso8601String(), cleanId],
+      );
+      
+      debugPrint('AgentRepository: Soft delete completed for ID: $cleanId');
+      debugPrint('Rows actually soft-deleted: 1 (assumed success)');
       
       // Delete from Firestore if allowed
       await _executeFirestoreOperation(() async {
         final firestore = FirebaseFirestore.instance;
-        await firestore.collection('working_progress').doc(id).delete();
+        await firestore.collection('working_progress').doc(cleanId).delete();
+        debugPrint('AgentRepository: Deleted from Firestore: $cleanId');
       });
       
     } catch (e) {
-      debugPrint('Error deleting item: $e');
+      debugPrint('AgentRepository: Error deleting item: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> updateEntry({
+    required String id,
+    String? name,
+    String? status,
+    String? remarks,
+    String? transferDate,
+    String? nextWorkingDate,
+    String? category,
+    String? plotNo,
+    String? registryNumber,
+    String? size,
+    String? clientMobile,
+    List<String>? images,
+  }) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      
+      // Build dynamic update query
+      final updates = <String>[];
+      final vars = <d.Variable<Object>>[];
+      
+      if (name != null) {
+        updates.add('name = ?');
+        vars.add(d.Variable.withString(name));
+      }
+      if (status != null) {
+        updates.add('status = ?');
+        vars.add(d.Variable.withString(status));
+      }
+      if (remarks != null) {
+        updates.add('remarks = ?');
+        vars.add(d.Variable.withString(remarks));
+      }
+      if (transferDate != null) {
+        updates.add('transfer_date = ?');
+        vars.add(d.Variable.withString(transferDate));
+      }
+      if (nextWorkingDate != null) {
+        updates.add('next_working_date = ?');
+        vars.add(d.Variable.withString(nextWorkingDate));
+      }
+      if (category != null) {
+        updates.add('category = ?');
+        vars.add(d.Variable.withString(category));
+      }
+      
+      // NOTE: plot_no, registry_number, size, client_mobile do NOT exist in working_progress table
+      // These fields are stored in remarks field during INSERT, so we don't update them separately
+      
+      // Always update updated_at
+      updates.add('updated_at = ?');
+      vars.add(d.Variable.withString(now));
+      
+      if (updates.isNotEmpty) {
+        final setClause = updates.join(', ');
+        final String targetId = id.toString(); // CRITICAL: Force String type
+        final List<Object> args = <Object>[];
+        for (final variable in vars) {
+          args.add(variable.value as Object);
+        }
+        args.add(targetId);
+        await db.customStatement(
+          'UPDATE working_progress SET $setClause WHERE id = ?',
+          args,
+        );
+      }
+      
+      // Update in Firestore if allowed
+      await _executeFirestoreOperation(() async {
+        final firestore = FirebaseFirestore.instance;
+        final updateData = <String, dynamic>{
+          'updated_at': now,
+        };
+        
+        if (name != null) updateData['name'] = name;
+        if (status != null) updateData['status'] = status;
+        if (remarks != null) updateData['remarks'] = remarks;
+        if (transferDate != null) updateData['transfer_date'] = transferDate;
+        if (nextWorkingDate != null) updateData['next_working_date'] = nextWorkingDate;
+        if (category != null) updateData['category'] = category;
+        // NOTE: plot_no, registry_number, size, client_mobile do NOT exist in working_progress table
+        // These are stored in remarks field during INSERT, so we don't update them separately in Firestore
+        
+        await firestore.collection('working_progress').doc(id).update(updateData);
+      });
+      
+    } catch (e) {
+      debugPrint('Error updating item: $e');
       rethrow;
     }
   }
@@ -648,7 +760,7 @@ class AgentRepositoryImpl implements AgentRepository {
     
     await db.customStatement(
       'UPDATE working_progress SET remarks = COALESCE(?, remarks), updated_at = ?, is_synced = 0 WHERE id = ?',
-      [imagesJson, DateTime.now().toUtc().toIso8601String(), parentId],
+      <Object>[imagesJson, DateTime.now().toUtc().toIso8601String(), parentId],
     );
   }
 
@@ -767,8 +879,8 @@ class AgentRepositoryImpl implements AgentRepository {
             ? 'SELECT * FROM working_progress WHERE next_working_date = ? AND status NOT IN (?, ?)'
             : 'SELECT * FROM working_progress WHERE company_id = ? AND next_working_date = ? AND status NOT IN (?, ?)',
         variables: isSuperAdmin
-            ? [d.Variable.withString(today), d.Variable.withString('Done'), d.Variable.withString('Closed')]
-            : [d.Variable.withString(companyId ?? ''), d.Variable.withString(today), d.Variable.withString('Done'), d.Variable.withString('Closed')],
+            ? <d.Variable<Object>>[d.Variable.withString(today), d.Variable.withString('Done'), d.Variable.withString('Closed')]
+            : <d.Variable<Object>>[d.Variable.withString(companyId ?? ''), d.Variable.withString(today), d.Variable.withString('Done'), d.Variable.withString('Closed')],
       ).get();
       
       // Explicit type-safe mapping
@@ -830,7 +942,7 @@ class AgentRepositoryImpl implements AgentRepository {
     try {
       final result = await db.customSelect(
         'SELECT name, status, category FROM working_progress WHERE id = ?',
-        variables: [d.Variable.withString(entryId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(entryId)],
       ).getSingleOrNull();
       
       if (result != null) {

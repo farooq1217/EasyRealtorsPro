@@ -156,6 +156,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
 
   // Date/time pickers delegate to view model
   Future<void> _pickDate() async {
+    FocusScope.of(context).requestFocus(FocusNode()); // Hide keyboard
     final date = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
@@ -164,8 +165,9 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     );
     if (date != null && mounted) {
       setState(() {
-        // Store date in view model (simplified approach)
+        // CRITICAL: Update both controller AND view model state
         _viewModel.dateCtl.text = DateFormat('yyyy-MM-dd').format(date);
+        _viewModel.setSelectedDate(date); // Update validation state
       });
     }
   }
@@ -183,6 +185,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   }
 
   Future<void> _pickNextWorkingDate() async {
+    FocusScope.of(context).requestFocus(FocusNode()); // Hide keyboard
     final date = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
@@ -191,12 +194,15 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     );
     if (date != null && mounted) {
       setState(() {
+        // CRITICAL: Update both controller AND view model state
         _viewModel.nextWorkingDateCtl.text = DateFormat('yyyy-MM-dd').format(date);
+        _viewModel.setNextWorkingDate(date); // Update validation state
       });
     }
   }
 
   Future<void> _pickRequirementDate() async {
+    FocusScope.of(context).requestFocus(FocusNode()); // Hide keyboard
     final date = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
@@ -205,7 +211,9 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     );
     if (date != null && mounted) {
       setState(() {
+        // CRITICAL: Update both controller AND view model state
         _viewModel.reqDateCtl.text = DateFormat('yyyy-MM-dd').format(date);
+        _viewModel.setReqSelectedDate(date); // Update validation state
       });
     }
   }
@@ -222,23 +230,35 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
 
 
   Future<void> _pickReqNextWorkingDate() async {
+    FocusScope.of(context).requestFocus(FocusNode()); // Hide keyboard
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: _viewModel.reqNextWorkingDate ?? now,
       firstDate: now,
-      lastDate: DateTime(now.year + 5),
+      lastDate: DateTime(2030),
     );
-    if (picked != null) {
-      _viewModel.setReqNextWorkingDate(picked);
+    if (picked != null && mounted) {
+      setState(() {
+        // CRITICAL: Update both controller AND view model state
+        _viewModel.reqNextWorkingDateCtl.text = DateFormat('yyyy-MM-dd').format(picked);
+        _viewModel.setReqNextWorkingDate(picked); // Update validation state
+      });
     }
-  }
+  } 
 
-  // Form submission delegates to view model
-  Future<void> _submitTransfer({required String action, BuildContext? dialogContext}) async {
+  Future<void> _submitTransfer({required String action, BuildContext? dialogContext, Map<String, dynamic>? existingItem}) async {
     print("Save button clicked. Validating form...");
     
-    final success = await _viewModel.addTransfer();
+    bool success;
+    if (existingItem != null) {
+      // It's an update. Pass the existing ID as String!
+      final String itemId = existingItem['id'].toString();
+      success = await _viewModel.updateTransfer(itemId);
+    } else {
+      // It's a new entry.
+      success = await _viewModel.addTransfer();
+    }
     
     if (success && mounted) {
       // Close dialog immediately after successful save
@@ -250,7 +270,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       try {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Transfer added successfully!', style: AppFonts.poppins()),
+            content: Text(existingItem != null ? 'Transfer updated successfully!' : 'Transfer added successfully!', style: AppFonts.poppins()),
             backgroundColor: const Color(0xFFFF6B35),
             duration: const Duration(seconds: 2),
           ),
@@ -270,10 +290,18 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     }
   }
 
-  Future<void> _submitClientRequirement({required String action, BuildContext? dialogContext}) async {
+  Future<void> _submitClientRequirement({required String action, BuildContext? dialogContext, Map<String, dynamic>? existingItem}) async {
     print("Save button clicked for client requirement. Validating form...");
     
-    final success = await _viewModel.addClientRequirement();
+    bool success;
+    if (existingItem != null) {
+      // It's an update. Pass the existing ID as String!
+      final String itemId = existingItem['id'].toString();
+      success = await _viewModel.updateClientRequirement(itemId);
+    } else {
+      // It's a new entry.
+      success = await _viewModel.addClientRequirement();
+    }
     
     if (success && mounted) {
       // Close dialog immediately after successful save
@@ -285,7 +313,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       try {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Client requirement added successfully!', style: AppFonts.poppins()),
+            content: Text(existingItem != null ? 'Client requirement updated successfully!' : 'Client requirement added successfully!', style: AppFonts.poppins()),
             backgroundColor: const Color(0xFFFF6B35),
             duration: const Duration(seconds: 2),
           ),
@@ -522,31 +550,39 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   }
 
   Widget _buildTransferContent() {
-    // Filter transfers to only show entries with property categories (exact match with form dropdown)
-    final propertyCategories = ['Residential', 'Commercial', 'Plot', 'other'];
-    final filteredTransfers = _viewModel.transfers.where((entry) => 
-      entry.category != null && 
-      entry.category!.isNotEmpty && 
-      propertyCategories.contains(entry.category)
-    ).toList();
-    
-    return filteredTransfers.isEmpty
-        ? _buildEmptyState('No transfers found')
-        : _buildTransfersList(filteredTransfers);
+    return Consumer<AgentViewModel>(
+      builder: (context, viewModel, child) {
+        // Filter transfers to only show entries with property categories (exact match with form dropdown)
+        final propertyCategories = ['Residential', 'Commercial', 'Plot', 'other'];
+        final filteredTransfers = viewModel.transfers.where((entry) => 
+          entry.category != null && 
+          entry.category!.isNotEmpty && 
+          propertyCategories.contains(entry.category)
+        ).toList();
+        
+        return filteredTransfers.isEmpty
+            ? _buildEmptyState('No transfers found')
+            : _buildTransfersList(filteredTransfers);
+      },
+    );
   }
 
   Widget _buildClientRequirementContent() {
-    // Filter client requirements to only show entries with source categories (exact match with form dropdown)
-    final sourceCategories = ['Direct', 'Agent', 'Website', 'Social Media', 'Referral'];
-    final filteredRequirements = _viewModel.clientRequirements.where((entry) => 
-      entry.category != null && 
-      entry.category!.isNotEmpty && 
-      sourceCategories.contains(entry.category)
-    ).toList();
-    
-    return filteredRequirements.isEmpty
-        ? _buildEmptyState('No client requirements found')
-        : _buildClientRequirementsList(filteredRequirements);
+    return Consumer<AgentViewModel>(
+      builder: (context, viewModel, child) {
+        // Filter client requirements to only show entries with source categories (exact match with form dropdown)
+        final sourceCategories = ['Direct', 'Agent', 'Website', 'Social Media', 'Referral'];
+        final filteredRequirements = viewModel.clientRequirements.where((entry) => 
+          entry.category != null && 
+          entry.category!.isNotEmpty && 
+          sourceCategories.contains(entry.category)
+        ).toList();
+        
+        return filteredRequirements.isEmpty
+            ? _buildEmptyState('No client requirements found')
+            : _buildClientRequirementsList(filteredRequirements);
+      },
+    );
   }
 
   Widget _buildEmptyState(String message) {
@@ -651,7 +687,8 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                       if (value == 'edit') {
                         await _editItem(transfer, true);
                       } else if (value == 'delete') {
-                        await _deleteItem(transfer.id, true);
+                        final String targetId = transfer.id.toString();
+                        await _deleteItem(targetId, true);
                       }
                     },
                     itemBuilder: (context) => [
@@ -716,7 +753,8 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                       if (value == 'edit') {
                         await _editItem(requirement, false);
                       } else if (value == 'delete') {
-                        await _deleteItem(requirement.id, false);
+                        final String targetId = requirement.id.toString();
+                        await _deleteItem(targetId, false);
                       }
                     },
                     itemBuilder: (context) => [
@@ -883,7 +921,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
               ),
               // Clean form content - no tabs
               Expanded(
-                child: _buildTransferForm(dialogContext),
+                child: _buildTransferForm(dialogContext, existingItem: null),
               ),
             ],
           ),
@@ -933,7 +971,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
               ),
               // Clean form content - no tabs
               Expanded(
-                child: _buildClientRequirementForm(dialogContext),
+                child: _buildClientRequirementForm(dialogContext, existingItem: null),
               ),
             ],
           ),
@@ -943,7 +981,86 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     );
   }
 
-  Widget _buildTransferForm(BuildContext dialogContext) {
+  // Form initialization methods
+  void _initializeTransferForm(Map<String, dynamic>? existingItem) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _viewModel.clearTransferForm();
+      if (existingItem != null) {
+        // Populate form with existing data
+        if (existingItem['name'] != null) {
+          _viewModel.clientNameCtl.text = existingItem['name'];
+        }
+        
+        if (existingItem['transfer_date'] != null) {
+          try {
+            final date = DateTime.parse(existingItem['transfer_date']);
+            _viewModel.setSelectedDate(date);
+            _viewModel.dateCtl.text = DateFormat('dd MMM yyyy').format(date);
+          } catch (e) {
+            debugPrint('Error parsing transfer date: $e');
+          }
+        }
+        
+        if (existingItem['category'] != null) {
+          _viewModel.setTransferCategory(existingItem['category']);
+        }
+        
+        if (existingItem['remarks'] != null) {
+          _viewModel.commentsCtl.text = existingItem['remarks'];
+        }
+        
+        // Note: plot_no, registry_number, size, client_mobile are not available in WorkingProgressData
+        // They would need to be fetched separately from the database if needed
+      }
+    });
+  }
+
+  void _initializeClientRequirementForm(Map<String, dynamic>? existingItem) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _viewModel.clearRequirementForm();
+      if (existingItem != null) {
+        // Populate form with existing data
+        if (existingItem['name'] != null) {
+          _viewModel.reqClientNameCtl.text = existingItem['name'];
+        }
+        
+        if (existingItem['transfer_date'] != null) {
+          try {
+            final date = DateTime.parse(existingItem['transfer_date']);
+            _viewModel.setReqSelectedDate(date);
+            _viewModel.reqDateCtl.text = DateFormat('dd MMM yyyy').format(date);
+          } catch (e) {
+            debugPrint('Error parsing requirement date: $e');
+          }
+        }
+        
+        if (existingItem['source'] != null) {
+          _viewModel.setRequirementSource(existingItem['source']);
+        }
+        
+        if (existingItem['remarks'] != null) {
+          _viewModel.reqCommentsCtl.text = existingItem['remarks'];
+        }
+        
+        if (existingItem['next_working_date'] != null) {
+          try {
+            final date = DateTime.parse(existingItem['next_working_date']);
+            _viewModel.setReqNextWorkingDate(date);
+            _viewModel.reqNextWorkingDateCtl.text = DateFormat('dd MMM yyyy').format(date);
+          } catch (e) {
+            debugPrint('Error parsing next working date: $e');
+          }
+        }
+      }
+    });
+  }
+
+  Widget _buildTransferForm(BuildContext dialogContext, {final Map<String, dynamic>? existingItem}) {
+    // Initialize form data if existingItem is provided
+    if (existingItem != null) {
+      _initializeTransferForm(existingItem);
+    }
+    
     return Form(
       key: _transferFormKey,
       child: SingleChildScrollView(
@@ -980,65 +1097,58 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildTextFieldWithIcon('Plot No', _viewModel.plotCtl, Icons.tag),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildTextFieldWithIcon('Registry/Transfer Number', _viewModel.registryCtl, Icons.description),
-                ),
-              ],
-            ),
-            
-            // Client Information Row
-            _buildFormSection('Client Information', []),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextFieldWithIcon('Client Name', _viewModel.clientNameCtl, Icons.person),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildTextFieldWithIcon('Client Mobile No.', _viewModel.clientMobileCtl, Icons.phone),
-                ),
-              ],
-            ),
-            
-            // Timeline & Follow-up Row
-            _buildFormSection('Timeline & Follow-up', []),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
                   child: _buildDateFieldWithIcon('Date *', _viewModel.dateCtl, _pickDate),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildTimeFieldWithIcon('Time *', _viewModel.timeCtl, _pickTime),
+                  child: _buildTimeFieldWithIcon('Time', _viewModel.timeCtl, _pickTime),
                 ),
               ],
             ),
-            
-            // Attachments & Notes Section
-            _buildFormSection('Attachments & Notes', []),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
-                  flex: 2,
-                  child: ImageUploadWidget(
-                    imagePaths: _viewModel.transferImages,
-                    onImagesChanged: (images) => _viewModel.setTransferImages(images),
-                    maxImages: 3,
-                  ),
+                  child: _buildTextFieldWithIcon('Plot No', _viewModel.plotCtl, Icons.location_on),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  flex: 3,
-                  child: _buildTextFieldWithIcon('Remarks', _viewModel.commentsCtl, Icons.edit, maxLines: 3),
+                  child: _buildTextFieldWithIcon('Registry No', _viewModel.registryCtl, Icons.description),
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextFieldWithIcon('Client Name *', _viewModel.clientNameCtl, Icons.person),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildTextFieldWithIcon('Client Mobile', _viewModel.clientMobileCtl, Icons.phone),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildTextFieldWithIcon('Comments', _viewModel.commentsCtl, Icons.comment, maxLines: 3),
+            const SizedBox(height: 16),
+            
+            // Show "Other" category field if "other" is selected
+            if (_viewModel.transferCategory == 'other') ...[
+              _buildTextFieldWithIcon('Specify Category', _viewModel.transferOtherCategoryCtl, Icons.category),
+              const SizedBox(height: 16),
+            ],
+            
+            // Show "Other" size field if "other" is selected  
+            if (_viewModel.transferSize == 'other') ...[
+              _buildTextFieldWithIcon('Specify Size', _viewModel.transferOtherSizeCtl, Icons.straighten),
+              const SizedBox(height: 16),
+            ],
+            
+            // Image upload section - simplified
+            _buildFormSection('Property Images', [
+              Text('Image upload functionality would be implemented here', style: AppFonts.poppins(color: Colors.grey)),
+            ]),
             
             const SizedBox(height: 32),
             
@@ -1049,7 +1159,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                 SizedBox(
                   width: 150,
                   child: ElevatedButton(
-                    onPressed: () => _submitTransfer(action: 'save', dialogContext: dialogContext),
+                    onPressed: () => _submitTransfer(action: 'save', dialogContext: dialogContext, existingItem: existingItem),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFF6B35),
                       foregroundColor: Colors.white,
@@ -1060,20 +1170,14 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                     ),
                     child: _viewModel.saving
                         ? const SizedBox(
-                            width: 20,
                             height: 20,
+                            width: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
-                        : Text(
-                          'Save Transfer',
-                          style: AppFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        : Text('Save', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
                   ),
                 ),
               ],
@@ -1084,7 +1188,12 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     );
   }
 
-  Widget _buildClientRequirementForm(BuildContext dialogContext) {
+  Widget _buildClientRequirementForm(BuildContext dialogContext, {final Map<String, dynamic>? existingItem}) {
+    // Initialize form data if existingItem is provided
+    if (existingItem != null) {
+      _initializeClientRequirementForm(existingItem);
+    }
+    
     return Form(
       key: _clientRequirementFormKey,
       child: SingleChildScrollView(
@@ -1204,7 +1313,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                 SizedBox(
                   width: 180,
                   child: ElevatedButton(
-                    onPressed: () => _submitClientRequirement(action: 'save', dialogContext: dialogContext),
+                    onPressed: () => _submitClientRequirement(action: 'save', dialogContext: dialogContext, existingItem: existingItem),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFF6B35),
                       foregroundColor: Colors.white,
@@ -1934,33 +2043,118 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   }
   
   Future<void> _editItem(WorkingProgressData item, bool isTransfer) async {
-    // For now, show a simple dialog indicating edit functionality
-    await showDialog(
+  // Convert WorkingProgressData to Map<String, dynamic> for form
+  final itemMap = {
+    'id': item.id,
+    'name': item.name,
+    'status': item.status,
+    'remarks': item.remarks,
+    'transfer_date': item.transferDate,
+    'next_working_date': item.nextWorkingDate,
+    'category': item.category,
+    'source': item.source,
+    // Note: plot_no, registry_number, size, client_mobile, images are not available in WorkingProgressData class
+    // They exist in database but not in the generated class - will need to be fetched separately if needed
+  };
+  
+  if (isTransfer) {
+    showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Edit ${isTransfer ? 'Transfer' : 'Client Requirement'}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('ID: ${item.id}'),
-            Text('Name: ${item.name}'),
-            Text('Status: ${item.status ?? 'N/A'}'),
-            if (item.category != null && item.category!.isNotEmpty)
-              Text('${isTransfer ? 'Category' : 'Source'}: ${item.category}'),
-            const SizedBox(height: 16),
-            Text('Edit functionality would be implemented here with pre-filled form data.'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('Close'),
+      barrierDismissible: false,
+      builder: (dialogContext) => ChangeNotifierProvider<AgentViewModel>.value(
+        value: Provider.of<AgentViewModel>(context, listen: false),
+        child: Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+              maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+            ),
+            child: Column(
+              children: [
+                // Header with back button
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'Edit Transfer',
+                        style: AppFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFFFF6B35),
+                        ),
+                      ),
+                      const Spacer(),
+                    ],
+                  ),
+                ),
+                // Clean form content - no tabs
+                Expanded(
+                  child: _buildTransferForm(dialogContext, existingItem: itemMap),
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
+      ),
+    );
+  } else {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => ChangeNotifierProvider<AgentViewModel>.value(
+        value: Provider.of<AgentViewModel>(context, listen: false),
+        child: Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+              maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+            ),
+            child: Column(
+              children: [
+                // Header with back button
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'Edit Client Requirement',
+                        style: AppFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFFFF6B35),
+                        ),
+                      ),
+                      const Spacer(),
+                    ],
+                  ),
+                ),
+                // Clean form content - no tabs
+                Expanded(
+                  child: _buildClientRequirementForm(dialogContext, existingItem: itemMap),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
+}
   
   Future<void> _deleteItem(String itemId, bool isTransfer) async {
     // Show confirmation dialog

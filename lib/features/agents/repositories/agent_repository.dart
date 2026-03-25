@@ -76,6 +76,22 @@ abstract class AgentRepository {
   // Delete working progress item
   Future<void> deleteItem(String id);
   
+  // Update working progress item
+  Future<void> updateEntry({
+    required String id,
+    String? name,
+    String? status,
+    String? remarks,
+    String? transferDate,
+    String? nextWorkingDate,
+    String? category,
+    String? plotNo,
+    String? registryNumber,
+    String? size,
+    String? clientMobile,
+    List<String>? images,
+  });
+  
   // Image operations
   Future<List<String>> getImages(String parentId);
   
