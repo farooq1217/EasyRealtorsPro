@@ -22,31 +22,32 @@ class UserCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(10), // Further reduced from 12 to 10
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min, // Make card compact
+          mainAxisSize: MainAxisSize.min, // Make card wrap content tightly
           children: [
             // Header: Avatar, Name/ID, Action Buttons
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start, // Align to top
               children: [
                 // User Avatar
                 CircleAvatar(
-                  radius: 24,
+                  radius: 18, // Further reduced from 20
                   backgroundColor: user.isActive ? Colors.green : Colors.grey,
                   child: Text(
                     user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
                     style: AppFonts.poppins(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontSize: 14, // Reduced from 16
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10), // Reduced from 12
                 
                 // User Name and ID
                 Expanded(
@@ -58,7 +59,7 @@ class UserCard extends StatelessWidget {
                         user.name.isNotEmpty ? user.name : 'Unknown User',
                         style: AppFonts.poppins(
                           fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                          fontSize: 12, // Further reduced from 13
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -67,7 +68,7 @@ class UserCard extends StatelessWidget {
                       Text(
                         'ID: ${user.userId.isNotEmpty ? user.userId : 'No ID'}',
                         style: AppFonts.poppins(
-                          fontSize: 12,
+                          fontSize: 10, // Further reduced from 11
                           color: Colors.grey.shade600,
                         ),
                         maxLines: 1,
@@ -77,75 +78,78 @@ class UserCard extends StatelessWidget {
                   ),
                 ),
                 
-                // Action Buttons
-                Flexible(
-                  child: Wrap(
-                    spacing: 4,
-                    runSpacing: 4,
-                    children: [
+                // Action Buttons - Compact layout
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     IconButton(
                       onPressed: () {
                         onEditUser?.call(user);
                       },
-                      icon: const Icon(Icons.edit, size: 16),
+                      icon: const Icon(Icons.edit, size: 14), // Reduced from 16
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.blue.shade50,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(4),
                         ),
+                        padding: const EdgeInsets.all(4), // Reduced padding
                       ),
                     ),
                     IconButton(
                       onPressed: () {
                         onUpdatePassword?.call(user);
                       },
-                      icon: const Icon(Icons.lock, size: 16),
+                      icon: const Icon(Icons.lock, size: 14), // Reduced from 16
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.orange.shade50,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(4),
                         ),
+                        padding: const EdgeInsets.all(4), // Reduced padding
                       ),
                     ),
                     IconButton(
                       onPressed: () {
                         onDeleteUser?.call(user);
                       },
-                      icon: const Icon(Icons.delete, size: 16),
+                      icon: const Icon(Icons.delete, size: 14), // Reduced from 16
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.red.shade50,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(4),
                         ),
+                        padding: const EdgeInsets.all(4), // Reduced padding
                       ),
                     ),
                   ],
                 ),
-                  ), // Close Flexible
               ],
             ),
             
-            const SizedBox(height: 12),
+            const SizedBox(height: 10), // Increased from 6 to give more space
             
-            // Contact Information
-            Padding(
-              padding: const EdgeInsets.all(12), // Reduced padding from 16 to 12
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min, // Make column compact
-                children: [
-                  // Contact Info Section
-                  _buildContactInfo(),
-                  const SizedBox(height: 8), // Reduced from 12 to 8
-                  
-                  // Roles Section
-                  _buildRolesSection(),
-                  const SizedBox(height: 8), // Reduced from 12 to 8
-                  
-                  // Company & Department Section
-                  _buildCompanySection(),
-                ],
-              ),
+            // Content Sections - Compact layout with flexible spacing
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Contact Information
+                Flexible(
+                  child: _buildContactInfo(),
+                ),
+                const SizedBox(height: 2), // Further reduced from 4
+                
+                // Roles Section with settings button
+                Flexible(
+                  child: _buildRolesSection(),
+                ),
+                const SizedBox(height: 2), // Further reduced from 4
+                
+                // Company Section
+                Flexible(
+                  child: _buildCompanySection(),
+                ),
+              ],
             ),
           ],
         ),
@@ -159,7 +163,7 @@ class UserCard extends StatelessWidget {
       children: [
         // Email
         _buildInfoRow(Icons.email, 'Email', user.email.isNotEmpty ? user.email : 'No Email'),
-        const SizedBox(height: 8),
+        const SizedBox(height: 2), // Further reduced from 4
         // Contact Number
         _buildInfoRow(Icons.phone, 'Contact', user.contactNo?.isNotEmpty == true ? user.contactNo! : 'Not provided'),
       ],
@@ -169,13 +173,13 @@ class UserCard extends StatelessWidget {
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: Colors.grey.shade600),
-        const SizedBox(width: 8),
+        Icon(icon, size: 14, color: Colors.grey.shade600), // Reduced from 16
+        const SizedBox(width: 6), // Reduced from 8
         Expanded(
           child: Text(
             value,
             style: AppFonts.poppins(
-              fontSize: 12,
+              fontSize: 10, // Further reduced from 11
               color: Colors.grey.shade700,
             ),
             maxLines: 1,
@@ -198,21 +202,22 @@ class UserCard extends StatelessWidget {
               Text(
                 'Roles',
                 style: AppFonts.poppins(
-                  fontSize: 12,
+                  fontSize: 11, // Reduced from 12
                   color: Colors.grey.shade600,
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 3), // Reduced from 4
               Chip(
                 label: Text(
-                  role.isNotEmpty ? role : 'No Role',
+                  role.isNotEmpty ? role.toUpperCase() : 'NO ROLE', // CRITICAL: Dynamic uppercase role text
                   style: AppFonts.poppins(
-                    fontSize: 11,
+                    fontSize: 10, // Reduced from 11
                     color: Colors.white,
                   ),
                 ),
                 backgroundColor: role.isNotEmpty ? _getRoleDisplayColor(role) : Colors.grey,
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), // Reduced padding
               ),
             ],
           ),
@@ -221,12 +226,13 @@ class UserCard extends StatelessWidget {
           onPressed: () {
             onManageRoles?.call(user);
           },
-          icon: const Icon(Icons.settings, size: 16),
+          icon: const Icon(Icons.settings, size: 14), // Reduced from 16
           style: IconButton.styleFrom(
             backgroundColor: Colors.grey.shade100,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(4),
             ),
+            padding: const EdgeInsets.all(4), // Reduced padding
           ),
         ),
       ],
@@ -242,62 +248,61 @@ class UserCard extends StatelessWidget {
         Text(
           'Company & Department',
           style: AppFonts.poppins(
-            fontSize: 12,
+            fontSize: 11, // Reduced from 12
             fontWeight: FontWeight.w600,
             color: Colors.grey.shade700,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 3), // Reduced from 4
         Chip(
           label: Text(
             company,
             style: AppFonts.poppins(
-              fontSize: 11,
+              fontSize: 10, // Reduced from 11
               color: Colors.white,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           backgroundColor: user.companyId?.isNotEmpty == true ? const Color(0xFFFF6B35) : Colors.grey,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), // Reduced padding
         ),
       ],
     );
   }
 
   String _getRoleDisplay(UserModel user) {
-    final permissions = user.permissionsMap;
-    final userMap = user.toMap();
+    // CRITICAL FIX: Use the new JSON role format instead of boolean flags
+    final role = user.role; // This uses the UserModel.role getter which parses JSON correctly
+    debugPrint('UserCard: User ${user.name} - Raw permissions: ${user.permissions}');
+    debugPrint('UserCard: User ${user.name} - Parsed role: $role');
     
-    if (RoleUtils.isSuperAdmin(userMap) || 
-        (permissions['super_admin'] == true || permissions['super_admin'] == 'true')) {
-      return 'Super Admin';
+    switch (role.toLowerCase()) {
+      case 'super_admin':
+        return 'Super Admin';
+      case 'company_admin':
+        return 'Company Admin';
+      case 'agent':
+        return 'Agent';
+      case 'user':
+      default:
+        return 'User';
     }
-    
-    if (permissions['company_admin'] == true || permissions['company_admin'] == 'true') {
-      return 'Company Admin';
-    }
-    
-    if (permissions['agent'] == true || permissions['agent'] == 'true') {
-      return 'Agent';
-    }
-    
-    return 'User';
   }
 
   Color _getRoleDisplayColor(String role) {
     switch (role.toLowerCase()) {
-      case 'super admin':
+      case 'super_admin': // Updated to match JSON format
         return Colors.purple;
-      case 'company admin':
+      case 'company_admin': // Updated to match JSON format
         return Colors.blue;
       case 'agent':
         return Colors.green;
       case 'user':
       default:
-        return Colors.orange;
+        return Colors.grey;
     }
   }
 

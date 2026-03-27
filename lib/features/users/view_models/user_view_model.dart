@@ -20,7 +20,8 @@ import 'package:drift/drift.dart' as d;
 class UserViewModel extends ChangeNotifier {
   final UserRepository _repository;
   bool _mounted = false;
-  
+  bool _isDisposed = false; // CRITICAL: Prevent disposed crashes
+
   UserViewModel(this._repository);
 
   // State
@@ -50,6 +51,7 @@ class UserViewModel extends ChangeNotifier {
   final TextEditingController _userIdController = TextEditingController();
   String? _selectedCompanyId;
   String? _selectedStatus;
+  String? _selectedRole;
   Map<String, dynamic> _permissions = {};
 
   // Stream subscriptions
@@ -60,6 +62,7 @@ class UserViewModel extends ChangeNotifier {
   bool get saving => _saving;
   String get error => _error;
   Map<String, dynamic>? get currentUser => _currentUser;
+  String? get _currentUserCompanyId => _currentUser?['company_id']?.toString();
   List<UserModel> get users => _users;
   List<UserModel> get filteredUsers => _filteredUsers;
   UserModel? get editingUser => _editingUser;
@@ -116,6 +119,7 @@ class UserViewModel extends ChangeNotifier {
   TextEditingController get userIdController => _userIdController;
   String? get selectedCompanyId => _selectedCompanyId;
   String? get selectedStatus => _selectedStatus;
+  String? get selectedRole => _selectedRole;
   Map<String, dynamic> get permissions => _permissions;
   bool get mounted => _mounted;
 
@@ -127,6 +131,11 @@ class UserViewModel extends ChangeNotifier {
 
   set selectedStatus(String? value) {
     _selectedStatus = value;
+    notifyListeners();
+  }
+
+  set selectedRole(String? value) {
+    _selectedRole = value;
     notifyListeners();
   }
 
@@ -218,46 +227,47 @@ class UserViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> assignRole(String role) async {
+  Future<void> assignRole(String role, Map<String, bool> selectedModules) async {
     if (_editingUser == null) return;
     
     try {
       _saving = true;
       notifyListeners();
       
-      Map<String, dynamic> newPermissions = {};
-      switch (role.toLowerCase()) {
-        case 'super admin':
-          newPermissions['super_admin'] = true;
-          break;
-        case 'company admin':
-          newPermissions['company_admin'] = true;
-          break;
-        case 'agent':
-          newPermissions['agent'] = true;
-          break;
-      }
+      debugPrint('UserViewModel: Starting role assignment for user ${_editingUser!.id} to role: $role');
+      debugPrint('UserViewModel: Selected modules: $selectedModules');
       
-      // Encode permissions as JSON string for database storage
-      final encodedPermissions = UserModel.encodePermissions(newPermissions);
+      // CRITICAL FIX: Use new dedicated updateUserRole method with dynamic permissions
+      await _repository.updateUserRole(_editingUser!.id, role.toLowerCase(), selectedModules);
       
-      final updatedUser = _editingUser!.copyWith(
-        permissions: encodedPermissions,
-        updatedAt: DateTime.now().toIso8601String(),
-      );
+      debugPrint('UserViewModel: Role assignment completed successfully');
       
-      await _repository.updateUser(updatedUser);
+      // DO NOT do manual fetch - let the watchUsers stream update the _users list naturally
+      // Just notify listeners to trigger UI rebuild from current stream data
+      notifyListeners();
       
       // Clear editing state
       _editingUser = null;
       
-      notifyListeners();
     } catch (e) {
+      debugPrint('UserViewModel: Error in assignRole: $e');
       _error = 'Failed to assign role: $e';
       notifyListeners();
     } finally {
       _saving = false;
       notifyListeners();
+    }
+  }
+
+  // Helper method to force refresh users list
+  Future<void> _loadUsersFromRepository() async {
+    try {
+      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      _users = await _repository.getUsers(companyId);
+      _applySearchFilter();
+      debugPrint('UserViewModel: Force refreshed ${_users.length} users');
+    } catch (e) {
+      debugPrint('Error force refreshing users: $e');
     }
   }
 
@@ -279,6 +289,9 @@ class UserViewModel extends ChangeNotifier {
     _passwordController.clear();
     _confirmPasswordController.clear();
     _userIdController.clear();
+    _selectedCompanyId = null;
+    _selectedStatus = null;
+    _selectedRole = null;
     notifyListeners();
   }
 
@@ -462,6 +475,7 @@ class UserViewModel extends ChangeNotifier {
     _userIdController.clear();
     _selectedCompanyId = null;
     _selectedStatus = 'active';
+    _selectedRole = null;
     _permissions = {};
     _editingUser = null;
     notifyListeners();
@@ -483,6 +497,7 @@ class UserViewModel extends ChangeNotifier {
     }
     
     _selectedStatus = user.status ?? 'active';
+    _selectedRole = _getUserRoleFromPermissions(user.permissionsMap);
     _permissions = user.permissionsMap; // Use permissionsMap getter
     notifyListeners();
   }
@@ -502,7 +517,6 @@ class UserViewModel extends ChangeNotifier {
       // Validation
       final name = _nameController.text.trim();
       final email = _emailController.text.trim();
-      final username = _usernameController.text.trim();
       final contact = _contactController.text.trim();
       final userId = _userIdController.text.trim();
 
@@ -527,8 +541,8 @@ class UserViewModel extends ChangeNotifier {
         return false;
       }
 
-      if (username.isEmpty) {
-        _error = 'Username is required';
+      if (_selectedRole == null) {
+        _error = 'Role is required';
         _saving = false;
         notifyListeners();
         return false;
@@ -544,7 +558,6 @@ class UserViewModel extends ChangeNotifier {
       // For new users, check password
       if (_editingUser == null) {
         final password = _passwordController.text;
-        final confirmPassword = _confirmPasswordController.text;
 
         if (password.isEmpty) {
           _error = 'Password is required';
@@ -559,28 +572,12 @@ class UserViewModel extends ChangeNotifier {
           notifyListeners();
           return false;
         }
-
-        if (password != confirmPassword) {
-          _error = 'Passwords do not match';
-          _saving = false;
-          notifyListeners();
-          return false;
-        }
       }
 
       // Check if email is unique
       final existingUser = await _repository.getUserByEmail(email);
       if (existingUser != null && existingUser.id != _editingUser?.id) {
         _error = 'Email already exists';
-        _saving = false;
-        notifyListeners();
-        return false;
-      }
-
-      // Check if username is unique
-      final existingUsername = await _repository.getUserByUsername(username);
-      if (existingUsername != null && existingUsername.id != _editingUser?.id) {
-        _error = 'Username already exists';
         _saving = false;
         notifyListeners();
         return false;
@@ -601,15 +598,31 @@ class UserViewModel extends ChangeNotifier {
         }
       }
 
+      // Set permissions based on selected role
+      Map<String, dynamic> newPermissions = {};
+      if (_selectedRole != null) {
+        switch (_selectedRole!.toLowerCase()) {
+          case 'super_admin':
+            newPermissions['super_admin'] = true;
+            break;
+          case 'company_admin':
+            newPermissions['company_admin'] = true;
+            break;
+          case 'agent':
+            newPermissions['agent'] = true;
+            break;
+        }
+      }
+
       // Create or update user
       final user = UserModel(
         id: _editingUser?.id ?? const Uuid().v4(),
-        username: username,
+        username: email.split('@')[0], // Use email prefix as username
         userId: finalUserId,
         name: name,
         email: email,
         contactNo: contact.isEmpty ? null : contact,
-        permissions: _permissions.isNotEmpty ? jsonEncode(_permissions) : null,
+        permissions: newPermissions.isNotEmpty ? jsonEncode(newPermissions) : null,
         companyId: _selectedCompanyId,
         status: _selectedStatus,
         isActive: _selectedStatus != 'archived',
@@ -750,6 +763,14 @@ class UserViewModel extends ChangeNotifier {
     return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email);
   }
 
+  // Helper method to extract role from permissions
+  String _getUserRoleFromPermissions(Map<String, dynamic> permissions) {
+    if (permissions['super_admin'] == true) return 'super_admin';
+    if (permissions['company_admin'] == true) return 'company_admin';
+    if (permissions['agent'] == true) return 'agent';
+    return '';
+  }
+
   Future<UserModel?> getUserByUsername(String username) async {
     try {
       final users = await _repository.getUsers(null);
@@ -768,10 +789,16 @@ class UserViewModel extends ChangeNotifier {
   }
 
   @override
+  void notifyListeners() {
+    if (!_isDisposed) {
+      super.notifyListeners();
+    }
+  }
+
+  @override
   void dispose() {
-    _mounted = false;
+    _isDisposed = true;
     _usersSubscription?.cancel();
-    
     _nameController.dispose();
     _emailController.dispose();
     _contactController.dispose();

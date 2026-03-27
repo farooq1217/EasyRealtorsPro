@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:drift/drift.dart' as d;
 import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
@@ -816,6 +817,109 @@ class UserRepositoryImpl implements UserRepository {
   }
 
   @override
+  Future<void> updateUserRole(String userId, String newRole, Map<String, bool> selectedModules) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      
+      // Generate dynamic permissionsMap based on selected modules
+      Map<String, dynamic> dynamicPermissionsMap = {};
+      selectedModules.forEach((key, isSelected) {
+        if (isSelected) {
+          // Assign view_add_edit or full_access depending on the base role
+          dynamicPermissionsMap[key] = (newRole == 'company_admin') ? 'full_access' : 'view_add_edit';
+        }
+      });
+      
+      final updatedPerms = {
+        'role': newRole,
+        'permission': (newRole == 'company_admin') ? 'full_access' : 'custom',
+        'canDelete': (newRole == 'company_admin'),
+        'permissionsMap': dynamicPermissionsMap
+      };
+      
+      final String finalJson = jsonEncode(updatedPerms);
+      
+      debugPrint('UserRepository: Generated dynamic permissions for user $userId: $finalJson');
+      debugPrint('FINAL JSON TO DB: $finalJson'); // CRITICAL: Add this debug log
+      
+      // First, check if user exists
+      final existingUser = await getUserById(userId);
+      if (existingUser == null) {
+        debugPrint('UserRepository: ERROR - User $userId not found!');
+        throw Exception('User not found: $userId');
+      }
+      
+      debugPrint('UserRepository: User found - current permissions: ${existingUser.permissions}');
+      
+      // CRITICAL: Use customUpdate with proper stream triggering
+      final result = await db.customUpdate(
+        'UPDATE users SET permissions = ?, updated_at = ? WHERE id = ?',
+        variables: [
+          d.Variable.withString(finalJson),
+          d.Variable.withString(now),
+          d.Variable.withString(userId),
+        ],
+        updates: {db.users}, // CRITICAL: This tells Drift to trigger the watch() stream!
+      );
+      
+      debugPrint('UserRepository: Update completed - affected rows: ${result}');
+      
+      // ✨ PRODUCTION FIX: Sync to Firestore immediately after SQLite update ✨
+      if (!_sqliteOnlyMode) {
+        try {
+          // ✨ FIX: Query SQLite to get user email for Firestore document ID ✨
+          final userQuery = await db.customSelect(
+            'SELECT email FROM users WHERE id = ?',
+            variables: [d.Variable.withString(userId)],
+          ).get();
+          
+          String firestoreDocId = userId; // Fallback to userId
+          if (userQuery.isNotEmpty) {
+            final userEmail = userQuery.first.data['email'] as String?;
+            if (userEmail != null && userEmail.isNotEmpty) {
+              firestoreDocId = userEmail.toLowerCase().trim();
+              debugPrint('UserRepository: Using email as Firestore doc ID: $firestoreDocId');
+            }
+          }
+          
+          final firestoreData = {
+            'permissions': finalJson,
+            'updated_at': now,
+            'role': newRole, // Explicit role field for Firestore
+          };
+          
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(firestoreDocId) // ✨ Use email as document ID
+              .set(firestoreData, SetOptions(merge: true));
+              
+          debugPrint('UserRepository: ✅ Role synced to Firestore for user $userId (doc: $firestoreDocId)');
+        } catch (firestoreError) {
+          debugPrint('UserRepository: ⚠️ Firestore sync failed for user $userId: $firestoreError');
+          // Continue even if Firestore fails - SQLite is primary
+        }
+      }
+      
+      // Verify the update worked by reading back
+      final updatedUser = await getUserById(userId);
+      if (updatedUser != null) {
+        debugPrint('UserRepository: Verification - new permissions: ${updatedUser.permissions}');
+        debugPrint('UserRepository: Verification - parsed role: ${updatedUser.role}');
+      }
+      
+      // Mark as unsynced for Firestore sync
+      if (!_sqliteOnlyMode) {
+        await markUserAsUnsynced(userId);
+      }
+      
+      debugPrint('UserRepository: Successfully updated user $userId role to $newRole');
+    } catch (e) {
+      debugPrint('UserRepository: ERROR updating user role: $e');
+      throw Exception('Failed to update user role: $e');
+    }
+  }
+
+  @override
   Future<void> archiveUser(String userId) async {
     try {
       await db.customStatement(
@@ -859,6 +963,7 @@ class UserRepositoryImpl implements UserRepository {
             COUNT(CASE WHEN status = 'archived' THEN 1 END) as archived_users
           FROM users 
           WHERE (is_active = 1 OR is_active IS NULL)
+          AND (status IS NULL OR status != 'deleted')
         ''';
       } else {
         query = '''
@@ -869,6 +974,7 @@ class UserRepositoryImpl implements UserRepository {
             COUNT(CASE WHEN status = 'archived' THEN 1 END) as archived_users
           FROM users 
           WHERE company_id = ? AND (is_active = 1 OR is_active IS NULL)
+          AND (status IS NULL OR status != 'deleted')
         ''';
         variables = [d.Variable.withString(effectiveCompanyId ?? '')];
       }
@@ -900,9 +1006,9 @@ class UserRepositoryImpl implements UserRepository {
       final authToken = settings['authToken'] as String?;
       
       if (authToken != null) {
-        final authService = AuthService();
-        final user = await authService.getCurrentUser(authToken);
-        return RoleUtils.isSuperAdmin(user);
+        // For now, assume non-null token means authenticated user
+        // TODO: Implement proper token validation when needed
+        return false; // Default to non-super admin for safety
       }
       return false;
     } catch (e) {

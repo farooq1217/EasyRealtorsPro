@@ -607,8 +607,8 @@ class _UsersPageState extends State<UsersPage> {
           );
         }
 
-        // Use viewModel.paginatedUsers for pagination
-        if (viewModel.paginatedUsers.isEmpty) {
+        // Use viewModel.filteredUsers for data check
+        if (viewModel.filteredUsers.isEmpty) {
           return _buildEmptyState();
         }
 
@@ -631,11 +631,12 @@ class _UsersPageState extends State<UsersPage> {
                 crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
-                childAspectRatio: 1.1, // Further reduced to prevent bottom overflow
+                // Responsive aspect ratio based on screen width and column count
+                childAspectRatio: _getResponsiveAspectRatio(constraints.maxWidth, crossAxisCount),
               ),
-              itemCount: viewModel.paginatedUsers.length,
+              itemCount: viewModel.filteredUsers.length,
               itemBuilder: (context, index) {
-                final user = viewModel.paginatedUsers[index];
+                final user = viewModel.filteredUsers[index];
                 return UserCard(
                   user: user,
                   onEditUser: (user) => _showEditUserDialog(context, user),
@@ -733,7 +734,25 @@ class _UsersPageState extends State<UsersPage> {
     _viewModel.setSearchQuery(searchQuery.trim());
   }
 
+  // Calculate responsive aspect ratio to prevent overflow
+  double _getResponsiveAspectRatio(double screenWidth, int crossAxisCount) {
+    // Base aspect ratios for different column counts - give much more vertical space
+    switch (crossAxisCount) {
+      case 1: // Mobile
+        return 2.5; // Much taller cards for single column
+      case 2: // Tablet
+        return 2.2; // Much taller for two columns
+      case 3: // Desktop
+        return 2.0; // Much taller for three columns
+      default:
+        return 2.3; // Default fallback
+    }
+  }
+
   void _showAddUserDialog(BuildContext context, UserViewModel viewModel) {
+    // CRITICAL: Auto-generate User ID when opening the dialog
+    _generateUserIdForNewUser(viewModel);
+    
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -748,6 +767,17 @@ class _UsersPageState extends State<UsersPage> {
         ),
       ),
     );
+  }
+
+  // Helper method to generate User ID for new users
+  void _generateUserIdForNewUser(UserViewModel viewModel) {
+    // Generate a unique User ID based on current timestamp and random suffix
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString().substring(8);
+    final randomSuffix = (1000 + (DateTime.now().millisecondsSinceEpoch % 9000)).toString();
+    final generatedUserId = 'USR$timestamp$randomSuffix';
+    
+    // Set the generated User ID in the controller
+    viewModel.userIdController.text = generatedUserId;
   }
 
   Widget _buildAddUserDialogContent(BuildContext context, UserViewModel viewModel) {
@@ -1032,6 +1062,19 @@ class _UsersPageState extends State<UsersPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Form Title
+        Center(
+          child: Text(
+            'Add New User',
+            style: AppFonts.poppins(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF1A237E),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        
         // Name field
         Text(
           'Full Name',
@@ -1083,32 +1126,6 @@ class _UsersPageState extends State<UsersPage> {
             ),
           ),
           keyboardType: TextInputType.emailAddress,
-        ),
-        const SizedBox(height: 16),
-
-        // Username field
-        Text(
-          'Username',
-          style: AppFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey.shade700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: viewModel.usernameController,
-          decoration: InputDecoration(
-            hintText: 'Enter username',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-            ),
-          ),
         ),
         const SizedBox(height: 16),
 
@@ -1196,6 +1213,41 @@ class _UsersPageState extends State<UsersPage> {
         ),
         const SizedBox(height: 16),
 
+        // Role dropdown
+        Text(
+          'Role',
+          style: AppFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: viewModel.selectedRole,
+          decoration: InputDecoration(
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+            ),
+            labelText: 'Role',
+            hintText: 'Select Role',
+          ),
+          items: const [
+            DropdownMenuItem(value: 'super_admin', child: Text('Super Admin')),
+            DropdownMenuItem(value: 'company_admin', child: Text('Company Admin')),
+            DropdownMenuItem(value: 'agent', child: Text('Agent')),
+          ],
+          onChanged: (value) {
+            viewModel.selectedRole = value;
+          },
+        ),
+        const SizedBox(height: 16),
+
         // Status dropdown
         Text(
           'Status',
@@ -1229,7 +1281,7 @@ class _UsersPageState extends State<UsersPage> {
         ),
         const SizedBox(height: 16),
 
-        // Password fields (only for new users)
+        // Password field (only for new users)
         if (viewModel.editingUser == null) ...[
           Text(
             'Password',
@@ -1245,32 +1297,6 @@ class _UsersPageState extends State<UsersPage> {
             obscureText: true,
             decoration: InputDecoration(
               hintText: 'Enter password',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          Text(
-            'Confirm Password',
-            style: AppFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: viewModel.confirmPasswordController,
-            obscureText: true,
-            decoration: InputDecoration(
-              hintText: 'Confirm password',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide(color: Colors.grey.shade300),
@@ -1465,131 +1491,248 @@ class _UsersPageState extends State<UsersPage> {
   void _showManageRolesDialog(BuildContext context, UserModel user) {
     _viewModel.setEditingUser(user);
     
+    // 1. Declare state variables OUTSIDE builder but INSIDE method
+    String? localSelectedRole = user.role;
+    Map<String, bool> localModuleAccess = {
+      'agent_working': false, 
+      'inventory': false, 
+      'rental_items': false, 
+      'trading': false, 
+      'expenditure': false, 
+      'reports': false
+    };
+    
+    // Pre-fill localModuleAccess from existing user.permissions['permissionsMap'] if it exists
+    if (user.permissionsMap != null) {
+      final permissionsMap = user.permissionsMap!;
+      localModuleAccess = localModuleAccess.map((key, value) {
+        return MapEntry(key, permissionsMap.containsKey(key));
+      });
+    }
+    
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => ChangeNotifierProvider<UserViewModel>.value(
-        value: _viewModel,
-        child: Dialog(
-          insetPadding: const EdgeInsets.all(16),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(dialogContext).size.width * 0.5,
-              maxHeight: MediaQuery.of(dialogContext).size.height * 0.6,
-            ),
-            child: _buildManageRolesDialogContent(dialogContext),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildManageRolesDialogContent(BuildContext context) {
-    return Consumer<UserViewModel>(
-      builder: (context, viewModel, child) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            String? selectedRole;
-            
-            return Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  Row(
-                    children: [
-                      Icon(Icons.admin_panel_settings, color: Color(0xFF4A90E2)),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Manage User Roles',
-                        style: AppFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Role Selection
-                  Text(
-                    'Select Role:',
-                    style: AppFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  DropdownButtonFormField<String>(
-                    value: selectedRole,
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'company admin', child: Text('Company Admin')),
-                      DropdownMenuItem(value: 'agent', child: Text('Agent')),
-                      DropdownMenuItem(value: 'super admin', child: Text('Super Admin')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        selectedRole = value;
-                      });
+      builder: (BuildContext dialogContext) {
+        return ChangeNotifierProvider<UserViewModel>.value(
+          value: _viewModel,
+          child: Dialog(
+            insetPadding: const EdgeInsets.all(16),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(dialogContext).size.width * 0.6,
+                maxHeight: MediaQuery.of(dialogContext).size.height * 0.8,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: SizedBox(
+                  width: double.maxFinite,
+                  child: StatefulBuilder(
+                    // 2. Use StatefulBuilder and specifically name its setter 'setStateDialog'
+                    builder: (BuildContext context, StateSetter setStateDialog) {
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header
+                          Row(
+                            children: [
+                              Icon(Icons.admin_panel_settings, color: Color(0xFF4A90E2)),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Manage User Roles',
+                                style: AppFonts.poppins(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          
+                          // Current user info
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'User: ${user.name ?? 'Unknown'}',
+                                  style: AppFonts.poppins(fontWeight: FontWeight.w500),
+                                ),
+                                Text(
+                                  'Email: ${user.email ?? 'Unknown'}',
+                                  style: AppFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
+                                ),
+                                Text(
+                                  'Current Role: ${user.role ?? 'Unknown'}',
+                                  style: AppFonts.poppins(fontSize: 12, color: Colors.grey.shade600),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Role Selection
+                          Text(
+                            'Select New Role:',
+                            style: AppFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          // DROPDOWN
+                          DropdownButtonFormField<String>(
+                            value: localSelectedRole,
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(),
+                            ),
+                            items: const [
+                              DropdownMenuItem(value: 'super_admin', child: Text('Super Admin')),
+                              DropdownMenuItem(value: 'company_admin', child: Text('Company Admin')),
+                              DropdownMenuItem(value: 'agent', child: Text('Agent')),
+                            ],
+                            onChanged: (newValue) {
+                              // CRITICAL: Use setStateDialog here!
+                              setStateDialog(() { 
+                                localSelectedRole = newValue; 
+                              });
+                            },
+                            // ✨ FIX: Validate value against available roles to prevent crashes ✨
+                            validator: (value) {
+                              final validRoles = ['super_admin', 'company_admin', 'agent'];
+                              if (value == null || !validRoles.contains(value)) {
+                                return 'Please select a valid role';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                          
+                          // Module Access Section
+                          Text(
+                            'Module Access:',
+                            style: AppFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          // CHECKBOXES
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: Wrap(
+                                spacing: 8.0,
+                                runSpacing: 4.0,
+                                children: localModuleAccess.keys.map((key) {
+                                  return CheckboxListTile(
+                                    title: Text(
+                                      _getModuleDisplayName(key),
+                                      style: AppFonts.poppins(fontSize: 14),
+                                    ),
+                                    value: localModuleAccess[key],
+                                    onChanged: (bool? checked) {
+                                      // CRITICAL: Use setStateDialog here!
+                                      setStateDialog(() {
+                                        localModuleAccess[key] = checked ?? false;
+                                      });
+                                    },
+                                    controlAffinity: ListTileControlAffinity.leading,
+                                    contentPadding: EdgeInsets.zero,
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 24),
+                          
+                          // Actions
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.of(dialogContext).pop();
+                                  _viewModel.clearEditingUser();
+                                },
+                                child: Text('Cancel'),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: _viewModel.saving || localSelectedRole == null ? null : () async {
+                                  // CRITICAL: Add debug logging
+                                  debugPrint('Sending Role: $localSelectedRole to ViewModel');
+                                  debugPrint('Sending Modules: $localModuleAccess to ViewModel');
+                                  
+                                  // Pass LOCAL variables to viewmodel
+                                  await _viewModel.assignRole(localSelectedRole!, localModuleAccess);
+                                  if (_viewModel.error.isEmpty) {
+                                    Navigator.of(dialogContext).pop();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Role and permissions assigned successfully'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(_viewModel.error),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: _viewModel.saving 
+                                    ? SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : Text('Assign Role'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
                     },
                   ),
-                  const SizedBox(height: 24),
-                  
-                  // Actions
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          viewModel.clearEditingUser();
-                        },
-                        child: Text('Cancel'),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: viewModel.saving || selectedRole == null ? null : () async {
-                          await viewModel.assignRole(selectedRole!);
-                          if (viewModel.error.isEmpty) {
-                            Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Role assigned successfully'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(viewModel.error),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        },
-                        child: viewModel.saving 
-                            ? SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Text('Assign Role'),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
-            );
-          },
+            ),
+          ),
         );
       },
     );
+  }
+
+  // Helper method to get display name for module keys
+  String _getModuleDisplayName(String moduleKey) {
+    switch (moduleKey) {
+      case 'agent_working':
+        return 'Agent Working';
+      case 'inventory':
+        return 'Inventory';
+      case 'rental_items':
+        return 'Rental Items';
+      case 'trading':
+        return 'Trading';
+      case 'expenditure':
+        return 'Expenditure';
+      case 'reports':
+        return 'Reports';
+      default:
+        return moduleKey;
+    }
   }
 
   // Step 5: Delete Confirmation

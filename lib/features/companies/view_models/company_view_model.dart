@@ -19,6 +19,7 @@ import 'package:shared/src/auth/role_utils.dart';
 class CompanyViewModel extends ChangeNotifier {
   final CompanyRepository _repository;
   bool _mounted = false;
+  bool _isDisposed = false; // CRITICAL: Prevent disposed crashes
   
   CompanyViewModel(this._repository);
 
@@ -534,7 +535,15 @@ class CompanyViewModel extends ChangeNotifier {
   }
 
   @override
+  void notifyListeners() {
+    if (!_isDisposed) {
+      super.notifyListeners();
+    }
+  }
+
+  @override
   void dispose() {
+    _isDisposed = true;
     _mounted = false;
     _companiesSubscription?.cancel();
     

@@ -68,7 +68,7 @@ class CompanyModel extends Equatable {
     return {
       'id': id,
       'name': name,
-      'status': status,
+      'status': status ?? 'active',
       'metadata': metadata != null ? _encodeMetadata(metadata!) : null,
       'logo_url': logoUrl,
       'address': address,

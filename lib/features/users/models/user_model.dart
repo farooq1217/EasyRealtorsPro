@@ -230,56 +230,39 @@ class UserModel extends Equatable {
   }
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
-    try {
-      debugPrint('UserModel.fromMap: Input map keys: ${map.keys.toList()}');
-      debugPrint('UserModel.fromMap: Input map data: $map');
-      
-      // Handle empty/null critical fields with fallbacks
-      final email = (map['email'] ?? '').toString().trim();
-      final name = (map['name'] ?? '').toString().trim();
-      final username = (map['username'] ?? '').toString().trim();
-      
-      // If email is empty, use id as fallback identifier
-      final finalEmail = email.isEmpty ? (map['id'] ?? '').toString() : email;
-      
-      // If name is empty, use email or username as fallback
-      final finalName = name.isEmpty ? 
-        (email.isNotEmpty ? email.split('@')[0] : 
-        (username.isNotEmpty ? username : 'Unknown User')) : name;
-      
-      // If username is empty, use email as fallback
-      final finalUsername = username.isEmpty ? 
-        (email.isNotEmpty ? email.split('@')[0] : 'user_${map['id'] ?? ''}') : username;
-      
-      final user = UserModel(
-        id: (map['id'] ?? '').toString(),
-        username: finalUsername,
-        userId: (map['user_id'] ?? '').toString(),
-        name: finalName,
-        email: finalEmail,
-        contactNo: map['contact_no']?.toString(),
-        permissions: _handlePermissionsField(map['permissions']),
-        companyId: (map['company_id'] ?? map['companyId'])?.toString(),
-        status: map['status']?.toString(),
-        isActive: (map['is_active'] is int ? map['is_active'] == 1 : map['is_active'] == true) ?? true,
-        isSynced: (map['is_synced'] is int ? map['is_synced'] == 1 : map['is_synced'] == true) ?? true,
-        createdAt: map['created_at']?.toString(),
-        updatedAt: map['updated_at']?.toString(),
-        passwordHash: map['password_hash']?.toString(),
-        salt: map['salt']?.toString(),
-        iterations: map['iterations'] is int ? map['iterations'] : int.tryParse(map['iterations']?.toString() ?? ''),
-        isFirstLogin: (map['is_first_login'] is int ? map['is_first_login'] == 1 : map['is_first_login'] == true),
-        profilePicturePath: map['profile_picture_path']?.toString(),
-      );
-      
-      debugPrint('UserModel.fromMap: Successfully created user: ${user.name} (${user.email})');
-      return user;
-    } catch (e) {
-      debugPrint('UserModel.fromMap: Error creating user from map: $e');
-      debugPrint('UserModel.fromMap: Map that caused error: $map');
-      // Return empty user as fallback
-      return UserModel.empty();
+    // ✨ FIX: Properly parse permissions JSON string to extract role ✨
+    String? permissionsField;
+    if (map['permissions'] is String) {
+      permissionsField = map['permissions'] as String;
+    } else if (map['permissions'] is Map) {
+      permissionsField = jsonEncode(map['permissions'] as Map<String, dynamic>);
+    } else {
+      permissionsField = null;
     }
+    
+    return UserModel(
+      id: (map['id'] ?? '').toString(),
+      username: (map['username'] ?? '').toString(),
+      userId: (map['user_id'] ?? '').toString(),
+      name: (map['name'] ?? '').toString(),
+      email: (map['email'] ?? '').toString(),
+      contactNo: map['contact_no'] as String?,
+      permissions: permissionsField,
+      companyId: map['company_id'], 
+      status: map['status'] as String?,
+      
+      // ✨ FIX: This logic perfectly handles both SQLite (1/0) and Firestore (true/false) ✨
+      isActive: map['is_active'] == 1 || map['is_active'] == true,
+      isSynced: map['is_synced'] == 1 || map['is_synced'] == true,
+      isFirstLogin: map['is_first_login'] == 1 || map['is_first_login'] == true,
+      
+      createdAt: map['created_at']?.toString(),
+      updatedAt: map['updated_at']?.toString(),
+      passwordHash: map['password_hash'] as String?,
+      salt: map['salt'] as String?,
+      iterations: map['iterations'] as int?,
+      profilePicturePath: map['profile_picture_path'] as String?,
+    );
   }
 
   // Helper methods for permissions encoding/decoding

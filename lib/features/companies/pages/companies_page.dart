@@ -211,7 +211,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
                         _buildStatisticsCards(context, viewModel),
                         
                         // Company List
-                        viewModel.paginatedCompanies.isEmpty
+                        viewModel.filteredCompanies.isEmpty
                             ? _buildEmptyState(context, viewModel)
                             : _buildCompanyList(context, viewModel),
                       ],
@@ -381,9 +381,9 @@ class _CompaniesPageState extends State<CompaniesPage> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.all(12),
-      itemCount: viewModel.paginatedCompanies.length,
+      itemCount: viewModel.filteredCompanies.length,
       itemBuilder: (context, index) {
-        final company = viewModel.paginatedCompanies[index];
+        final company = viewModel.filteredCompanies[index];
         return _buildCompanyCard(context, company, viewModel);
       },
     );

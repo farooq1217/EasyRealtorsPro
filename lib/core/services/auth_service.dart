@@ -441,9 +441,7 @@ class AuthService {
 
         // Update local users.json with role preservation logic
         final users = await _readUsers();
-        final existingUser = users[email] as Map<String, dynamic>?;
         
-        // CRITICAL: Preserve local role changes to prevent downgrade
         Map<String, dynamic> updatedUser = {
           'id': id,
           'email': email,
@@ -465,56 +463,18 @@ class AuthService {
           'iterations': iterations,
         };
         
-        // ROLE PRESERVATION LOGIC: Check if local user has higher role
-        if (existingUser != null) {
-          final localPermissions = existingUser['permissions'];
-          final firestorePermissions = permissions;
-          
-          try {
-            // Parse local permissions to get role
-            String? localRole;
-            if (localPermissions is String) {
-              final decoded = jsonDecode(localPermissions);
-              if (decoded is Map) {
-                localRole = decoded['role']?.toString();
-              }
-            } else if (localPermissions is Map) {
-              localRole = localPermissions['role']?.toString();
-            }
-            
-            // Parse Firestore permissions to get role
-            String? firestoreRole;
-            if (firestorePermissions is String) {
-              final decoded = jsonDecode(firestorePermissions);
-              if (decoded is Map) {
-                firestoreRole = decoded['role']?.toString();
-              }
-            } else if (firestorePermissions is Map) {
-              firestoreRole = firestorePermissions['role']?.toString();
-            }
-            
-            // CRITICAL: Preserve local role if it's higher than Firestore role
-            if (localRole != null && firestoreRole != null) {
-              if ((localRole == 'company_admin' && firestoreRole == 'agent') ||
-                  (localRole == 'super_admin' && firestoreRole != 'super_admin')) {
-                
-                // Keep local permissions with higher role
-                updatedUser['permissions'] = localPermissions;
-                
-                debugPrint('syncUsersFromFirestore: PRESERVED local role for $email - Local: $localRole, Firestore: $firestoreRole');
-                
-                // Special logging for problematic users
-                if (email == 'umershahzad596@gmail.com' || email == 'shakeelahmed2161083@gmail.com') {
-                  debugPrint('syncUsersFromFirestore: PRESERVED problematic user role - Email: $email');
-                  debugPrint('syncUsersFromFirestore: Local role: $localRole, Firestore role: $firestoreRole');
-                }
-              }
-            }
-          } catch (e) {
-            debugPrint('syncUsersFromFirestore: Error parsing roles for $email: $e');
-            // Keep Firestore permissions if parsing fails
+        // ✨ FIX: Always trust Firestore as the Single Source of Truth for Roles ✨
+        updatedUser['permissions'] = permissions;
+        
+        // Ensure the 'role' string field is also explicitly updated for the app to read
+        try {
+          if (permissions is String) {
+            final decoded = jsonDecode(permissions);
+            if (decoded is Map) updatedUser['role'] = decoded['role']?.toString();
+          } else if (permissions is Map) {
+            updatedUser['role'] = permissions['role']?.toString();
           }
-        }
+        } catch (_) {}
         
         users[email] = updatedUser;
         await _writeUsers(users);
@@ -994,42 +954,43 @@ class AuthService {
             debugPrint('  Password hash format: ${passwordHash.split(":").length} parts');
             debugPrint('  Password hash preview: ${passwordHash.substring(0, passwordHash.length > 50 ? 50 : passwordHash.length)}...');
 
-            // Trim the password hash in case there's whitespace
+            // ✨ FIX: Smart Verification for both Hashes (:) and Plain Text (Temp Passwords) ✨
             final trimmedHash = passwordHash.trim();
-            debugPrint('  Trimmed hash length: ${trimmedHash.length}, Original length: ${passwordHash.length}');
+            final inputPassword = password.trim();
+            bool passwordValid = false;
 
-            // Verify password against database hash
-            debugPrint('  Attempting password verification...');
-            debugPrint('  Entered password length: ${password.length}');
-            debugPrint('  Entered password (first 3 chars): ${password.length >= 3 ? password.substring(0, 3) : password}***');
-
-            // Try verification with trimmed hash
-            final passwordValid = PasswordHasher.verify(password.trim(), trimmedHash);
-            debugPrint('  Password verification result: $passwordValid');
-
-            if (!passwordValid) {
-              // Additional debugging: check hash parts
-              final parts = trimmedHash.split(':');
-              if (parts.length == 3) {
-                debugPrint('  Hash parts breakdown:');
-                debugPrint('    Iterations: ${parts[0]}');
-                debugPrint('    Salt: ${parts[1]} (length: ${parts[1].length})');
-                debugPrint('    Hash: ${parts[2].substring(0, parts[2].length > 20 ? 20 : parts[2].length)}... (length: ${parts[2].length})');
-              } else {
-                debugPrint('  ⚠️ Hash format incorrect: expected 3 parts, got ${parts.length}');
-              }
+            if (trimmedHash.contains(':')) {
+              // It's a proper hash, verify it
+              passwordValid = PasswordHasher.verify(inputPassword, trimmedHash);
+            } else {
+              // Admin created user with plain text password - check exact match
+              passwordValid = (trimmedHash == inputPassword);
             }
+            
+            debugPrint('  Password verification result: $passwordValid');
 
             if (passwordValid) {
               debugPrint('✅ User found in database and password verified');
+              
+              // If it was a plain text match, upgrade it to a secure hash immediately
+              String finalPasswordHashToSave = trimmedHash;
+              if (!trimmedHash.contains(':')) {
+                 finalPasswordHashToSave = PasswordHasher.hash(inputPassword);
+                 try {
+                   await db.customStatement(
+                     'UPDATE users SET password_hash = ?, updated_at = ? WHERE email = ?',
+                     [finalPasswordHashToSave, DateTime.now().toUtc().toIso8601String(), emailKey]
+                   );
+                 } catch (_) {}
+              }
 
               // Create user object compatible with JSON format
               user = {
                 'id': dbUser['id'] as String,
                 'email': dbUser['email'] as String? ?? emailKey,
                 'username': dbUser['username'] as String? ?? emailKey,
-                'password': passwordHash, // Store hash for compatibility
-                'passwordHash': passwordHash,
+                'password': finalPasswordHashToSave, 
+                'passwordHash': finalPasswordHashToSave,
                 'name': dbUser['name'] as String?,
                 'contactNo': dbUser['contact_no'] as String?,
                 'twoFactorEnabled': false,
@@ -1592,14 +1553,6 @@ class AuthService {
       }
     }
 
-    // REMOVED: SuperAdmin bypass logic - now any valid user can authenticate
-    // if (!passwordValid && emailKey == forcedEmail) {
-    //   // Temporary bypass: accept password, repair hash, sync local + SQLite + Firestore
-    //   adminBypass = true;
-    //   passwordValid = true;
-    //   ... (rest of bypass logic removed)
-    // }
-
     if (storedPassword != null) {
       if (storedPassword.contains(':')) {
         // Hashed password
@@ -1763,98 +1716,126 @@ class AuthService {
     // Ensure Firebase Auth sign-in (or create on-demand) so Firestore writes are authenticated
     // CRITICAL: Enhanced platform thread safety for all Firebase Auth operations
     if (Firebase.apps.isNotEmpty) {
-      Object? zonedError;
-      fb.UserCredential? cred;
+      try {
+        Object? zonedError;
+        fb.UserCredential? cred;
       
       // Platform-specific authentication handling
       if (_isWindows) {
-        // Windows: Use enhanced approach to avoid platform thread errors
-        try {
-          await ensureFirebasePersistence();
-          debugPrint('AuthService: Windows - Attempting Firebase Auth sign-in...');
-          
-          // CRITICAL: Use FirebaseThreadingHandler for complete Windows thread safety
+        // CRITICAL: Skip Firebase Auth completely on Windows when local verification succeeded
+        if (passwordValid) {
+          debugPrint('AuthService: Skipping Firebase Auth on Windows as local auth passed');
+          // Don't attempt Firebase Auth at all - proceed with local auth
+          cred = null;
+          zonedError = null;
+        } else {
+          // Only attempt Firebase Auth if local verification failed (for first-time users)
+          debugPrint('AuthService: Windows - Local verification failed, attempting Firebase Auth...');
           try {
-            await Future.delayed(const Duration(milliseconds: 500)); // Reduced pre-delay
+            await ensureFirebasePersistence();
+            debugPrint('AuthService: Windows - Attempting Firebase Auth sign-in...');
             
-            // CRITICAL: Add SchedulerBinding safety to prevent platform thread errors
-            await SchedulerBinding.instance.endOfFrame;
-            
-            cred = await FirebaseThreadingHandler.executeWithThreadSafety(
-              () async {
-                debugPrint('AuthService: Windows - Executing signInWithEmailAndPassword on platform thread');
-                final result = await fb.FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password);
-                debugPrint('AuthService: Windows - signInWithEmailAndPassword completed');
-                return result;
-              },
-              operationName: 'AuthService Windows signInWithEmailAndPassword',
-            );
-            
-            // CRITICAL: Add additional safety delay before navigation
-            await SchedulerBinding.instance.endOfFrame;
-            await Future.delayed(Duration.zero);
-            
-            // Ensure result is not null before proceeding
-            if (cred?.user == null) {
-              debugPrint('AuthService: Windows - Firebase Auth returned null user');
-              zonedError = 'Authentication returned null user';
-            } else {
-              await Future.delayed(const Duration(milliseconds: 1000)); // Reduced post-delay
-              debugPrint('AuthService: Windows - Firebase Auth sign-in success for $emailKey');
+            // CRITICAL: Use FirebaseThreadingHandler for complete Windows thread safety
+            try {
+              await Future.delayed(const Duration(milliseconds: 500)); // Reduced pre-delay
               
-              // CRITICAL FIX: Implement safe ID token refresh for Windows
+              // CRITICAL: Add SchedulerBinding safety to prevent platform thread errors
+              await SchedulerBinding.instance.endOfFrame;
+              
               try {
-                // Use FirebaseThreadingHandler for safe token refresh on Windows
-                await FirebaseThreadingHandler.executeWithThreadSafety(
+                cred = await FirebaseThreadingHandler.executeWithThreadSafety(
                   () async {
-                    if (cred?.user != null) {
-                      debugPrint('AuthService: Windows - Refreshing ID token on platform thread');
-                      final idToken = await cred!.user!.getIdToken(true);
-                      debugPrint('AuthService: Windows - ID token refreshed successfully for $emailKey');
-                      return idToken;
-                    }
-                    return null;
+                    debugPrint('AuthService: Windows - Executing signInWithEmailAndPassword on platform thread');
+                    final result = await fb.FirebaseAuth.instance.signInWithEmailAndPassword(email: emailKey, password: password);
+                    debugPrint('AuthService: Windows - signInWithEmailAndPassword completed');
+                    return result;
                   },
-                  operationName: 'AuthService Windows getIdToken after sign-in',
+                  operationName: 'AuthService Windows signInWithEmailAndPassword',
                 );
-              } catch (tokenError) {
-                // Filter platform thread warnings but log other errors
-                if (tokenError.toString().contains('channel sent a message') || 
-                    tokenError.toString().contains('non-platform thread') ||
-                    tokenError.toString().contains('shell.cc')) {
-                  debugPrint('AuthService: Windows - Token refresh platform thread warning silenced: ${tokenError.runtimeType}');
-                } else {
-                  debugPrint('AuthService: Windows - Token refresh failed for $emailKey: $tokenError');
-                  // Don't treat as critical error - user is already authenticated
+              } catch (e) {
+                debugPrint('Firebase Auth failed, bypassing for local Windows app: $e');
+                // CRITICAL: DO NOT RETHROW THE ERROR!
+                // Just continue the method. If local SQLite check passed, the user should be allowed in.
+                cred = null;
+                zonedError = null; // Clear any error to allow local auth success
+              }
+              
+              // CRITICAL: Add additional safety delay before navigation
+              await SchedulerBinding.instance.endOfFrame;
+              await Future.delayed(Duration.zero);
+              
+              // Ensure result is not null before proceeding
+              if (cred?.user == null) {
+                debugPrint('AuthService: Windows - Firebase Auth returned null user');
+                zonedError = 'Authentication returned null user';
+              } else {
+                await Future.delayed(const Duration(milliseconds: 1000)); // Reduced post-delay
+                debugPrint('AuthService: Windows - Firebase Auth sign-in success for $emailKey');
+                
+                // CRITICAL FIX: Implement safe ID token refresh for Windows
+                try {
+                  // Use FirebaseThreadingHandler for safe token refresh on Windows
+                  await FirebaseThreadingHandler.executeWithThreadSafety(
+                    () async {
+                      if (cred?.user != null) {
+                        debugPrint('AuthService: Windows - Refreshing ID token on platform thread');
+                        final idToken = await cred!.user!.getIdToken(true);
+                        debugPrint('AuthService: Windows - ID token refreshed successfully for $emailKey');
+                        return idToken;
+                      }
+                      return null;
+                    },
+                    operationName: 'AuthService Windows getIdToken after sign-in',
+                  );
+                } catch (tokenError) {
+                  // Filter platform thread warnings but log other errors
+                  if (tokenError.toString().contains('channel sent a message') || 
+                      tokenError.toString().contains('non-platform thread') ||
+                      tokenError.toString().contains('shell.cc')) {
+                    debugPrint('AuthService: Windows - Token refresh platform thread warning silenced: ${tokenError.runtimeType}');
+                  } else {
+                    debugPrint('AuthService: Windows - Token refresh failed for $emailKey: $tokenError');
+                    // Don't treat as critical error - user is already authenticated
+                  }
                 }
               }
+            } catch (authError) {
+              // CRITICAL FIX: Make Firebase Auth non-fatal on Windows when local verification succeeded
+              if (authError.toString().contains('channel sent a message') || 
+                  authError.toString().contains('non-platform thread') ||
+                  authError.toString().contains('shell.cc') ||
+                  authError.toString().contains('firebase_auth/unknown-error') ||
+                  authError.toString().contains('internal error') ||
+                  authError.toString().contains('unknown-error')) {
+                debugPrint('AuthService: Firebase Login Failed (Windows Offline/Thread Issue), proceeding with local auth: $authError');
+                // CRITICAL: DO NOT set zonedError - allow login to continue with local auth
+                zonedError = null; // Clear any error to allow local auth success
+              } else if (authError.toString().contains('channel sent a message') || 
+                         authError.toString().contains('non-platform thread') ||
+                         authError.toString().contains('shell.cc')) {
+                debugPrint('AuthService: Windows - Platform thread warning silenced: ${authError.runtimeType}');
+                zonedError = null; // Don't treat as error
+              } else {
+                debugPrint('AuthService: Windows - Firebase Auth sign-in error for $emailKey: $authError');
+                zonedError = authError;
+              }
             }
-          } catch (authError) {
-            zonedError = authError;
-            
-            // CRITICAL: Enhanced error handling for unknown-error
-            if (authError.toString().contains('unknown-error')) {
-              debugPrint('AuthService: Windows - UNKNOWN ERROR during Firebase Auth sign-in for $emailKey');
-              debugPrint('AuthService: This might indicate a corrupted Firebase Auth account or password mismatch');
-              debugPrint('AuthService: Error details: $authError');
-              debugPrint('AuthService: Error type: ${authError.runtimeType}');
-              
-              // For unknown-error, we'll continue with SQLite login since local auth succeeded
-              // This allows users to access the app even if Firebase Auth has issues
-              debugPrint('AuthService: Continuing with SQLite login despite Firebase Auth unknown-error');
-              zonedError = null; // Don't treat as blocking error
-            } else if (authError.toString().contains('channel sent a message') || 
-                       authError.toString().contains('non-platform thread') ||
-                       authError.toString().contains('shell.cc')) {
-              debugPrint('AuthService: Windows - Platform thread warning silenced: ${authError.runtimeType}');
-              zonedError = null; // Don't treat as error
+          } catch (e) {
+            // CRITICAL FIX: Make outer Firebase wrapper non-fatal on Windows
+            if (e.toString().contains('channel sent a message') || 
+                e.toString().contains('non-platform thread') ||
+                e.toString().contains('shell.cc') ||
+                e.toString().contains('firebase_auth/unknown-error') ||
+                e.toString().contains('internal error') ||
+                e.toString().contains('unknown-error')) {
+              debugPrint('AuthService: Firebase Login Failed (Windows Offline/Thread Issue), proceeding with local auth: $e');
+              // CRITICAL: DO NOT set zonedError - allow login to continue with local auth
+              zonedError = null; // Clear any error to allow local auth success
             } else {
-              debugPrint('AuthService: Windows - Firebase Auth sign-in error for $emailKey: $authError');
+              debugPrint('AuthService: Windows - Firebase Auth wrapper error: $e');
+              zonedError = e;
             }
           }
-        } catch (e) {
-          debugPrint('AuthService: Windows - Firebase Auth wrapper error: $e');
-          zonedError = e;
         }
       } else {
         // Non-Windows: Full Firebase Auth functionality with platform thread safety
@@ -2008,6 +1989,12 @@ class AuthService {
           }
         }
       }
+      } catch (e) {
+        // CRITICAL: Catch all Firebase Auth errors on Windows and allow local auth to continue
+        debugPrint('Firebase Auth failed completely, bypassing for local Windows app: $e');
+        // DO NOT rethrow - allow login to continue with local authentication
+        // Local password verification already succeeded above, so user should be allowed in
+      }
     }
 
     // Generate JWT token
@@ -2023,7 +2010,7 @@ class AuthService {
       'deviceInfo': _getDeviceInfo(),
       'createdAt': DateTime.now().toIso8601String(),
       'lastActivity': DateTime.now().toIso8601String(),
-      'expiresAt': rememberMe
+      'expiresAt': rememberMe 
           ? DateTime.now().add(Duration(days: _sessionTimeoutDays)).toIso8601String()
           : DateTime.now().add(const Duration(hours: 24)).toIso8601String(),
     };

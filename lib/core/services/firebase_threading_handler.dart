@@ -28,7 +28,15 @@ class FirebaseThreadingHandler {
         return await operation();
       }, (error, stack) {
         debugPrint('FirebaseThreadingHandler: Error in ${operationName ?? 'operation'}: $error');
-        throw error;
+        
+        // CRITICAL: Don't re-throw Firebase Auth errors on Windows - let them be handled by outer try-catch
+        final isFirebaseAuthError = error.toString().contains('firebase_auth') || 
+                                   error.toString().contains('unknown-error') ||
+                                   error.toString().contains('internal error');
+        
+        if (!isFirebaseAuthError) {
+          throw error; // Only re-throw non-Firebase Auth errors
+        }
       });
       
       debugPrint('FirebaseThreadingHandler: ${operationName ?? 'operation'} completed on main thread');

@@ -43,6 +43,19 @@ class ModernSidebar extends StatelessWidget {
     final isAdminRole = role == 'admin' || role == 'super_admin';
     bool _canSee(String moduleKey) {
       if (isBypass || isAdminRole) return true;
+      
+      // Check permissionsMap first for dynamic module access
+      try {
+        final permissionsMap = currentUser?['permissionsMap'] as Map<String, dynamic>?;
+        if (permissionsMap != null && permissionsMap.containsKey(moduleKey)) {
+          debugPrint('ModernSidebar: Module $moduleKey found in permissionsMap: ${permissionsMap[moduleKey]}');
+          return true;
+        }
+      } catch (e) {
+        debugPrint('ModernSidebar: Error checking permissionsMap for $moduleKey: $e');
+      }
+      
+      // Fallback to legacy permission level check
       final level = PermissionHelper.getModulePermissionLevel(currentUser, moduleKey);
       return level != 'no_access';
     }

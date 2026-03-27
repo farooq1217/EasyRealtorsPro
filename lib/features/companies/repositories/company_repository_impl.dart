@@ -541,6 +541,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
             final companyMap = {
               'id': doc.id,
               'name': data['name'] ?? '',
+              'status': data['status'] ?? 'active', // CRITICAL: Ensure status is always provided
               'address': data['address'] ?? '',
               'phone': data['phone'] ?? '',
               'email': data['email'] ?? '',
@@ -556,15 +557,16 @@ class CompanyRepositoryImpl implements CompanyRepository {
             // Insert or replace company in SQLite
             await db.customInsert(
               '''INSERT OR REPLACE INTO companies (
-                id, name, address, contact, email, description, logo_url,
+                id, name, status, address, contact, email, description, logo_url,
                 is_active, is_synced, created_at, updated_at, created_by
               ) VALUES (
-                :id, :name, :address, :contact, :email, :description, :logo_url,
+                :id, :name, :status, :address, :contact, :email, :description, :logo_url,
                 :is_active, :is_synced, :created_at, :updated_at, :created_by
               )''',
               variables: [
                 d.Variable.withString(companyMap['id']),
                 d.Variable.withString(companyMap['name']),
+                d.Variable.withString(companyMap['status']),
                 d.Variable.withString(companyMap['address']),
                 d.Variable.withString(companyMap['phone'] ?? companyMap['contact'] ?? ''), // Map phone to contact
                 d.Variable.withString(companyMap['email']),
