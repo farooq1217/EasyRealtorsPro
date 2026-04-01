@@ -721,6 +721,10 @@ class UserRepositoryImpl implements UserRepository {
             final data = doc.data();
             
             // Convert Firestore data to UserModel format
+            // ✨ FIX: Safely handle boolean fields that can be int or bool from Firestore ✨
+            final isActiveRaw = data['is_active'];
+            final isFirstLoginRaw = data['is_first_login'];
+            
             final userMap = {
               'id': doc.id,
               'username': data['username'] ?? '',
@@ -731,14 +735,14 @@ class UserRepositoryImpl implements UserRepository {
               'permissions': data['permissions'] ?? {},
               'company_id': data['company_id'] ?? '',
               'status': data['status'] ?? 'active',
-              'is_active': data['is_active'] ?? true,
+              'is_active': isActiveRaw == 1 || isActiveRaw == true, // Handle both int and bool
               'is_synced': 1, // Mark as synced
               'created_at': data['created_at'] ?? DateTime.now().toIso8601String(),
               'updated_at': data['updated_at'] ?? DateTime.now().toIso8601String(),
               'password_hash': data['password_hash'] ?? '',
               'salt': data['salt'] ?? '',
               'iterations': data['iterations'] ?? 10000,
-              'is_first_login': data['is_first_login'] ?? false,
+              'is_first_login': isFirstLoginRaw == 1 || isFirstLoginRaw == true, // Handle both int and bool
               'profile_picture_path': data['profile_picture_path'] ?? '',
             };
             

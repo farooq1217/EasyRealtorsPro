@@ -40,16 +40,19 @@ class ModernSidebar extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final isBypass = PermissionHelper.isBypassUser(currentUser);
     final role = (currentUser?['role'] ?? '').toString().toLowerCase();
-    final isAdminRole = role == 'admin' || role == 'super_admin';
+    final isAdminRole = role == 'admin' || role == 'super_admin' || role == 'company_admin';
+    final isSuperAdmin = role == 'super_admin';
+    
     bool _canSee(String moduleKey) {
-      if (isBypass || isAdminRole) return true;
+      if (isBypass || isSuperAdmin) return true;
       
       // Check permissionsMap first for dynamic module access
       try {
         final permissionsMap = currentUser?['permissionsMap'] as Map<String, dynamic>?;
         if (permissionsMap != null && permissionsMap.containsKey(moduleKey)) {
-          debugPrint('ModernSidebar: Module $moduleKey found in permissionsMap: ${permissionsMap[moduleKey]}');
-          return true;
+          final hasPermission = permissionsMap[moduleKey] == true;
+          debugPrint('ModernSidebar: Module $moduleKey found in permissionsMap: $hasPermission');
+          return hasPermission;
         }
       } catch (e) {
         debugPrint('ModernSidebar: Error checking permissionsMap for $moduleKey: $e');
@@ -340,7 +343,7 @@ class ModernSidebar extends StatelessWidget {
                         label: 'Company Management',
                         isSelected: selectedIndex == 11,
                         onTap: () => onDestinationSelected(11),
-                        visible: true,
+                        visible: isSuperAdmin, // Only visible to super_admin
                         showLabel: isOpen,
                       ),
                     ],

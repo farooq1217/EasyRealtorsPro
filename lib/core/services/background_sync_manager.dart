@@ -2,11 +2,11 @@ import 'dart:async';
 import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared/shared.dart';
 import '../../firestore_sync_service.dart';
 import '../database/app_database_singleton.dart';
 import 'firebase_threading_handler.dart';
+import 'package:http/http.dart' as http;
 
 /// Background sync manager for incremental local-to-cloud sync
 /// Handles offline data synchronization when internet is restored
@@ -26,8 +26,11 @@ class BackgroundSyncManager {
   bool get hasBeenInitializedInSession => _hasBeenInitializedInSession;
 
   final FirestoreSyncService _firestoreSync = FirestoreSyncService();
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   Timer? _syncTimer;
+  bool _isOnline = false;
+  Timer? _connectivityCheckTimer;
+  static const Duration _connectivityCheckInterval = Duration(seconds: 20);
+  static const String _pingUrl = 'https://www.google.com';
   bool _isSyncing = false;
   bool _hasInternet = false;
   
@@ -96,7 +99,7 @@ class BackgroundSyncManager {
   /// Dispose resources
   /// Enhanced with session flag reset for proper re-initialization control
   Future<void> dispose() async {
-    await _connectivitySubscription?.cancel();
+    _connectivityCheckTimer?.cancel();
     _syncTimer?.cancel();
     _isInitialized = false;
     _isInitializing = false;
@@ -111,33 +114,13 @@ class BackgroundSyncManager {
     // CRITICAL: Ensure connectivity monitoring starts on main thread
     if (_isWindows) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
-          final result = results.isNotEmpty ? results.last : ConnectivityResult.none;
-          final hadInternet = _hasInternet;
-          _hasInternet = result != ConnectivityResult.none;
-          
-          debugPrint('[SYNC] Connectivity changed: ${result.name}, Has Internet: $_hasInternet');
-          
-          // Trigger sync when internet is restored
-          if (!hadInternet && _hasInternet) {
-            debugPrint('[SYNC] Internet restored - triggering background sync');
-            _triggerBackgroundSync();
-          }
+        _connectivityCheckTimer = Timer.periodic(_connectivityCheckInterval, (_) async {
+          await _checkConnectivity();
         });
       });
     } else {
-      _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
-        final result = results.isNotEmpty ? results.last : ConnectivityResult.none;
-        final hadInternet = _hasInternet;
-        _hasInternet = result != ConnectivityResult.none;
-        
-        debugPrint('[SYNC] Connectivity changed: ${result.name}, Has Internet: $_hasInternet');
-        
-        // Trigger sync when internet is restored
-        if (!hadInternet && _hasInternet) {
-          debugPrint('[SYNC] Internet restored - triggering background sync');
-          _triggerBackgroundSync();
-        }
+      _connectivityCheckTimer = Timer.periodic(_connectivityCheckInterval, (_) async {
+        await _checkConnectivity();
       });
     }
   }
@@ -145,13 +128,30 @@ class BackgroundSyncManager {
   /// Check current connectivity status
   Future<void> _checkConnectivity() async {
     try {
-      final results = await Connectivity().checkConnectivity();
-      final result = results.isNotEmpty ? results.last : ConnectivityResult.none;
-      _hasInternet = result != ConnectivityResult.none;
-      debugPrint('[SYNC] Initial connectivity check: ${result.name}, Has Internet: $_hasInternet');
+      final previousState = _hasInternet;
+      
+      // Windows-safe HTTP ping check
+      final response = await http.head(
+        Uri.parse(_pingUrl),
+      ).timeout(
+        const Duration(seconds: 5),
+      );
+      
+      _hasInternet = response.statusCode >= 200 && response.statusCode < 300;
+      
+      if (previousState != _hasInternet) {
+        debugPrint('[SYNC] Connectivity changed: Has Internet: $_hasInternet');
+        
+        // Trigger sync when internet is restored
+        if (!previousState && _hasInternet) {
+          _triggerBackgroundSync();
+        }
+      }
     } catch (e) {
-      debugPrint('[SYNC] Error checking connectivity: $e');
-      _hasInternet = false;
+      if (_hasInternet) {
+        debugPrint('[SYNC] Error checking connectivity: $e');
+        _hasInternet = false;
+      }
     }
   }
 

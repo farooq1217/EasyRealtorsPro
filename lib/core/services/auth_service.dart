@@ -954,16 +954,44 @@ class AuthService {
             debugPrint('  Password hash format: ${passwordHash.split(":").length} parts');
             debugPrint('  Password hash preview: ${passwordHash.substring(0, passwordHash.length > 50 ? 50 : passwordHash.length)}...');
 
-            // ✨ FIX: Smart Verification for both Hashes (:) and Plain Text (Temp Passwords) ✨
+            // ✨ FIX: Smart Verification for 3-part Hashes, 2-part Legacy Hashes, and Plain Text (Temp Passwords) ✨
             final trimmedHash = passwordHash.trim();
             final inputPassword = password.trim();
             bool passwordValid = false;
+            String verificationMethod = '';
+            String finalPasswordHashToSave = trimmedHash; // Initialize with original hash
 
             if (trimmedHash.contains(':')) {
-              // It's a proper hash, verify it
-              passwordValid = PasswordHasher.verify(inputPassword, trimmedHash);
+              final hashParts = trimmedHash.split(':');
+              if (hashParts.length == 3) {
+                verificationMethod = 'hash_verification';
+                passwordValid = PasswordHasher.verify(inputPassword, trimmedHash);
+              } else if (hashParts.length == 2) {
+                verificationMethod = 'legacy_hash';
+                
+                // ✨ CRITICAL FIX: Trim the extracted legacy password to remove hidden spaces/newlines ✨
+                final plainTextPassword = hashParts[1].trim(); 
+                
+                passwordValid = (plainTextPassword == inputPassword);
+                
+                if (passwordValid) {
+                  finalPasswordHashToSave = PasswordHasher.hash(inputPassword);
+                  debugPrint('  🔧 Legacy password matched! Upgrading to secure 3-part hash');
+                  
+                  // Add the auto-upgrade database statement here...
+                  try {
+                    await db.customStatement(
+                      'UPDATE users SET password_hash = ?, updated_at = ? WHERE email = ?',
+                      [finalPasswordHashToSave, DateTime.now().toUtc().toIso8601String(), emailKey]
+                    );
+                  } catch (_) {}
+                }
+              } else {
+                verificationMethod = 'invalid_hash';
+              }
             } else {
-              // Admin created user with plain text password - check exact match
+              // Plain text verification
+              verificationMethod = 'plain_text';
               passwordValid = (trimmedHash == inputPassword);
             }
             
@@ -973,7 +1001,6 @@ class AuthService {
               debugPrint('✅ User found in database and password verified');
               
               // If it was a plain text match, upgrade it to a secure hash immediately
-              String finalPasswordHashToSave = trimmedHash;
               if (!trimmedHash.contains(':')) {
                  finalPasswordHashToSave = PasswordHasher.hash(inputPassword);
                  try {
@@ -1012,8 +1039,7 @@ class AuthService {
             } else {
               debugPrint('❌ Password verification failed for database user');
               debugPrint('  Entered password length: ${password.length}');
-              debugPrint('  Stored hash: ${passwordHash.substring(0, 30)}...');
-              return {
+debugPrint('  Stored hash: ${passwordHash.length > 30 ? passwordHash.substring(0, 30) + "..." : passwordHash}');              return {
                 'success': false,
                 'message': 'Invalid email or password',
                 'debugInfo': 'User found in database but password mismatch. If this is a new Company Admin, use the temporary password shown when user was created.',

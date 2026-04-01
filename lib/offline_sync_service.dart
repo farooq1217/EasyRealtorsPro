@@ -35,7 +35,7 @@ class OfflineSyncService {
   /// Check connectivity status
   Future<void> _checkConnectivity() async {
     try {
-      // Simple connectivity check - can be enhanced with connectivity_plus package
+      // Simple connectivity check using HTTP ping
       final response = await http.get(Uri.parse('https://www.google.com'))
           .timeout(const Duration(seconds: 3));
       final wasOnline = _isOnline;

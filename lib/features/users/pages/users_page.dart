@@ -14,6 +14,8 @@ import 'package:drift/drift.dart' as d;
 import 'package:provider/provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../view_models/user_view_model.dart';
+import '../../companies/view_models/company_view_model.dart';
+import '../../companies/repositories/company_repository_impl.dart';
 import '../../../core/widgets/safe_dropdown.dart';
 import '../../../shimmer_widgets.dart' show ShimmerPageLoading;
 import '../../../professional_reports.dart' show buildKeyValueReportPdf, loadCurrentUserFromStorage, loadReportBranding, savePdfBytesToDisk, generateReportSerial, logReportHistory;
@@ -42,42 +44,60 @@ class UsersPage extends StatefulWidget {
 }
 
 class _UsersPageState extends State<UsersPage> {
-  late UserViewModel _viewModel;
+  late UserViewModel _userViewModel;
+  late CompanyViewModel _companyViewModel;
   
   // Search and filter controllers
   final TextEditingController _searchController = TextEditingController();
-  String? _selectedCompany;
+  
+  // Filter state
+  String? _selectedCompanyId;
   String? _selectedRole;
   String? _selectedStatus;
   
-  // Mock data for companies (replace with actual data from your database)
-  List<Map<String, dynamic>> _companies = [];
+  // Role options (hardcoded as required)
   List<Map<String, dynamic>> _roles = [
+    {'id': null, 'name': 'All roles'},
     {'id': 'super_admin', 'name': 'Super Admin'},
     {'id': 'company_admin', 'name': 'Company Admin'},
     {'id': 'agent', 'name': 'Agent'},
-    {'id': 'user', 'name': 'User'},
   ];
+
+  // Get filtered role options based on current user's role
+  List<Map<String, dynamic>> get _filteredRoles {
+    if (_userViewModel.isCurrentUserSuperAdmin) {
+      // Super Admin can see all roles
+      return _roles;
+    } else {
+      // Company Admin can only assign Agent role
+      return [
+        {'id': null, 'name': 'All roles'},
+        {'id': 'agent', 'name': 'Agent'},
+      ];
+    }
+  }
   
+  // Status options (hardcoded as required)
   List<Map<String, dynamic>> _statuses = [
+    {'id': null, 'name': 'All statuses'},
     {'id': 'active', 'name': 'Active'},
     {'id': 'inactive', 'name': 'Inactive'},
-    {'id': 'archived', 'name': 'Archived'},
   ];
 
   @override
   void initState() {
     super.initState();
-    _viewModel = UserViewModel(UserRepositoryImpl(widget.db));
+    _userViewModel = UserViewModel(UserRepositoryImpl(widget.db));
+    _companyViewModel = CompanyViewModel(CompanyRepositoryImpl(widget.db));
     
     debugPrint('UsersPage: initState called, widget mounted: $mounted');
     
-    // Initialize ViewModel but defer stream setup
+    // Initialize ViewModels but defer stream setup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       debugPrint('UsersPage: PostFrameCallback - widget mounted: $mounted');
-      _viewModel.initialize();
-      _loadCompanies();
+      _userViewModel.initialize();
+      _companyViewModel.initialize();
     });
   }
   
@@ -86,36 +106,26 @@ class _UsersPageState extends State<UsersPage> {
     super.didChangeDependencies();
     debugPrint('UsersPage: didChangeDependencies called, widget mounted: $mounted');
     // Set mounted state when dependencies change
-    _viewModel.setMounted(mounted);
+    _userViewModel.setMounted(mounted);
   }
 
   @override
   void dispose() {
-    _viewModel.dispose();
+    _userViewModel.dispose();
+    _companyViewModel.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadCompanies() async {
-    // Load companies from database - this is a placeholder
-    // Replace with actual company loading logic
-    setState(() {
-      _companies = [
-        {'id': '1', 'name': 'EasyRealtors'},
-        {'id': '2', 'name': 'Property Plus'},
-        {'id': '3', 'name': 'Real Estate Pro'},
-      ];
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<UserViewModel>.value(
-      value: _viewModel,
+      value: _userViewModel,
       child: Consumer<UserViewModel>(
-        builder: (context, viewModel, child) {
+        builder: (context, userViewModel, child) {
           // Show loading state but keep buttons visible
-          if (viewModel.loading) {
+          if (userViewModel.loading) {
             return Scaffold(
               appBar: AppBar(
                 title: Text('Users Management', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
@@ -139,53 +149,60 @@ class _UsersPageState extends State<UsersPage> {
             );
           }
 
-          return Scaffold(
-            backgroundColor: Colors.grey.shade50,
-            body: Column(
-              children: [
-                // Scrollable Content Area (Header, Filters, Stats, Grid)
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header with Action Buttons
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          child: _buildHeaderSection(),
+          return ChangeNotifierProvider<CompanyViewModel>.value(
+            value: _companyViewModel,
+            child: Consumer<CompanyViewModel>(
+              builder: (context, companyViewModel, child) {
+                return Scaffold(
+                  backgroundColor: Colors.grey.shade50,
+                  body: Column(
+                    children: [
+                      // Scrollable Content Area (Header, Filters, Stats, Grid)
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header with Action Buttons
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                child: _buildHeaderSection(userViewModel),
+                              ),
+                              const SizedBox(height: 24),
+                              
+                              // Search and Filter Section
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: _buildSearchAndFilterSection(userViewModel, companyViewModel),
+                              ),
+                              const SizedBox(height: 24),
+                              
+                              // Summary Dashboard (Stats Cards)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: _buildStatsDashboard(),
+                              ),
+                              const SizedBox(height: 24),
+                              
+                              // User Grid (Non-scrollable within scrollable parent)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: _buildUserGrid(),
+                              ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 24),
-                        
-                        // Search and Filter Section
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _buildSearchAndFilterSection(),
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Summary Dashboard (Stats Cards)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _buildStatsDashboard(),
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // User Grid (Non-scrollable within scrollable parent)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _buildUserGrid(),
-                        ),
-                      ],
-                    ),
+                      ),
+                      
+                      // Pagination (Fixed at bottom)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        child: _buildPaginationCard(),
+                      ),
+                    ],
                   ),
-                ),
-                
-                // Pagination (Fixed at bottom)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  child: _buildPaginationCard(),
-                ),
-              ],
+                );
+              },
             ),
           );
         },
@@ -193,7 +210,7 @@ class _UsersPageState extends State<UsersPage> {
     );
   }
 
-  Widget _buildHeaderSection() {
+  Widget _buildHeaderSection(UserViewModel userViewModel) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -210,7 +227,7 @@ class _UsersPageState extends State<UsersPage> {
         const SizedBox(width: 16),
       // "Add New User" Button (Filled)
       ElevatedButton(
-        onPressed: () => _showAddUserDialog(context, _viewModel),
+        onPressed: () => _showAddUserDialog(context, userViewModel),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFFF6B35),
           foregroundColor: Colors.white,
@@ -238,7 +255,7 @@ class _UsersPageState extends State<UsersPage> {
     );
   }
 
-  Widget _buildSearchAndFilterSection() {
+  Widget _buildSearchAndFilterSection(UserViewModel userViewModel, CompanyViewModel companyViewModel) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -251,7 +268,7 @@ class _UsersPageState extends State<UsersPage> {
             TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search users by name, CNIC, or email...',
+                hintText: 'Search users by name, email, or username...',
                 prefixIcon: const Icon(Icons.search, color: Color(0xFF4A90E2)),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -265,7 +282,7 @@ class _UsersPageState extends State<UsersPage> {
                 fillColor: Colors.grey.shade50,
               ),
               onChanged: (value) {
-                _viewModel.setSearchQuery(value);
+                userViewModel.setSearchQuery(value);
               },
             ),
             const SizedBox(height: 16),
@@ -277,13 +294,13 @@ class _UsersPageState extends State<UsersPage> {
                   // Desktop layout: Row
                   return Row(
                     children: [
-                      Expanded(child: _buildCompanyDropdown()),
+                      Expanded(child: _buildCompanyDropdown(userViewModel, companyViewModel)),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildRoleDropdown()),
+                      Expanded(child: _buildRoleDropdown(userViewModel)),
                       const SizedBox(width: 12),
-                      Expanded(child: _buildStatusDropdown()),
+                      Expanded(child: _buildStatusDropdown(userViewModel)),
                       const SizedBox(width: 12),
-                      _buildFilterActions(),
+                      _buildFilterActions(userViewModel),
                     ],
                   );
                 } else {
@@ -292,17 +309,17 @@ class _UsersPageState extends State<UsersPage> {
                     children: [
                       Row(
                         children: [
-                          Expanded(child: _buildCompanyDropdown()),
+                          Expanded(child: _buildCompanyDropdown(userViewModel, companyViewModel)),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildRoleDropdown()),
+                          Expanded(child: _buildRoleDropdown(userViewModel)),
                         ],
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: _buildStatusDropdown()),
+                          Expanded(child: _buildStatusDropdown(userViewModel)),
                           const SizedBox(width: 12),
-                          _buildFilterActions(),
+                          _buildFilterActions(userViewModel),
                         ],
                       ),
                     ],
@@ -316,9 +333,18 @@ class _UsersPageState extends State<UsersPage> {
     );
   }
 
-  Widget _buildCompanyDropdown() {
+  Widget _buildCompanyDropdown(UserViewModel userViewModel, CompanyViewModel companyViewModel) {
+    // Build companies list with "All" option
+    List<Map<String, dynamic>> companies = [
+      {'id': null, 'name': 'All companies'},
+      ...companyViewModel.companies.map((company) => {
+        'id': company.id,
+        'name': company.name,
+      }).toList(),
+    ];
+    
     return DropdownButtonFormField<String>(
-      value: _selectedCompany,
+      value: _selectedCompanyId,
       decoration: InputDecoration(
         labelText: 'Company',
         hintText: 'All companies',
@@ -334,24 +360,21 @@ class _UsersPageState extends State<UsersPage> {
         fillColor: Colors.grey.shade50,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
-      items: [
-        const DropdownMenuItem(value: null, child: Text('All companies')),
-        ..._companies.map((company) => DropdownMenuItem(
-          value: company['id'],
-          child: Text(company['name']),
-        )),
-      ],
+      items: companies.map((company) => DropdownMenuItem<String>(
+        value: company['id'] as String?,
+        child: Text(company['name']),
+      )).toList(),
       onChanged: (value) {
         setState(() {
-          _selectedCompany = value;
+          _selectedCompanyId = value;
         });
-        // Apply filter logic using existing search functionality
-        _applyAllFilters();
+        // Apply filters using ViewModel's new filtering system
+        userViewModel.applyFilters(value, _selectedRole, _selectedStatus);
       },
     );
   }
 
-  Widget _buildRoleDropdown() {
+  Widget _buildRoleDropdown(UserViewModel userViewModel) {
     return DropdownButtonFormField<String>(
       value: _selectedRole,
       decoration: InputDecoration(
@@ -369,24 +392,21 @@ class _UsersPageState extends State<UsersPage> {
         fillColor: Colors.grey.shade50,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
-      items: [
-        const DropdownMenuItem(value: null, child: Text('All roles')),
-        ..._roles.map((role) => DropdownMenuItem(
-          value: role['id'],
-          child: Text(role['name']),
-        )),
-      ],
+      items: _filteredRoles.map((role) => DropdownMenuItem<String>(
+        value: role['id'] as String?,
+        child: Text(role['name']),
+      )).toList(),
       onChanged: (value) {
         setState(() {
           _selectedRole = value;
         });
-        // Apply filter logic using existing search functionality
-        _applyAllFilters();
+        // Apply filters using ViewModel's new filtering system
+        userViewModel.applyFilters(_selectedCompanyId, value, _selectedStatus);
       },
     );
   }
 
-  Widget _buildStatusDropdown() {
+  Widget _buildStatusDropdown(UserViewModel userViewModel) {
     return DropdownButtonFormField<String>(
       value: _selectedStatus,
       decoration: InputDecoration(
@@ -404,100 +424,50 @@ class _UsersPageState extends State<UsersPage> {
         fillColor: Colors.grey.shade50,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
-      items: [
-        const DropdownMenuItem(value: null, child: Text('All statuses')),
-        ..._statuses.map((status) => DropdownMenuItem(
-          value: status['id'],
-          child: Text(status['name']),
-        )),
-      ],
+      items: _statuses.map((status) => DropdownMenuItem<String>(
+        value: status['id'] as String?,
+        child: Text(status['name']),
+      )).toList(),
       onChanged: (value) {
         setState(() {
           _selectedStatus = value;
         });
-        // Apply filter logic using existing search functionality
-        _applyAllFilters();
+        // Apply filters using ViewModel's new filtering system
+        userViewModel.applyFilters(_selectedCompanyId, _selectedRole, value);
       },
     );
   }
 
-  Widget _buildFilterActions() {
+  Widget _buildFilterActions(UserViewModel userViewModel) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Refresh Button
+        // Clear Filters Button
         IconButton(
-          onPressed: () {
-            _viewModel.initialize();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Data refreshed')),
-            );
-          },
-          icon: const Icon(Icons.refresh, color: Color(0xFF4A90E2)),
-          tooltip: 'Refresh',
-          style: IconButton.styleFrom(
-            backgroundColor: Colors.grey.shade100,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        // Sync Button
-        IconButton(
-          onPressed: () async {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Syncing from Firestore...')),
-            );
-            try {
-              await _viewModel.syncFromFirestore();
-              await _viewModel.initialize(); // Refresh data
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Firestore sync completed!'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
-            } catch (e) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Sync failed: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            }
-          },
-          icon: const Icon(Icons.cloud_download, color: Color(0xFF4A90E2)),
-          tooltip: 'Sync from Firestore',
-          style: IconButton.styleFrom(
-            backgroundColor: Colors.grey.shade100,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        // Clear Button
-        TextButton(
           onPressed: () {
             setState(() {
-              _searchController.clear();
-              _selectedCompany = null;
+              _selectedCompanyId = null;
               _selectedRole = null;
               _selectedStatus = null;
             });
-            _viewModel.setSearchQuery('');
+            userViewModel.clearAllFilters();
           },
-          child: Text(
-            'Clear',
-            style: AppFonts.poppins(
-              color: const Color(0xFF4A90E2),
-              fontWeight: FontWeight.w500,
-            ),
+          icon: const Icon(Icons.clear_all, color: Color(0xFF4A90E2)),
+          tooltip: 'Clear All Filters',
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.grey.shade100,
+            padding: const EdgeInsets.all(8),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Refresh Button
+        IconButton(
+          onPressed: () => userViewModel.refreshData(),
+          icon: const Icon(Icons.refresh, color: Color(0xFF4A90E2)),
+          tooltip: 'Refresh Users',
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.grey.shade100,
+            padding: const EdgeInsets.all(8),
           ),
         ),
       ],
@@ -639,10 +609,10 @@ class _UsersPageState extends State<UsersPage> {
                 final user = viewModel.filteredUsers[index];
                 return UserCard(
                   user: user,
-                  onEditUser: (user) => _showEditUserDialog(context, user),
-                  onUpdatePassword: (user) => _showUpdatePasswordDialog(context, user),
-                  onManageRoles: (user) => _showManageRolesDialog(context, user),
-                  onDeleteUser: (user) => _showDeleteConfirmation(context, user),
+                  onEditUser: (user) => _showEditUserDialog(context, user, viewModel),
+                  onUpdatePassword: (user) => _showUpdatePasswordDialog(context, user, viewModel),
+                  onManageRoles: (user) => _showManageRolesDialog(context, user, viewModel),
+                  onDeleteUser: (user) => _showDeleteConfirmation(context, user, viewModel),
                 );
               },
             );
@@ -699,40 +669,6 @@ class _UsersPageState extends State<UsersPage> {
     );
   }
 
-  void _applyAllFilters() {
-    // Build search query based on all filters
-    String searchQuery = _searchController.text;
-    
-    // Add company filter if selected
-    if (_selectedCompany != null) {
-      final company = _companies.firstWhere(
-        (c) => c['id'] == _selectedCompany,
-        orElse: () => {'name': 'Unknown'},
-      );
-      searchQuery += ' ${company['name']}';
-    }
-    
-    // Add role filter if selected
-    if (_selectedRole != null) {
-      final role = _roles.firstWhere(
-        (r) => r['id'] == _selectedRole,
-        orElse: () => {'name': 'Unknown'},
-      );
-      searchQuery += ' ${role['name']}';
-    }
-    
-    // Add status filter if selected
-    if (_selectedStatus != null) {
-      final status = _statuses.firstWhere(
-        (s) => s['id'] == _selectedStatus,
-        orElse: () => {'name': 'Unknown'},
-      );
-      searchQuery += ' ${status['name']}';
-    }
-    
-    // Apply the combined search query
-    _viewModel.setSearchQuery(searchQuery.trim());
-  }
 
   // Calculate responsive aspect ratio to prevent overflow
   double _getResponsiveAspectRatio(double screenWidth, int crossAxisCount) {
@@ -789,14 +725,14 @@ class _UsersPageState extends State<UsersPage> {
     );
   }
 
-  void _showEditUserDialog(BuildContext context, UserModel user) {
-    _viewModel.setEditingUser(user);
+  void _showEditUserDialog(BuildContext context, UserModel user, UserViewModel userViewModel) {
+    userViewModel.setEditingUser(user);
     
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => ChangeNotifierProvider<UserViewModel>.value(
-        value: _viewModel,
+        value: userViewModel,
         child: Dialog(
           insetPadding: const EdgeInsets.all(16),
           child: ConstrainedBox(
@@ -918,14 +854,14 @@ class _UsersPageState extends State<UsersPage> {
   }
 
   // Step 3: Update Password Dialog
-  void _showUpdatePasswordDialog(BuildContext context, UserModel user) {
-    _viewModel.setEditingUser(user);
+  void _showUpdatePasswordDialog(BuildContext context, UserModel user, UserViewModel userViewModel) {
+    userViewModel.setEditingUser(user);
     
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => ChangeNotifierProvider<UserViewModel>.value(
-        value: _viewModel,
+        value: userViewModel,
         child: Dialog(
           insetPadding: const EdgeInsets.all(16),
           child: ConstrainedBox(
@@ -1237,11 +1173,10 @@ class _UsersPageState extends State<UsersPage> {
             labelText: 'Role',
             hintText: 'Select Role',
           ),
-          items: const [
-            DropdownMenuItem(value: 'super_admin', child: Text('Super Admin')),
-            DropdownMenuItem(value: 'company_admin', child: Text('Company Admin')),
-            DropdownMenuItem(value: 'agent', child: Text('Agent')),
-          ],
+          items: _filteredRoles.map((role) => DropdownMenuItem<String>(
+            value: role['id'] as String?,
+            child: Text(role['name']),
+          )).toList(),
           onChanged: (value) {
             viewModel.selectedRole = value;
           },
@@ -1488,8 +1423,8 @@ class _UsersPageState extends State<UsersPage> {
   }
 
   // Step 4: Manage Roles Dialog
-  void _showManageRolesDialog(BuildContext context, UserModel user) {
-    _viewModel.setEditingUser(user);
+  void _showManageRolesDialog(BuildContext context, UserModel user, UserViewModel userViewModel) {
+    userViewModel.setEditingUser(user);
     
     // 1. Declare state variables OUTSIDE builder but INSIDE method
     String? localSelectedRole = user.role;
@@ -1515,7 +1450,7 @@ class _UsersPageState extends State<UsersPage> {
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return ChangeNotifierProvider<UserViewModel>.value(
-          value: _viewModel,
+          value: userViewModel,
           child: Dialog(
             insetPadding: const EdgeInsets.all(16),
             child: ConstrainedBox(
@@ -1594,11 +1529,10 @@ class _UsersPageState extends State<UsersPage> {
                             decoration: InputDecoration(
                               border: OutlineInputBorder(),
                             ),
-                            items: const [
-                              DropdownMenuItem(value: 'super_admin', child: Text('Super Admin')),
-                              DropdownMenuItem(value: 'company_admin', child: Text('Company Admin')),
-                              DropdownMenuItem(value: 'agent', child: Text('Agent')),
-                            ],
+                            items: _filteredRoles.map((role) => DropdownMenuItem<String>(
+                              value: role['id'] as String?,
+                              child: Text(role['name']),
+                            )).toList(),
                             onChanged: (newValue) {
                               // CRITICAL: Use setStateDialog here!
                               setStateDialog(() { 
@@ -1662,20 +1596,20 @@ class _UsersPageState extends State<UsersPage> {
                               TextButton(
                                 onPressed: () {
                                   Navigator.of(dialogContext).pop();
-                                  _viewModel.clearEditingUser();
+                                  userViewModel.clearEditingUser();
                                 },
                                 child: Text('Cancel'),
                               ),
                               const SizedBox(width: 8),
                               ElevatedButton(
-                                onPressed: _viewModel.saving || localSelectedRole == null ? null : () async {
+                                onPressed: userViewModel.saving || localSelectedRole == null ? null : () async {
                                   // CRITICAL: Add debug logging
                                   debugPrint('Sending Role: $localSelectedRole to ViewModel');
                                   debugPrint('Sending Modules: $localModuleAccess to ViewModel');
                                   
                                   // Pass LOCAL variables to viewmodel
-                                  await _viewModel.assignRole(localSelectedRole!, localModuleAccess);
-                                  if (_viewModel.error.isEmpty) {
+                                  await userViewModel.assignRole(localSelectedRole!, localModuleAccess);
+                                  if (userViewModel.error.isEmpty) {
                                     Navigator.of(dialogContext).pop();
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
@@ -1686,13 +1620,13 @@ class _UsersPageState extends State<UsersPage> {
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text(_viewModel.error),
+                                        content: Text(userViewModel.error),
                                         backgroundColor: Colors.red,
                                       ),
                                     );
                                   }
                                 },
-                                child: _viewModel.saving 
+                                child: userViewModel.saving 
                                     ? SizedBox(
                                         width: 16,
                                         height: 16,
@@ -1736,7 +1670,7 @@ class _UsersPageState extends State<UsersPage> {
   }
 
   // Step 5: Delete Confirmation
-  void _showDeleteConfirmation(BuildContext context, UserModel user) {
+  void _showDeleteConfirmation(BuildContext context, UserModel user, UserViewModel userViewModel) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1750,7 +1684,7 @@ class _UsersPageState extends State<UsersPage> {
           TextButton(
             onPressed: () async {
               Navigator.pop(ctx, true);
-              await _viewModel.archiveUser(user.id);
+              await userViewModel.archiveUser(user.id);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(

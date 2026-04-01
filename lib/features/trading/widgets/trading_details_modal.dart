@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -331,7 +332,7 @@ class _TradingDetailsModalState extends State<TradingDetailsModal> {
                     style: pw.TextStyle(
                       fontSize: 24,
                       fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blue800,
+                      color: PdfColor.fromHex('#1E40AF'),
                     ),
                   ),
                 ],
@@ -342,7 +343,7 @@ class _TradingDetailsModalState extends State<TradingDetailsModal> {
               pw.Container(
                 padding: const pw.EdgeInsets.all(16),
                 decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.grey300),
+                  border: pw.Border.all(color: PdfColor.fromHex('#D1D5DB')),
                   borderRadius: pw.BorderRadius.circular(8),
                 ),
                 child: pw.Column(
@@ -353,7 +354,7 @@ class _TradingDetailsModalState extends State<TradingDetailsModal> {
                       style: pw.TextStyle(
                         fontSize: 18,
                         fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.blue800,
+                        color: PdfColor.fromHex('#1E40AF'),
                       ),
                     ),
                     pw.SizedBox(height: 10),

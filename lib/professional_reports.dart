@@ -5,10 +5,8 @@ import 'dart:typed_data';
 import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:drift/drift.dart' as d;
-import 'package:file_selector/file_selector.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show compute, kIsWeb;
+import 'package:flutter/foundation.dart' show compute, kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
@@ -18,6 +16,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
+import 'package:drift/drift.dart' as d;
 
 import 'core/services/auth_service.dart';
 import 'features/users/models/user_model.dart';
@@ -1301,27 +1300,31 @@ Future<void> savePdfBytesToDisk({
     return;
   }
 
-  final dir = await getDirectoryPath();
+  final dir = await getApplicationDocumentsDirectory();
   if (dir == null) return;
-  final path = '$dir${io.Platform.pathSeparator}$suggestedBaseName.pdf';
+  final path = '${dir.path}${io.Platform.pathSeparator}$suggestedBaseName.pdf';
   await io.File(path).writeAsBytes(pdfBytes, flush: true);
 }
 
 Future<void> ensureReportHistoryTable(AppDatabase db) async {
-  await db.customStatement('''
-    CREATE TABLE IF NOT EXISTS report_history (
-      id TEXT PRIMARY KEY,
-      company_id TEXT,
-      user_id TEXT,
-      user_name TEXT,
-      module TEXT,
-      entity_id TEXT,
-      report_type TEXT,
-      action TEXT,
-      serial_number TEXT,
-      generated_at TEXT
-    )
-  ''');
+  try {
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS report_history (
+        id TEXT PRIMARY KEY,
+        company_id TEXT,
+        user_id TEXT,
+        user_name TEXT,
+        module TEXT,
+        entity_id TEXT,
+        report_type TEXT,
+        action TEXT,
+        serial_number TEXT,
+        generated_at TEXT
+      )
+    ''');
+  } catch (e) {
+    debugPrint('Error creating report_history table: $e');
+  }
 }
 
 Future<void> logReportHistory({
@@ -1350,7 +1353,9 @@ Future<void> logReportHistory({
       'INSERT OR REPLACE INTO report_history (id, company_id, user_id, user_name, module, entity_id, report_type, action, serial_number, generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [id, cid, uid, name, module, entityId, reportType, action, serialNumber, nowIso],
     );
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('Error logging report history: $e');
+  }
 
   if (Firebase.apps.isNotEmpty) {
     try {

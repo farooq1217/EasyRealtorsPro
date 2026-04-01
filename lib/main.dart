@@ -8,9 +8,10 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:shared/shared.dart' show AppDatabase;
-import 'core/database/db_executor.dart' show openAppExecutor;
+import 'core/database/db_executor.dart';
 import 'core/services/firebase_options.dart';
 import 'core/services/auth_service.dart';
+import 'core/services/update_manager.dart';
 import 'core/app.dart';
 import 'firestore_sync_service.dart';
 
@@ -94,6 +95,12 @@ void main() async {
               FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
             }
           }
+
+          // 4. Check for updates after Firebase initialization
+          if (isWindows) {
+            debugPrint('Windows Platform: Checking for updates...');
+            UpdateManager().checkForUpdate();
+          }
         } catch (e) {
           debugPrint('Firebase Error: $e');
         }
@@ -137,10 +144,18 @@ void main() async {
       'Platform channel message',
       'background_fetch',
       'flutter_background_fetch',
-      'connectivity_plus',
       'path_provider',
       'sqflite',
       'shared_preferences',
+      'firebase_storage',
+      'firebase_messaging',
+      'fluttertoast',
+      'fluttertoast_web',
+      'fluttertoast_platform_interface',
+      'fluttertoast_web_platform_interface',
+      'firebase_auth',
+      'firebase_core',
+      'cloud_firestore',
     ];
     
     if (criticalPatterns.any((pattern) => error.toString().contains(pattern))) {
@@ -153,11 +168,12 @@ void main() async {
     }
   });
 
-  // 4. Run App with Windows-specific connection handling
+  // 4. Run App with Offline-First Architecture
   if (isWindows) {
     // Windows: Add connection stability handling
     debugPrint('Windows Platform: Applying connection stability fixes');
   }
   
+  // Use original AdminApp to avoid build issues
   runApp(const AdminApp());
 }

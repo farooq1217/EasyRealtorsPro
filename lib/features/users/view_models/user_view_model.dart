@@ -49,9 +49,13 @@ class UserViewModel extends ChangeNotifier {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
   final TextEditingController _userIdController = TextEditingController();
+  // Filter state
   String? _selectedCompanyId;
   String? _selectedStatus;
   String? _selectedRole;
+  String? _filterCompanyId;
+  String? _filterStatus;
+  String? _filterRole;
   Map<String, dynamic> _permissions = {};
 
   // Stream subscriptions
@@ -120,10 +124,13 @@ class UserViewModel extends ChangeNotifier {
   String? get selectedCompanyId => _selectedCompanyId;
   String? get selectedStatus => _selectedStatus;
   String? get selectedRole => _selectedRole;
+  String? get filterCompanyId => _filterCompanyId;
+  String? get filterStatus => _filterStatus;
+  String? get filterRole => _filterRole;
   Map<String, dynamic> get permissions => _permissions;
   bool get mounted => _mounted;
 
-  // Setters
+  // Setters for form state
   set selectedCompanyId(String? value) {
     _selectedCompanyId = value;
     notifyListeners();
@@ -137,6 +144,22 @@ class UserViewModel extends ChangeNotifier {
   set selectedRole(String? value) {
     _selectedRole = value;
     notifyListeners();
+  }
+
+  // Setters for filter state
+  set filterCompanyId(String? value) {
+    _filterCompanyId = value;
+    _applyMultiCriteriaFilters();
+  }
+
+  set filterStatus(String? value) {
+    _filterStatus = value;
+    _applyMultiCriteriaFilters();
+  }
+
+  set filterRole(String? value) {
+    _filterRole = value;
+    _applyMultiCriteriaFilters();
   }
 
   // Computed properties
@@ -242,8 +265,40 @@ class UserViewModel extends ChangeNotifier {
       
       debugPrint('UserViewModel: Role assignment completed successfully');
       
-      // DO NOT do manual fetch - let the watchUsers stream update the _users list naturally
-      // Just notify listeners to trigger UI rebuild from current stream data
+      // ✨ CRITICAL FIX: Update local user data immediately for instant UI update ✨
+      final userIndex = _users.indexWhere((user) => user.id == _editingUser!.id);
+      if (userIndex != -1) {
+        // Generate the new permissions that were saved to database
+        Map<String, dynamic> dynamicPermissionsMap = {};
+        selectedModules.forEach((key, isSelected) {
+          if (isSelected) {
+            // Assign view_add_edit or full_access depending on the base role
+            dynamicPermissionsMap[key] = (role.toLowerCase() == 'company_admin') ? 'full_access' : 'view_add_edit';
+          }
+        });
+        
+        final updatedPerms = {
+          'role': role.toLowerCase(),
+          'permission': (role.toLowerCase() == 'company_admin') ? 'full_access' : 'custom',
+          'canDelete': (role.toLowerCase() == 'company_admin'),
+          'permissionsMap': dynamicPermissionsMap
+        };
+        
+        // Create updated user model with new role and permissions
+        final updatedUser = _users[userIndex].copyWith(
+          permissions: jsonEncode(updatedPerms),
+          updatedAt: DateTime.now().toIso8601String(),
+        );
+        
+        // Update local list immediately
+        _users[userIndex] = updatedUser;
+        _applySearchFilter(); // Update filtered list too
+        
+        debugPrint('UserViewModel: Updated local user data for immediate UI update');
+        debugPrint('UserViewModel: New role for user ${_editingUser!.name}: ${updatedUser.role}');
+      }
+      
+      // Notify listeners to trigger immediate UI rebuild
       notifyListeners();
       
       // Clear editing state
@@ -443,9 +498,56 @@ class UserViewModel extends ChangeNotifier {
         return name.contains(query) || email.contains(query) || username.contains(query);
       }).toList();
     }
+    // Apply additional filters after search
+    _applyMultiCriteriaFilters();
+  }
+  
+  // ✨ NEW: Multi-criteria filtering method
+  void _applyMultiCriteriaFilters() {
+    List<UserModel> sourceList = _searchQuery.isEmpty ? List.from(_users) : List.from(_filteredUsers);
+    
+    // Apply company filter (if not 'All')
+    if (_filterCompanyId != null && _filterCompanyId!.isNotEmpty) {
+      sourceList = sourceList.where((user) => user.companyId == _filterCompanyId).toList();
+    }
+    
+    // Apply role filter (if not 'All')
+    if (_filterRole != null && _filterRole!.isNotEmpty) {
+      sourceList = sourceList.where((user) => user.role == _filterRole).toList();
+    }
+    
+    // Apply status filter (if not 'All')
+    if (_filterStatus != null && _filterStatus!.isNotEmpty) {
+      if (_filterStatus == 'active') {
+        sourceList = sourceList.where((user) => user.isActive).toList();
+      } else if (_filterStatus == 'inactive') {
+        sourceList = sourceList.where((user) => !user.isActive).toList();
+      } else if (_filterStatus == 'archived') {
+        sourceList = sourceList.where((user) => user.status == 'archived').toList();
+      }
+    }
+    
+    _filteredUsers = sourceList;
     // Reset to page 1 when filter changes
     _currentPage = 1;
     notifyListeners();
+  }
+  
+  // ✨ NEW: Public method to apply all filters at once
+  void applyFilters(String? companyId, String? role, String? status) {
+    _filterCompanyId = companyId;
+    _filterRole = role;
+    _filterStatus = status;
+    _applyMultiCriteriaFilters();
+  }
+  
+  // ✨ NEW: Clear all filters
+  void clearAllFilters() {
+    _filterCompanyId = null;
+    _filterRole = null;
+    _filterStatus = null;
+    _searchQuery = '';
+    _applySearchFilter();
   }
   
   // Pagination methods

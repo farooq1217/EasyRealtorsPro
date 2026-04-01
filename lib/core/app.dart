@@ -11,11 +11,14 @@ import '../features/navigation/main_navigation_page.dart' show MainNavigationPag
 import 'services/auth_service.dart';
 import 'services/permission_helper.dart';
 import 'services/background_sync_manager.dart';
+import 'services/network_sync_manager.dart';
 import 'services/notification_service.dart';
 
 /// Main application widget with MaterialApp configuration
 class AdminApp extends StatefulWidget {
-  const AdminApp({super.key});
+  final Map<String, dynamic>? currentUser;
+  
+  const AdminApp({super.key, this.currentUser});
   @override
   State<AdminApp> createState() => _AdminAppState();
   
@@ -46,6 +49,12 @@ class _AdminAppState extends State<AdminApp> {
     super.initState();
     _instance = this;
     _loadTheme();
+    
+    // If currentUser is provided, set it in AuthService
+    if (widget.currentUser != null) {
+      AuthService.currentUser = widget.currentUser;
+    }
+    
     // Initialize offline sync service
     OfflineSyncService().initialize();
     
@@ -72,6 +81,11 @@ class _AdminAppState extends State<AdminApp> {
     NotificationService().initialize().catchError((e) {
       debugPrint('[APP] Error initializing notification service: $e');
     });
+    
+    // Initialize Network Sync Manager for comprehensive offline-first support
+    NetworkSyncManager.instance.initialize().catchError((e) {
+      debugPrint('[APP] Error initializing network sync manager: $e');
+    });
   }
 
   @override
@@ -82,6 +96,9 @@ class _AdminAppState extends State<AdminApp> {
     OfflineSyncService().dispose();
     BackgroundSyncManager().dispose().catchError((e) {
       debugPrint('[APP] Error disposing background sync manager: $e');
+    });
+    NetworkSyncManager.instance.dispose().catchError((e) {
+      debugPrint('[APP] Error disposing network sync manager: $e');
     });
     super.dispose();
   }

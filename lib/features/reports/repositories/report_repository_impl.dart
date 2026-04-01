@@ -39,8 +39,8 @@ class ReportRepositoryImpl implements ReportRepository {
       final pdf = pw.Document();
       
       // Load fonts (using default fonts for now)
-      final baseFont = await PdfGoogleFonts.nunitoRegular();
-      final boldFont = await PdfGoogleFonts.nunitoBold();
+      final baseFont = pw.Font.courier();
+      final boldFont = pw.Font.courierBold();
       
       // Build PDF
       pdf.addPage(
@@ -578,8 +578,8 @@ class ReportRepositoryImpl implements ReportRepository {
       final pdf = pw.Document();
       
       // Load fonts
-      final baseFont = await PdfGoogleFonts.nunitoRegular();
-      final boldFont = await PdfGoogleFonts.nunitoBold();
+      final baseFont = pw.Font.courier();
+      final boldFont = pw.Font.courierBold();
       
       pdf.addPage(
         pw.Page(
