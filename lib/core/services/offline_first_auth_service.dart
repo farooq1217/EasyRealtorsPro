@@ -12,7 +12,7 @@ import 'package:shared/shared.dart';
 import 'firebase_threading_handler.dart';
 import 'package:http/http.dart' as http;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:firebase_core/firebase_core.dart' as Firebase;
+import 'package:firebase_core/firebase_core.dart';
 
 /// Offline-First Authentication Service
 /// 
@@ -203,7 +203,7 @@ class OfflineFirstAuthService {
     }
   }
 
-  /// Local authentication (offline)
+  /// Local authentication (offline) with Firebase Auth fallback
   static Future<AuthResult> authenticateLocally({
     required String email,
     required String password,
@@ -232,11 +232,88 @@ class OfflineFirstAuthService {
       }
 
       final inputHash = _hashPassword(password, salt, iterations);
-      if (inputHash != storedPasswordHash) {
-        return AuthResult.failure('Invalid email or password');
+      bool passwordValid = inputHash == storedPasswordHash;
+
+      // NEW: Firebase Auth fallback if local password verification fails
+      if (!passwordValid) {
+        debugPrint('OfflineFirstAuthService: Local password verification failed, attempting Firebase Auth fallback...');
+        
+        try {
+          // Check if Firebase is initialized and we have internet
+          if (Firebase.apps.isEmpty) {
+            debugPrint('OfflineFirstAuthService: Firebase not initialized for fallback');
+            return AuthResult.failure('Invalid email or password');
+          }
+
+          // Check internet connectivity
+          final hasInternet = await _checkInternetConnectivity();
+          if (!hasInternet) {
+            debugPrint('OfflineFirstAuthService: No internet connection for Firebase Auth fallback');
+            return AuthResult.failure('Invalid email or password');
+          }
+
+          // CRITICAL: Use Firebase Authentication as source of truth
+          debugPrint('OfflineFirstAuthService: Attempting Firebase Auth sign-in...');
+          final userCredential = await fb.FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: email.toLowerCase(),
+            password: password,
+          );
+
+          if (userCredential.user != null) {
+            debugPrint('OfflineFirstAuthService: Firebase Auth successful - password verified');
+            
+            // Generate NEW PBKDF2 hash from the verified password
+            final newSalt = _generateSalt();
+            const newIterations = 10000;
+            final newPasswordHash = _hashPassword(password, newSalt, newIterations);
+            
+            debugPrint('OfflineFirstAuthService: Generated new PBKDF2 hash for local storage');
+
+            // Update local SQLite with new hash
+            await _updateStoredPassword(
+              newPasswordHash: newPasswordHash,
+              salt: newSalt,
+              iterations: newIterations,
+            );
+
+            // Update local database with new hash
+            await _updatePasswordInLocalDb(newPasswordHash, newSalt, newIterations);
+
+            // Update Firestore document with new hash (so it's not empty anymore)
+            await _updatePasswordInFirestore(
+              userId: storedAuth['userId'],
+              passwordHash: newPasswordHash,
+              salt: newSalt,
+              iterations: newIterations,
+            );
+
+            // Get updated user data
+            final userData = await _getUserFromLocalDb(storedAuth['userId']);
+            if (userData != null) {
+              // Update current user
+              _currentUser = userData;
+              _currentAuthState = AuthState.authenticated;
+              _emitAuthState();
+              _emitUserUpdate();
+
+              // Start connectivity check for background sync
+              _startConnectivityCheck();
+
+              debugPrint('OfflineFirstAuthService: Firebase Auth fallback authentication successful');
+              return AuthResult.success(userData);
+            }
+          }
+          
+          debugPrint('OfflineFirstAuthService: Firebase Auth returned null user');
+          return AuthResult.failure('Invalid email or password');
+          
+        } catch (e) {
+          debugPrint('OfflineFirstAuthService: Firebase Auth fallback error: $e');
+          return AuthResult.failure('Invalid email or password');
+        }
       }
 
-      // Get user data from local database
+      // Get user data from local database (original flow for successful local auth)
       final userData = await _getUserFromLocalDb(storedAuth['userId']);
       if (userData == null) {
         return AuthResult.failure('User data not found locally');
@@ -490,6 +567,80 @@ class OfflineFirstAuthService {
       debugPrint('OfflineFirstAuthService: Authentication state cleared');
     } catch (e) {
       debugPrint('OfflineFirstAuthService: Error clearing auth state: $e');
+    }
+  }
+
+  static Future<bool> _checkInternetConnectivity() async {
+    try {
+      final response = await http.head(
+        Uri.parse('https://www.google.com'),
+      ).timeout(
+        const Duration(seconds: 5),
+      );
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('OfflineFirstAuthService: Internet connectivity check failed: $e');
+      return false;
+    }
+  }
+
+  static Future<void> _updatePasswordInFirestore({
+    required String userId,
+    required String passwordHash,
+    required String salt,
+    required int iterations,
+  }) async {
+    try {
+      if (Firebase.apps.isEmpty) {
+        debugPrint('OfflineFirstAuthService: Firebase not initialized, skipping Firestore update');
+        return;
+      }
+
+      final userDoc = FirebaseFirestore.instance.collection('users').doc(userId);
+      await userDoc.set({
+        'password_hash': passwordHash,
+        'salt': salt,
+        'iterations': iterations,
+        'updated_at': DateTime.now().toIso8601String(),
+      }, SetOptions(merge: true));
+
+      debugPrint('OfflineFirstAuthService: Successfully updated password hash in Firestore');
+    } catch (e) {
+      debugPrint('OfflineFirstAuthService: Error updating password in Firestore: $e');
+      // Don't rethrow - local auth should still work even if Firestore update fails
+    }
+  }
+
+  static Future<Map<String, dynamic>?> _fetchUserFromFirestore(String email) async {
+    try {
+      debugPrint('OfflineFirstAuthService: Fetching user from Firestore for $email');
+      
+      // Check if Firebase is initialized
+      if (Firebase.apps.isEmpty) {
+        debugPrint('OfflineFirstAuthService: Firebase not initialized, cannot fetch from Firestore');
+        return null;
+      }
+      
+      // Query Firestore for user by email
+      final query = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isEqualTo: email.toLowerCase())
+          .limit(1)
+          .get();
+      
+      if (query.docs.isNotEmpty) {
+        final doc = query.docs.first;
+        final userData = doc.data();
+        userData['id'] = doc.id; // Ensure ID is included
+        debugPrint('OfflineFirstAuthService: Successfully fetched user from Firestore');
+        return userData;
+      }
+      
+      debugPrint('OfflineFirstAuthService: User not found in Firestore');
+      return null;
+    } catch (e) {
+      debugPrint('OfflineFirstAuthService: Error fetching user from Firestore: $e');
+      return null;
     }
   }
 
