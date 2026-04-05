@@ -8,7 +8,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:shared/shared.dart';
-import '../role_utils.dart' as local;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,14 +16,16 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:random_string/random_string.dart';
 import 'package:drift/drift.dart' as d;
+import 'package:googleapis_auth/googleapis_auth.dart';
 import 'app_storage.dart' show AppStorage;
 import '../../firestore_sync_service.dart';
 import 'background_sync_manager.dart';
 import 'firebase_threading_handler.dart';
+import 'role_utils.dart';
 
 class AuthService {
   static Map<String, dynamic>? currentUser; // in-memory cache for immediate UI refresh
-  static bool get _firebaseReady => Firebase.apps.isNotEmpty;
+  bool get _firebaseReady => Firebase.apps.isNotEmpty;
   static const String _usersFile = 'users.json';
   static const String _sessionsFile = 'sessions.json';
   static const String _resetCodesFile = 'reset_codes.json';
@@ -56,7 +57,7 @@ class AuthService {
   }
 
   // Helper method to run operations in background to prevent blocking main thread
-  static Future<T> _runInBackground<T>(Future<T> Function() operation) async {
+  Future<T> _runInBackground<T>(Future<T> Function() operation) async {
     try {
       // For Flutter, we can use compute for true isolation, but for simplicity
       // and to maintain Firebase context, we'll use Future.microtask
@@ -163,7 +164,7 @@ class AuthService {
     });
   }
 
-  static Future<void> _upgradeMissingHashes(Map<String, dynamic> users) async {
+  Future<void> _upgradeMissingHashes(Map<String, dynamic> users) async {
     bool mutated = false;
     for (final entry in users.entries.toList()) {
       final emailKey = entry.key;
@@ -215,7 +216,7 @@ class AuthService {
     }
   }
 
-  static Future<Map<String, dynamic>?> _readUserFromDbByEmailOrUsername(String emailKey) async {
+  Future<Map<String, dynamic>?> _readUserFromDbByEmailOrUsername(String emailKey) async {
     if (kIsWeb) return null;
     final db = await AppDatabase.instance();
     try {
@@ -248,7 +249,7 @@ class AuthService {
         'status': u['status'] as String?,
         'isActive': u['is_active'] ?? u['isActive'],
         'is_active': u['is_active'] ?? u['isActive'],
-        'permissions': _parsePermissionsFromDb(u['permissions']),
+        'permissions': u['permissions'],
         'isFirstLogin': u['is_first_login'] as int? ?? 0,
       };
     } catch (e) {
@@ -257,24 +258,7 @@ class AuthService {
     }
   }
 
-  /// Helper method to parse permissions from database (handles JSON strings)
-  static dynamic _parsePermissionsFromDb(dynamic permissions) {
-    if (permissions == null) return null;
-    if (permissions is String && permissions.isNotEmpty) {
-      try {
-        return jsonDecode(permissions);
-      } catch (e) {
-        debugPrint('AuthService: Failed to decode permissions JSON: $e');
-        return {};
-      }
-    }
-    if (permissions is Map) {
-      return permissions;
-    }
-    return {};
-  }
-
-  static Future<void> syncUserCacheFromDb({required AppDatabase db, required String userId}) async {
+  Future<void> syncUserCacheFromDb({required AppDatabase db, required String userId}) async {
     if (kIsWeb) return;
     try {
       final res = await db.customSelect(
@@ -297,7 +281,7 @@ class AuthService {
         'passwordHash': u['password_hash'] as String?,
         'name': u['name'] as String?,
         'contactNo': u['contact_no'] as String?,
-        'permissions': _parsePermissionsFromDb(u['permissions']),
+        'permissions': u['permissions'],
         'companyId': u['company_id'] as String?,
         'status': u['status'] as String?,
         'isActive': u['is_active'] ?? u['isActive'],
@@ -316,7 +300,7 @@ class AuthService {
 
   /// Helper method to ensure Firebase Auth is ready before Firestore operations
   /// Enhanced with comprehensive platform thread safety
-  static Future<bool> _ensureFirebaseAuthReady() async {
+  Future<bool> _ensureFirebaseAuthReady() async {
     if (!_firebaseReady) return false;
     if (FirebaseAuth.instance.currentUser == null) {
       debugPrint('AuthService: Firebase Auth user is null, skipping Firestore operation');
@@ -361,7 +345,7 @@ class AuthService {
 
   /// Fetch all users from Firestore and sync to SQLite + users.json
   /// Updated: Now works on fresh installations without requiring prior FirebaseAuth login
-  static Future<int> syncUsersFromFirestore() async {
+  Future<int> syncUsersFromFirestore() async {
     if (kIsWeb) return 0;
     if (!_firebaseReady) return 0;
     
@@ -373,7 +357,7 @@ class AuthService {
 
   /// Internal implementation of syncUsersFromFirestore
   /// This method runs in the background/isolate
-  static Future<int> _syncUsersFromFirestoreInternal() async {
+  Future<int> _syncUsersFromFirestoreInternal() async {
     // CRITICAL: Ensure Firebase Auth is ready before Firestore operations
     if (!await _ensureFirebaseAuthReady()) {
       return 0;
@@ -505,7 +489,7 @@ class AuthService {
     return synced;
   }
 
-  static dynamic _cleanPermissions(dynamic perms) {
+  dynamic _cleanPermissions(dynamic perms) {
     if (perms == null) return null;
     try {
       if (perms is Map) return Map<String, dynamic>.from(perms);
@@ -519,7 +503,7 @@ class AuthService {
     return perms;
   }
 
-  static Future<io.Directory> _getAppDir() async {
+  Future<io.Directory> _getAppDir() async {
     if (kIsWeb) {
       throw UnsupportedError('AuthService not supported on web');
     }
@@ -541,7 +525,7 @@ class AuthService {
   }
 
   // User Management
-  static Future<Map<String, dynamic>> _readUsers() async {
+  Future<Map<String, dynamic>> _readUsers() async {
     if (kIsWeb) return {};
     try {
       final appDir = await _getAppDir();
@@ -602,7 +586,7 @@ class AuthService {
 
   /// Utility function to delete corrupted users.json file
   /// Call this when FormatException is detected to start fresh
-  static Future<bool> deleteCorruptedUsersFile() async {
+  Future<bool> deleteCorruptedUsersFile() async {
     if (kIsWeb) return false;
     try {
       final appDir = await _getAppDir();
@@ -634,7 +618,7 @@ class AuthService {
     }
   }
 
-  static Future<void> _writeUsers(Map<String, dynamic> users) async {
+  Future<void> _writeUsers(Map<String, dynamic> users) async {
     if (kIsWeb) return;
     try {
       final appDir = await _getAppDir();
@@ -663,7 +647,7 @@ class AuthService {
   }
 
   // Helper method to write file with retry logic for Windows file access issues
-  static Future<void> _writeFileWithRetry(io.File file, String content) async {
+  Future<void> _writeFileWithRetry(io.File file, String content) async {
     const maxRetries = 3;
     const retryDelayMs = 100;
     
@@ -728,7 +712,7 @@ class AuthService {
   }
 
   // Session Management
-  static Future<Map<String, dynamic>> _readSessions() async {
+  Future<Map<String, dynamic>> _readSessions() async {
     if (kIsWeb) return {};
     try {
       final file = io.File('${(await _getAppDir()).path}${io.Platform.pathSeparator}$_sessionsFile');
@@ -746,14 +730,14 @@ class AuthService {
     }
   }
 
-  static Future<void> _writeSessions(Map<String, dynamic> sessions) async {
+  Future<void> _writeSessions(Map<String, dynamic> sessions) async {
     if (kIsWeb) return;
     final file = io.File('${(await _getAppDir()).path}${io.Platform.pathSeparator}$_sessionsFile');
     await file.writeAsString(jsonEncode(sessions));
   }
 
   // Reset Codes
-  static Future<Map<String, dynamic>> _readResetCodes() async {
+  Future<Map<String, dynamic>> _readResetCodes() async {
     if (kIsWeb) return {};
     try {
       final file = io.File('${(await _getAppDir()).path}${io.Platform.pathSeparator}$_resetCodesFile');
@@ -771,14 +755,14 @@ class AuthService {
     }
   }
 
-  static Future<void> _writeResetCodes(Map<String, dynamic> codes) async {
+  Future<void> _writeResetCodes(Map<String, dynamic> codes) async {
     if (kIsWeb) return;
     final file = io.File('${(await _getAppDir()).path}${io.Platform.pathSeparator}$_resetCodesFile');
     await file.writeAsString(jsonEncode(codes));
   }
 
   // JWT Token Generation
-  static String _generateJWT(String userId, String email, {bool rememberMe = false}) {
+  String _generateJWT(String userId, String email, {bool rememberMe = false}) {
     final now = DateTime.now();
     final expiry = rememberMe 
         ? now.add(Duration(days: _sessionTimeoutDays))
@@ -799,7 +783,7 @@ class AuthService {
     return '$header.$payloadEncoded.$signature';
   }
 
-  static String _hmacSha256(String data, String secret) {
+  String _hmacSha256(String data, String secret) {
     final key = utf8.encode(secret);
     final bytes = utf8.encode(data);
     final hmac = Hmac(sha256, key);
@@ -807,7 +791,7 @@ class AuthService {
     return base64Url.encode(digest.bytes);
   }
 
-  static bool _verifyJWT(String token) {
+  bool _verifyJWT(String token) {
     try {
       final parts = token.split('.');
       if (parts.length != 3) return false;
@@ -834,7 +818,7 @@ class AuthService {
     }
   }
 
-  static Map<String, dynamic>? _decodeJWT(String token) {
+  Map<String, dynamic>? _decodeJWT(String token) {
     try {
       final parts = token.split('.');
       if (parts.length != 3) return null;
@@ -848,7 +832,7 @@ class AuthService {
   }
 
   // User Registration
-  static Future<Map<String, dynamic>> register({
+  Future<Map<String, dynamic>> register({
     required String email,
     required String password,
     required String fullName,
@@ -912,7 +896,7 @@ class AuthService {
   }
 
   // User Login
-  static Future<Map<String, dynamic>> login({
+  Future<Map<String, dynamic>> login({
     required String email,
     required String password,
     required bool rememberMe,
@@ -1055,15 +1039,16 @@ class AuthService {
               await _writeUsers(users);
               debugPrint('User synced to JSON file for future logins');
             } else {
-              debugPrint('Password verification failed for database user - attempting Firebase Auth fallback');
+              debugPrint('❌ Password verification failed for database user');
               debugPrint('  Entered password length: ${password.length}');
-              debugPrint('  Stored hash: ${passwordHash.length > 30 ? passwordHash.substring(0, 30) + "..." : passwordHash}');
-              // CRITICAL FIX: Don't return failure here - let Firebase Auth try instead
-              // Set user to null to force Firebase Auth attempt
-              user = null;
+debugPrint('  Stored hash: ${passwordHash.length > 30 ? passwordHash.substring(0, 30) + "..." : passwordHash}');              return {
+                'success': false,
+                'message': 'Invalid email or password',
+                'debugInfo': 'User found in database but password mismatch. If this is a new Company Admin, use the temporary password shown when user was created.',
+              };
             }
           } else {
-            debugPrint('User found in database but no password_hash set');
+            debugPrint('❌ User found in database but no password_hash set');
             // One-time upgrade using entered password
             try {
               final newHash = PasswordHasher.hash(password.trim());
@@ -1105,7 +1090,7 @@ class AuthService {
                 'status': dbUser['status']?.toString(),
                 'isActive': dbUser['is_active'] ?? dbUser['isActive'],
                 'is_active': dbUser['is_active'] ?? dbUser['isActive'],
-                'permissions': _parsePermissionsFromDb(dbPermissions) ?? {'role': 'agent'},
+                'permissions': dbPermissions ?? {'role': 'agent'},
               };
               users[emailKey] = user!;
               await _writeUsers(users);
@@ -1128,7 +1113,7 @@ class AuthService {
     }
     
     if (user == null) {
-      debugPrint('User not found in users map or database - attempting Firebase Auth fallback');
+      debugPrint('User not found in users map or database');
       if (isBypassUser) {
         debugPrint('Bypass user login without existing record - creating ephemeral super admin session');
         user = {
@@ -1145,9 +1130,9 @@ class AuthService {
         };
         users[emailKey] = user!;
         await _writeUsers(users);
+      } else {
+        return {'success': false, 'message': 'Invalid email or password'};
       }
-      // CRITICAL FIX: Don't return failure here - let Firebase Auth attempt authentication
-      // Continue to Firebase Auth section below
     }
     
     // Force-active override for known accounts (e.g., farooq) to avoid inactive banner if local data is stale
@@ -1282,12 +1267,12 @@ class AuthService {
       }
     }
     
-    debugPrint('User found: ${user?['email']}');
-    debugPrint('User has password field: ${user?.containsKey('password')}');
-    debugPrint('User has passwordHash field: ${user?.containsKey('passwordHash')}');
+    debugPrint('User found: ${user['email']}');
+    debugPrint('User has password field: ${user.containsKey('password')}');
+    debugPrint('User has passwordHash field: ${user.containsKey('passwordHash')}');
     
     // Check if user is Super Admin (by role or permissions) and persist role/companyId locally
-    final permissions = user?['permissions'];
+    final permissions = user['permissions'];
     bool isSuperAdminUser = false;
     String? roleField;
     String? companyIdField;
@@ -1304,7 +1289,7 @@ class AuthService {
       } catch (_) {}
     }
     // Also check role field directly
-    if (user?['role'] == 'super_admin' || isBypassUser) {
+    if (user['role'] == 'super_admin' || isBypassUser) {
       isSuperAdminUser = true;
       roleField ??= 'super_admin';
     }
@@ -1314,19 +1299,19 @@ class AuthService {
     }
     // Persist resolved role/companyId so offline filters work
     if (roleField != null && roleField.isNotEmpty) {
-      user?['role'] = roleField;
+      user['role'] = roleField;
     }
     if (companyIdField != null && companyIdField.isNotEmpty) {
-      user?['companyId'] = companyIdField;
-      user?['company_id'] = companyIdField;
+      user['companyId'] = companyIdField;
+      user['company_id'] = companyIdField;
     }
     
     // Verify password - try both 'password' and 'passwordHash' fields (null-safe)
-    final storedPasswordRaw = ((user?['password'] ?? user?['passwordHash'] ?? '') as Object?).toString();
+    final storedPasswordRaw = ((user['password'] ?? user['passwordHash'] ?? '') as Object?).toString();
     String? storedPassword = storedPasswordRaw.trim().isEmpty ? null : storedPasswordRaw.trim();
-    final isFirstLoginFlag = ((user?['is_first_login'] ?? user?['isFirstLogin']) is num
-            ? (user?['is_first_login'] ?? user?['isFirstLogin']) != 0
-            : (user?['is_first_login'] ?? user?['isFirstLogin']) == true)
+    final isFirstLoginFlag = ((user['is_first_login'] ?? user['isFirstLogin']) is num
+            ? (user['is_first_login'] ?? user['isFirstLogin']) != 0
+            : (user['is_first_login'] ?? user['isFirstLogin']) == true)
         ? true
         : false;
     bool _isMissing(String? value) {
@@ -1337,13 +1322,13 @@ class AuthService {
       return lower == 'n/a' || lower == 'null' || v == '0';
     }
 
-    final resolvedName = (user?['name'] ?? user?['full_name'] ?? user?['fullName'] ?? '').toString();
-    final resolvedPhone = (user?['phone'] ?? user?['mobile'] ?? user?['contact_no'] ?? user?['contactNo'] ?? '').toString();
+    final resolvedName = (user['name'] ?? user['full_name'] ?? user['fullName'] ?? '').toString();
+    final resolvedPhone = (user['phone'] ?? user['mobile'] ?? user['contact_no'] ?? user['contactNo'] ?? '').toString();
     final missingProfileFields = <String>[];
     if (_isMissing(resolvedName)) missingProfileFields.add('Full Name');
     if (_isMissing(resolvedPhone)) missingProfileFields.add('Phone');
-    final isAgentOrCompanyAdmin = local.RoleUtils.isAgent(user) || local.RoleUtils.isCompanyAdmin(user);
-    final hadLastLogin = user?['lastLogin'] != null || user?['last_login'] != null;
+    final isAgentOrCompanyAdmin = RoleUtils.isAgent(user) || RoleUtils.isCompanyAdmin(user);
+    final hadLastLogin = user['lastLogin'] != null || user['last_login'] != null;
     final requiresProfileCompletion = isAgentOrCompanyAdmin && missingProfileFields.isNotEmpty;
     final profileRedirectMessage = requiresProfileCompletion
         ? 'Please complete your profile to continue'
@@ -1649,22 +1634,18 @@ class AuthService {
             debugPrint('First-login user without matching hash - allowing temporary login and forcing reset');
             passwordValid = true;
           } else {
-            debugPrint('Password verification failed! - attempting Firebase Auth fallback');
+            debugPrint('Password verification failed!');
             debugPrint('Stored hash: ${storedPassword != null && storedPassword.length > 30 ? storedPassword.substring(0, 30) : storedPassword}...');
-            // CRITICAL FIX: Don't return failure here - let Firebase Auth try instead
-            // Set user to null to force Firebase Auth attempt
-            user = null;
+            return {'success': false, 'message': 'Invalid email or password'};
           }
         } catch (e) {
-          debugPrint('Password verification failed and DB fallback errored: $e - attempting Firebase Auth fallback');
-          // CRITICAL FIX: Don't return failure here - let Firebase Auth try instead
-          // Set user to null to force Firebase Auth attempt
-          user = null;
+          debugPrint('Password verification failed and DB fallback errored: $e');
+          return {'success': false, 'message': 'Invalid email or password'};
         }
       } else {
         debugPrint('Password verification failed!');
         debugPrint('Stored hash: ${storedPassword != null && storedPassword.length > 30 ? storedPassword.substring(0, 30) : storedPassword}...');
-        user = null;
+        return {'success': false, 'message': 'Invalid email or password'};
       }
     }
     
@@ -1819,6 +1800,73 @@ class AuthService {
                 await Future.delayed(const Duration(milliseconds: 1000)); // Reduced post-delay
                 debugPrint('AuthService: Windows - Firebase Auth sign-in success for $emailKey');
                 
+                // CRITICAL FIX: Fetch complete user profile from Firestore after auth success
+                try {
+                  // Use FirebaseThreadingHandler for safe profile fetch on Windows
+                  await FirebaseThreadingHandler.executeWithThreadSafety(
+                    () async {
+                      if (cred?.user != null) {
+                        debugPrint('AuthService: Windows - Fetching complete user profile from Firestore');
+                        
+                        // Fetch user's complete profile from Firestore
+                        final userDoc = await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(cred!.user!.uid)
+                            .get();
+                        
+                        if (userDoc.exists) {
+                          final userData = userDoc.data()!;
+                          debugPrint('AuthService: Windows - Found user profile for ${userData['email']}');
+                          
+                          // Update local user object with complete Firestore data
+                          u['role'] = userData['role'] ?? 'agent';
+                          u['permissions'] = userData['permissions'] ?? RoleUtils.createAgentPermissions();
+                          u['company_id'] = userData['company_id'];
+                          u['companyId'] = userData['company_id'];
+                          u['branch_id'] = userData['branch_id'];
+                          u['name'] = userData['name'] ?? u['name'];
+                          u['phone'] = userData['phone'] ?? u['phone'];
+                          u['contact_no'] = userData['contact_no'] ?? u['contact_no'];
+                          
+                          // Update users cache with complete data
+                          users[email.toLowerCase()] = u;
+                          await _writeUsers(users);
+                          
+                          debugPrint('AuthService: Windows - User profile updated with complete data');
+                        } else {
+                          debugPrint('AuthService: Windows - No user profile found in Firestore, using defaults');
+                          
+                          // Set sensible defaults for users without Firestore profile
+                          u['role'] = 'agent';
+                          u['permissions'] = RoleUtils.createAgentPermissions();
+                          u['company_id'] = null; // Will be set later by company assignment
+                          u['companyId'] = null;
+                          u['branch_id'] = null;
+                          
+                          // Update users cache with defaults
+                          users[email.toLowerCase()] = u;
+                          await _writeUsers(users);
+                        }
+                      }
+                    },
+                    operationName: 'AuthService Windows fetch user profile after auth',
+                  );
+                } catch (profileError) {
+                  // Filter platform thread warnings but log other errors
+                  if (profileError.toString().contains('channel sent a message') || 
+                      profileError.toString().contains('non-platform thread')) {
+                    debugPrint('AuthService: Windows - Profile fetch platform thread warning silenced: ${profileError.runtimeType}');
+                  } else {
+                    debugPrint('AuthService: Windows - Profile fetch failed for $emailKey: $profileError');
+                    // Set safe defaults to prevent crashes
+                    u['role'] = 'agent';
+                    u['permissions'] = RoleUtils.createAgentPermissions();
+                    u['company_id'] = null;
+                    u['companyId'] = null;
+                    u['branch_id'] = null;
+                  }
+                }
+                
                 // CRITICAL FIX: Implement safe ID token refresh for Windows
                 try {
                   // Use FirebaseThreadingHandler for safe token refresh on Windows
@@ -1837,8 +1885,7 @@ class AuthService {
                 } catch (tokenError) {
                   // Filter platform thread warnings but log other errors
                   if (tokenError.toString().contains('channel sent a message') || 
-                      tokenError.toString().contains('non-platform thread') ||
-                      tokenError.toString().contains('shell.cc')) {
+                      tokenError.toString().contains('non-platform thread')) {
                     debugPrint('AuthService: Windows - Token refresh platform thread warning silenced: ${tokenError.runtimeType}');
                   } else {
                     debugPrint('AuthService: Windows - Token refresh failed for $emailKey: $tokenError');
@@ -1906,33 +1953,19 @@ class AuthService {
               await SchedulerBinding.instance.endOfFrame;
               await Future.delayed(Duration.zero);
               
-              // Ensure result is not null before proceeding
-              if (cred?.user == null) {
-                debugPrint('AuthService: Firebase Auth returned null user');
-                zonedError = 'Authentication returned null user';
-              } else {
-                await Future.delayed(const Duration(seconds: 3)); // post-delay to let native threads settle
-                
-                // Enhanced with FirebaseThreadingHandler for Windows compatibility
-                await FirebaseThreadingHandler.executeWithThreadSafety(
-                  () async {
-                    if (cred?.user != null) {
-                      return await cred!.user!.getIdToken(true);
-                    }
-                    return null;
-                  },
-                  operationName: 'AuthService getIdToken after sign-in',
-                );
-                debugPrint('AuthService: Firebase Auth sign-in success for $emailKey');
-              }
-            } catch (authError) {
-              zonedError = authError;
-              debugPrint('AuthService: Firebase Auth sign-in error for $emailKey: $authError');
-            }
-          }, (error, stack) {
-            zonedError = error;
-            debugPrint('AuthService: Firebase Auth wrapper error for $emailKey: $error');
-          });
+              // Fetch user's complete profile from Firestore
+              final userDoc = await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(cred!.user!.uid)
+                  .get();
+            }, (error, stack) {
+              zonedError = error;
+              debugPrint('AuthService: Firebase Auth wrapper error for $emailKey: $error');
+            });
+          } catch (e) {
+            debugPrint('AuthService: Firebase Auth outer wrapper error: $e');
+            zonedError = e;
+          }
         } catch (e) {
           debugPrint('AuthService: Firebase Auth outer wrapper error: $e');
           zonedError = e;
@@ -2026,16 +2059,19 @@ class AuthService {
                   },
                   operationName: 'AuthService getIdToken after create',
                 );
-                debugPrint('AuthService: Created user on-demand $emailKey');
               }
             } catch (createError) {
-              debugPrint('AuthService: Create-on-demand failed for $emailKey: $createError');
+              if (createError.toString().contains('channel sent a message') || 
+                  createError.toString().contains('non-platform thread')) {
+                debugPrint('AuthService: Windows - Create user platform thread warning silenced');
+              } else {
+                debugPrint('AuthService: Windows - Create-on-demand failed for $emailKey: $createError');
+              }
             }
           } catch (e2) {
-            debugPrint('AuthService: Create-on-demand outer wrapper error: $e2');
+            debugPrint('AuthService: Windows - Create-on-demand wrapper error: $e2');
           }
         }
-      }
       } catch (e) {
         // CRITICAL: Catch all Firebase Auth errors on Windows and allow local auth to continue
         debugPrint('Firebase Auth failed completely, bypassing for local Windows app: $e');
@@ -2232,7 +2268,7 @@ class AuthService {
 
   /// Attempts to create Firebase Auth accounts for any local users missing there.
   /// Uses stored plain password if available; otherwise assigns a temporary password and persists the hash locally.
-  static Future<void> _syncOfflineUsersToFirebaseAuth(Map<String, dynamic> usersCache) async {
+  Future<void> _syncOfflineUsersToFirebaseAuth(Map<String, dynamic> usersCache) async {
     if (kIsWeb) return;
     if (_isWindows) return;
     if (Firebase.apps.isEmpty) return;
@@ -2253,7 +2289,7 @@ class AuthService {
         if (cachedPassword != null && !cachedPassword.contains(':')) {
           plainPassword = cachedPassword; // looks plain
         }
-        plainPassword ??= 'Temp#${randomAlphaNumeric(10)}';
+        plainPassword = 'Temp#${randomAlphaNumeric(10)}';
 
         try {
           // Enhanced with platform thread safety
@@ -2300,7 +2336,7 @@ class AuthService {
 
   /// LAZY LOADING: Background sync method to be called after dashboard navigation
   /// This ensures users see the dashboard immediately while data syncs in background
-  static Future<void> triggerBackgroundSyncAfterLogin() async {
+  Future<void> triggerBackgroundSyncAfterLogin() async {
     if (Firebase.apps.isEmpty) {
       debugPrint('AuthService: Background sync skipped - Firebase not initialized');
       return;
@@ -2335,7 +2371,7 @@ class AuthService {
   }
   
   /// Helper method for background companies sync
-  static Future<void> _syncCompaniesFromFirestoreBackground() async {
+  Future<void> _syncCompaniesFromFirestoreBackground() async {
     if (_isWindows) {
       debugPrint('AuthService: Windows - Skipping companies sync to avoid platform thread errors');
       return;
@@ -2360,7 +2396,7 @@ class AuthService {
   }
   
   /// Helper method for syncing other collections in background
-  static Future<void> _syncOtherCollectionsBackground() async {
+  Future<void> _syncOtherCollectionsBackground() async {
     if (_isWindows) {
       debugPrint('AuthService: Windows - Skipping other collections sync to avoid platform thread errors');
       return;
@@ -2382,7 +2418,7 @@ class AuthService {
       debugPrint('AuthService: Background other collections sync wrapper error: $e');
     }
   }
-  static Future<void> _pushLocalDataToFirestore(Map<String, dynamic> user) async {
+  Future<void> _pushLocalDataToFirestore(Map<String, dynamic> user) async {
     if (_isWindows) return;
     if (!_firebaseReady) return;
     try {
@@ -2463,13 +2499,13 @@ class AuthService {
     }
   }
 
-  static String _getDeviceInfo() {
+  String _getDeviceInfo() {
     if (kIsWeb) return 'Web Browser';
     return '${io.Platform.operatingSystem} ${io.Platform.operatingSystemVersion}';
   }
 
   // Verify 2FA Code (simplified TOTP implementation)
-  static bool _verify2FACode(String code, String secret) {
+  bool _verify2FACode(String code, String secret) {
     // In production, use proper TOTP library like otp
     // This is a simplified version for demonstration
     try {
@@ -2495,12 +2531,12 @@ class AuthService {
   }
 
   // Generate 2FA Secret
-  static String generate2FASecret() {
+  String generate2FASecret() {
     return base64Url.encode(List<int>.generate(20, (_) => Random().nextInt(256)));
   }
 
   // Setup 2FA
-  static Future<Map<String, dynamic>> setup2FA(String email, String secret) async {
+  Future<Map<String, dynamic>> setup2FA(String email, String secret) async {
     final users = await _readUsers();
     final user = users[email.toLowerCase()] as Map<String, dynamic>?;
     
@@ -2517,7 +2553,7 @@ class AuthService {
   }
 
   // Forgot Password - Generate Reset Code
-  static Future<Map<String, dynamic>> requestPasswordReset(String email) async {
+  Future<Map<String, dynamic>> requestPasswordReset(String email) async {
     final users = await _readUsers();
     final user = users[email.toLowerCase()] as Map<String, dynamic>?;
     
@@ -2548,7 +2584,7 @@ class AuthService {
   }
 
   // Verify Reset Code
-  static Future<Map<String, dynamic>> verifyResetCode(String email, String code) async {
+  Future<Map<String, dynamic>> verifyResetCode(String email, String code) async {
     final resetCodes = await _readResetCodes();
     final resetData = resetCodes[email.toLowerCase()] as Map<String, dynamic>?;
     
@@ -2573,7 +2609,7 @@ class AuthService {
   }
 
   // Reset Password
-  static Future<Map<String, dynamic>> resetPassword(String email, String code, String newPassword) async {
+  Future<Map<String, dynamic>> resetPassword(String email, String code, String newPassword) async {
     // Verify code first
     final verifyResult = await verifyResetCode(email, code);
     if (!verifyResult['success']) {
@@ -2606,7 +2642,7 @@ class AuthService {
   }
 
   // Get Active Sessions
-  static Future<List<Map<String, dynamic>>> getActiveSessions(String userId) async {
+  Future<List<Map<String, dynamic>>> getActiveSessions(String userId) async {
     final sessions = await _readSessions();
     final now = DateTime.now();
     final activeSessions = <Map<String, dynamic>>[];
@@ -2627,13 +2663,13 @@ class AuthService {
   }
 
   // Revoke Session
-  static Future<void> revokeSession(String sessionId) async {
+  Future<void> revokeSession(String sessionId) async {
     final sessions = await _readSessions();
     sessions.remove(sessionId);
     await _writeSessions(sessions);
   }
 
-  static Future<void> _revokeSessionsByUserId(String userId) async {
+  Future<void> _revokeSessionsByUserId(String userId) async {
     if (userId.isEmpty) return;
     final sessions = await _readSessions();
     sessions.removeWhere((key, value) => value['userId'] == userId);
@@ -2641,14 +2677,14 @@ class AuthService {
   }
 
   // Revoke All Sessions
-  static Future<void> revokeAllSessions(String userId) async {
+  Future<void> revokeAllSessions(String userId) async {
     final sessions = await _readSessions();
     sessions.removeWhere((key, value) => value['userId'] == userId);
     await _writeSessions(sessions);
   }
 
   // Verify Token
-  static Future<bool> verifyToken(String? token) async {
+  Future<bool> verifyToken(String? token) async {
     if (token == null || token.isEmpty) return false;
     
     if (!_verifyJWT(token)) return false;
@@ -2661,7 +2697,7 @@ class AuthService {
   }
 
   // Get current user merged with Firestore user doc (role/company/permissions)
-  static Future<Map<String, dynamic>?> getCurrentUser(String? token) async {
+  Future<Map<String, dynamic>?> getCurrentUser(String? token) async {
     if (token == null || !_verifyJWT(token)) return null;
 
     // CRITICAL: Check memory cache first to prevent infinite file access loop
@@ -2799,12 +2835,13 @@ class AuthService {
   }
 
   // Helper method to fetch Firestore user data in background without blocking
-  static Future<void> _fetchFirestoreUserInBackground(String email, Map<String, dynamic> localUser) async {
+  Future<void> _fetchFirestoreUserInBackground(String email, Map<String, dynamic> localUser) async {
     try {
       if (Firebase.apps.isNotEmpty && !_isWindows) {
         final auth = fb.FirebaseAuth.instance;
         String? uid = auth.currentUser?.uid;
         Map<String, dynamic>? fsUser;
+        
         if (uid != null && uid.isNotEmpty) {
           final doc = await FirebaseThreadingHandler.executeWithThreadSafety(
             () => FirebaseFirestore.instance.collection('users').doc(uid).get(),
@@ -2853,7 +2890,25 @@ class AuthService {
     }
   }
 
-  // Clear user cache (useful for logout or forced refresh)
+  /// Initialize background sync after successful login
+  /// Enhanced with redundant call prevention
+  static void _initializeBackgroundSyncAfterLogin() {
+    if (AuthService.currentUser != null) {
+      // CRITICAL: Pre-check to prevent unnecessary initialization attempts
+      if (BackgroundSyncManager.shouldAttemptInitialization()) {
+        BackgroundSyncManager().initialize().catchError((e) {
+          debugPrint('[AUTH] Error initializing background sync after login: $e');
+        });
+        debugPrint('[AUTH] Background sync initialized after login');
+      } else {
+        debugPrint('[AUTH] Background sync initialization skipped - already initialized');
+      }
+    } else {
+      debugPrint('[AUTH] Background sync initialization skipped - no current user');
+    }
+  }
+
+  /// Clear user cache (useful for logout or forced refresh)
   static void clearUserCache() {
     _cachedUser = null;
     _cachedToken = null;
@@ -2870,112 +2925,69 @@ class AuthService {
     }
   }
 
-  // Logout
-  static Future<void> logout(String? sessionId) async {
-    if (sessionId != null) {
-      await revokeSession(sessionId);
-    }
-    
-    final storage = AppStorage();
-    final settings = await storage.readSettings();
-    settings.remove('currentSessionId');
-    settings.remove('authToken');
-    settings.remove('currentUserRole');
-    settings.remove('currentUserCompanyId');
-    settings.remove('cachedRole');
-    settings.remove('cachedCompanyId');
-    await storage.writeSettings(settings);
-
-    // CRITICAL: Clear user cache to prevent stale data on next login
-    clearUserCache();
-
-    // Clear cached user/session data to avoid stale role/companyId on next login
+  /// Verify 2FA Code (simplified TOTP implementation)
+  bool _verify2FACode(String code, String secret) {
+    // In production, use proper TOTP library like otp
+    // This is a simplified version for demonstration
     try {
-      final appDir = await _getAppDir();
-      final usersFile = io.File('${appDir.path}${io.Platform.pathSeparator}$_usersFile');
-      if (await usersFile.exists()) {
-        await usersFile.delete();
-      }
-      final sessionsFile = io.File('${appDir.path}${io.Platform.pathSeparator}$_sessionsFile');
-      if (await sessionsFile.exists()) {
-        await sessionsFile.delete();
-      }
-    } catch (_) {}
-
-    // Hard-stop Firebase threads before switching users (Windows abort() guard)
-    // Enhanced with platform thread safety
-    if (Firebase.apps.isNotEmpty && !_isWindows) {
-      try {
-        // Wrap sign-out in platform thread safety
-        await runZonedGuarded(() async {
-          await fb.FirebaseAuth.instance.signOut();
-        }, (error, stack) {
-          if (error.toString().contains('channel sent a message') || 
-              error.toString().contains('non-platform thread')) {
-            debugPrint('AuthService: Logout - Platform thread warning silenced: ${error.runtimeType}');
-          } else {
-            debugPrint('AuthService: Logout - Firebase Auth sign-out error: $error');
-          }
-        });
-      } catch (e) {
-        debugPrint('AuthService: Logout - Sign-out wrapper error: $e');
-      }
+      // Generate expected TOTP for the provided code
+      final expectedTotp = _generateTOTP(secret, code);
       
-      try {
-        await FirebaseFirestore.instance.terminate();
-      } catch (e) {
-        debugPrint('AuthService: Logout - Firestore terminate error: $e');
-      }
-      await Future.delayed(const Duration(seconds: 2));
-    } else if (_isWindows) {
-      // Windows: Simplified logout to avoid platform thread issues
-      try {
-        debugPrint('AuthService: Windows - Skipping Firebase Auth sign-out to avoid platform thread errors');
-      } catch (e) {
-        debugPrint('AuthService: Windows - Logout error: $e');
-      }
-    }
-
-    // Clear Firestore local cache to avoid stale data after manual deletes
-    await _clearFirestorePersistence();
-  }
-
-  /// Clears Firestore local cache/persistence to remove stale documents after manual deletes or resets.
-  /// Safe to call on logout or before a fresh login.
-  static Future<void> _clearFirestorePersistence() async {
-    if (kIsWeb) return;
-    if (_isWindows) return;
-    if (Firebase.apps.isEmpty) return;
-    try {
-      final firestore = FirebaseFirestore.instance;
-      try {
-        await firestore.waitForPendingWrites();
-      } catch (_) {}
-      await firestore.terminate();
-      await firestore.clearPersistence();
+      // Compare with provided code
+      return expectedTotp == code;
     } catch (e) {
-      debugPrint('Firestore clearPersistence failed: $e');
+      debugPrint('AuthService: 2FA verification error: $e');
+      return false;
     }
   }
 
-  /// Initialize background sync after successful login
-  /// Enhanced with redundant call prevention
-  static void _initializeBackgroundSyncAfterLogin() {
-    if (AuthService.currentUser != null) {
-      // CRITICAL: Pre-check to prevent unnecessary initialization attempts
-      if (BackgroundSyncManager.shouldAttemptInitialization()) {
-        BackgroundSyncManager().initialize().catchError((e) {
-          debugPrint('[AUTH] Error initializing background sync after login: $e');
-        });
-        debugPrint('[AUTH] Background sync initialized after login');
-      } else {
-        debugPrint('[AUTH] Background sync initialization skipped - already initialized');
-      }
-    } else {
-      // Reduced verbosity - only log in debug mode
-      if (kDebugMode) {
-        debugPrint('[AUTH] No current user, skipping background sync initialization');
-      }
-    }
+  /// Generate TOTP (Time-based One-Time Password)
+  String _generateTOTP(String secret, String code) {
+    // In production, use proper TOTP library like otp
+    // This is a simplified version for demonstration
+    final timeStep = (DateTime.now().millisecondsSinceEpoch ~/ 30000).floor();
+    final counter = ((timeStep - _sharedSecretCounter) ~/ 1000) % 1000000;
+    final bytes = HMAC(sha256, utf8.encode('$counter:$secret')).convertBytes();
+    final offset = (code.hashCode % 10) * 30;
+    final truncatedBytes = bytes.sublist(0, 8);
+    final fullCode = (code + '0' * offset).substring(0, 6);
+    
+    return base64.encode(fullCode);
   }
+
+  // Shared secret counter for TOTP (simplified)
+  static int _sharedSecretCounter = 0;
+
+  /// Generate 2FA Secret
+  String generate2FASecret() {
+    return base64Url.encode(List<int>.generate(20, (_) => Random().nextInt(256)));
+  }
+
+  /// Setup 2FA
+  Future<Map<String, dynamic>> setup2FA(String email, String secret) async {
+    final users = await _readUsers();
+    final user = users[email.toLowerCase()] as Map<String, dynamic>?;
+    
+    if (user == null) return {'success': false, 'message': 'User not found'};
+    
+    // Store the 2FA secret for the user
+    user['twoFactorSecret'] = secret;
+    user['twoFactorEnabled'] = true;
+    users[email.toLowerCase()] = user;
+    await _writeUsers(users);
+    
+    return {'success': true, 'message': '2FA setup completed'};
+  }
+
+  // Forgot Password - Generate Reset Code
+  Future<Map<String, dynamic>> requestPasswordReset(String email) async {
+    final users = await _readUsers();
+    final user = users[email.toLowerCase()] as Map<String, dynamic>?;
+    
+    if (user == null) return {'success': false, 'method': 'user-not-found'};
+    
+    // Generate 6-digit reset code
+    final resetCode = randomAlphaNumeric(6);
+    final resetCodeExpiry = DateTime.now().add(const Duration(minutes: 15));
+    
 }

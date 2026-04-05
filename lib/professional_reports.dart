@@ -16,6 +16,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
+import 'core/role_utils.dart' as local;
 import 'package:drift/drift.dart' as d;
 
 import 'core/services/auth_service.dart';
@@ -99,7 +100,8 @@ Future<Map<String, dynamic>?> loadCurrentUserFromStorage() async {
     final s = await _readLocalSettings();
     final authToken = s['authToken'] as String?;
     if (authToken == null || authToken.trim().isEmpty) return null;
-    return await AuthService().getCurrentUser(authToken);
+    final user = await AuthService.getCurrentUser(authToken);
+    return user;
   } catch (_) {
     return null;
   }
@@ -133,8 +135,8 @@ Future<ReportBranding?> loadReportBranding({
   required AppDatabase db,
   required Map<String, dynamic>? currentUser,
 }) async {
-  final isSuperAdmin = RoleUtils.isSuperAdmin(currentUser);
-  final companyId = RoleUtils.getUserCompanyId(currentUser);
+  final isSuperAdmin = local.RoleUtils.isSuperAdmin(currentUser);
+  final companyId = local.RoleUtils.getUserCompanyId(currentUser);
   final effectiveCompanyId = isSuperAdmin ? companyId : companyId;
   if (effectiveCompanyId == null || effectiveCompanyId.trim().isEmpty) return null;
 
@@ -1345,7 +1347,7 @@ Future<void> logReportHistory({
   final id = DateTime.now().millisecondsSinceEpoch.toString();
   final uid = currentUser?['id']?.toString() ?? currentUser?['user_id']?.toString();
   final name = (currentUser?['name'] ?? currentUser?['username'] ?? uid ?? '').toString();
-  final cid = companyId ?? RoleUtils.getUserCompanyId(currentUser);
+  final cid = companyId ?? local.RoleUtils.getUserCompanyId(currentUser);
   final nowIso = generatedAt.toUtc().toIso8601String();
 
   try {

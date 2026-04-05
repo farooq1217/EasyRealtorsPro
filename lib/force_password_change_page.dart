@@ -86,14 +86,13 @@ class _ForcePasswordChangePageState extends State<ForcePasswordChangePage> {
           hashedPassword,
           salt,
           iterations,
-          0, // Set is_first_login to false (0)
+          1, // Set is_first_login to true (1)
           DateTime.now().toUtc().toIso8601String(),
           widget.userId,
         ],
       );
 
-      final authService = AuthService();
-      await authService.syncUserCacheFromDb(db: widget.db, userId: widget.userId);
+      await AuthService.syncUserCacheFromDb(db: widget.db, userId: widget.userId);
       try {
         // This is a workaround - AuthService uses JSON file, but we're using database
         // In production, you might want to sync both or use only database

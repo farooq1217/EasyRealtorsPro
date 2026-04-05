@@ -8,7 +8,8 @@ import 'dart:convert';
 import '../models/inventory_item.dart';
 import '../view_models/inventory_view_model.dart';
 import '../../../core/app_utils.dart' show pickAndCompressImage, showImageSourceDialog, uploadImageToFirebaseStorage, imageUrlsToJson;
-import 'package:shared/shared.dart' show RoleUtils;
+import 'package:shared/shared.dart';
+import '../../../core/role_utils.dart' as local;
 import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../core/services/auth_service.dart';
 
@@ -420,7 +421,7 @@ class _InventoryFormState extends State<InventoryForm> {
     final viewModel = context.read<InventoryViewModel>();
     final id = widget.existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
     final currentUser = await _getCurrentUser();
-    final companyId = RoleUtils.getUserCompanyId(currentUser);
+    final companyId = local.RoleUtils.getUserCompanyId(currentUser);
     
     try {
       // Upload pending images to Firebase Storage
@@ -547,7 +548,7 @@ class _InventoryFormState extends State<InventoryForm> {
     final s = await storage.readSettings();
     final token = s['authToken'] as String?;
     if (token != null) {
-      return await AuthService().getCurrentUser(token);
+      return await AuthService.getCurrentUser(token);
     }
     return null;
   }

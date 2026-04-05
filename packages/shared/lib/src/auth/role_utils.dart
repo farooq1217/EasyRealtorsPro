@@ -41,50 +41,54 @@ class RoleUtils {
 
   /// Check if user is Company Admin
   /// Company Admin has role "company_admin" in permissions JSON and has a companyId
+  /// CRITICAL FIX: Allow null companyId for fresh users (will be set later by company assignment)
   static bool isCompanyAdmin(Map<String, dynamic>? user) {
     if (user == null) return false;
     
-    // Company Admin must have a companyId
+    // Company Admin must have a companyId, but allow null for fresh users
     final companyId = _normalizeCompanyId(user['company_id'] ?? user['companyId']);
-    if (companyId == null) return false;
-    
-    final permissions = user['permissions'];
-    if (permissions == null) return false;
-    
-    try {
-      final perms = permissions is String ? jsonDecode(permissions) : permissions;
-      if (perms is Map) {
-        return perms['role'] == 'company_admin';
+    // CRITICAL: Don't require companyId for fresh users - they may not be assigned to a company yet
+    if (companyId != null) {
+      final permissions = user['permissions'];
+      if (permissions == null) return false;
+      
+      try {
+        final perms = permissions is String ? jsonDecode(permissions) : permissions;
+        if (perms is Map) {
+          return perms['role'] == 'company_admin';
+        }
+      } catch (_) {
+        return false;
       }
-    } catch (_) {
-      return false;
     }
     
-    return false;
+    return false; // Default to false for users without companyId (fresh users)
   }
 
   /// Check if user is Agent
   /// Agent has role "agent" in permissions JSON and has a companyId
+  /// CRITICAL FIX: Allow null companyId for fresh users (will be set later by company assignment)
   static bool isAgent(Map<String, dynamic>? user) {
     if (user == null) return false;
     
-    // Agent must have a companyId
+    // Agent must have a companyId, but allow null for fresh users
     final companyId = _normalizeCompanyId(user['company_id'] ?? user['companyId']);
-    if (companyId == null) return false;
-    
-    final permissions = user['permissions'];
-    if (permissions == null) return false;
-    
-    try {
-      final perms = permissions is String ? jsonDecode(permissions) : permissions;
-      if (perms is Map) {
-        return perms['role'] == 'agent';
+    // CRITICAL: Don't require companyId for fresh users - they may not be assigned to a company yet
+    if (companyId != null) {
+      final permissions = user['permissions'];
+      if (permissions == null) return false;
+      
+      try {
+        final perms = permissions is String ? jsonDecode(permissions) : permissions;
+        if (perms is Map) {
+          return perms['role'] == 'agent';
+        }
+      } catch (_) {
+        return false;
       }
-    } catch (_) {
-      return false;
     }
     
-    return false;
+    return false; // Default to false for users without companyId (fresh users)
   }
 
   /// Get user role as string

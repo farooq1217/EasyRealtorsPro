@@ -95,7 +95,7 @@ class StandardizedPdfService {
       Map<String, dynamic>? currentUser;
       
       if (authToken != null) {
-        currentUser = await AuthService().getCurrentUser(authToken);
+        currentUser = await AuthService.getCurrentUser(authToken);
       }
       
       final db = AppDatabase.instanceIfInitialized;

@@ -9,7 +9,7 @@ import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../core/services/auth_service.dart';
 import '../../../core/shared_utils.dart' show TopRightSearch;
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
-import 'package:shared/shared.dart' show RoleUtils;
+import '../../../core/role_utils.dart';
 import '../../../core/app_utils.dart';
 import '../view_models/inventory_view_model.dart';
 import '../widgets/inventory_list.dart';
@@ -67,7 +67,7 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
     final token = s['authToken'] as String?;
     if (token != null) {
       try {
-        _currentUser = await AuthService().getCurrentUser(token);
+        _currentUser = await AuthService.getCurrentUser(token);
       } catch (e) {
         debugPrint('InventoryPage: Error getting current user, falling back to memory: $e');
         // Fall back to static current user if available

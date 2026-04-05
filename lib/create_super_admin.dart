@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared/shared.dart';
+import 'core/role_utils.dart' as local;
 import 'package:path_provider/path_provider.dart';
 import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -86,7 +87,7 @@ class SuperAdminCreator {
         'fullName': name ?? 'Super Admin',
         'name': name ?? 'Super Admin',
         'contactNo': contactNo,
-        'permissions': RoleUtils.createSuperAdminPermissions(),
+        'permissions': local.RoleUtils.createSuperAdminPermissions(),
         'companyId': null, // Super Admin has no company
         'status': 'active',
         'twoFactorEnabled': false,
@@ -122,7 +123,7 @@ class SuperAdminCreator {
       final user = users[email.toLowerCase()] as Map<String, dynamic>?;
       if (user == null) return false;
       
-      return RoleUtils.isSuperAdmin(user);
+      return local.RoleUtils.isSuperAdmin(user);
     } catch (_) {
       return false;
     }

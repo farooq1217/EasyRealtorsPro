@@ -6,7 +6,7 @@ import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../core/services/auth_service.dart';
 import '../../../core/shared_utils.dart' show TopRightSearch;
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
-import 'package:shared/shared.dart' show RoleUtils;
+import '../../../core/role_utils.dart';
 import '../view_models/settings_view_model.dart';
 import '../repositories/settings_repository_impl.dart';
 import 'package:image_picker/image_picker.dart' show ImagePicker, ImageSource;
@@ -63,7 +63,7 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
     final token = s['authToken'] as String?;
     Map<String, dynamic>? currentUser;
     if (token != null) {
-      currentUser = await AuthService().getCurrentUser(token);
+      currentUser = await AuthService.getCurrentUser(token);
     }
     
     final isSuper = RoleUtils.isSuperAdmin(currentUser) || PermissionHelper.isBypassUser(currentUser);

@@ -185,8 +185,7 @@ class CompanyViewModel extends ChangeNotifier {
       final authToken = settings['authToken'] as String?;
       
       if (authToken != null) {
-        final authService = AuthService();
-        _currentUser = await authService.getCurrentUser(authToken).timeout(const Duration(seconds: 3), onTimeout: () {
+        _currentUser = await AuthService.getCurrentUser(authToken).timeout(const Duration(seconds: 3), onTimeout: () {
           debugPrint('CompanyViewModel: getCurrentUser timed out');
           return <String, dynamic>{'name': 'Unknown', 'email': 'unknown@example.com'};
         });

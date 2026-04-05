@@ -12,6 +12,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/services/permission_helper.dart';
 import '../../../core/services/firebase_threading_handler.dart';
+import '../../../core/role_utils.dart' as local;
 import 'package:shared/shared.dart';
 
 enum ExpenditureTab { office, project }
@@ -93,7 +94,7 @@ class ExpenditureViewModel extends ChangeNotifier {
   
   bool get canAdd => 
     PermissionHelper.getModulePermissionLevel(_user, 'expenditure').contains('add') || 
-    RoleUtils.isCompanyAdmin(_user);
+    local.RoleUtils.isCompanyAdmin(_user);
 
   // Pagination getters
   int get currentPage => _currentPage;
@@ -132,8 +133,7 @@ class ExpenditureViewModel extends ChangeNotifier {
       final authToken = settings['authToken'] as String?;
       
       if (authToken != null) {
-        final authService = AuthService();
-        _user = await authService.getCurrentUser(authToken);
+        _user = await AuthService.getCurrentUser(authToken);
         AuthService.currentUser = _user;
       }
     } catch (e) {
@@ -142,7 +142,7 @@ class ExpenditureViewModel extends ChangeNotifier {
   }
 
   Future<void> _setupStreams() async {
-    final companyId = RoleUtils.getUserCompanyId(_user);
+    final companyId = local.RoleUtils.getUserCompanyId(_user);
     if (companyId == null) return;
 
     // Cancel existing subscriptions
@@ -305,7 +305,7 @@ class ExpenditureViewModel extends ChangeNotifier {
         return false;
       }
       
-      final companyId = RoleUtils.getUserCompanyId(_user);
+      final companyId = local.RoleUtils.getUserCompanyId(_user);
       if (companyId == null) {
         _showErrorSnackBar('Unable to determine company');
         return false;
@@ -331,7 +331,7 @@ class ExpenditureViewModel extends ChangeNotifier {
       _showSuccessSnackBar('$type expense added successfully');
       
       // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = RoleUtils.getUserCompanyId(_user);
+      final freshCompanyId = local.RoleUtils.getUserCompanyId(_user);
       if (freshCompanyId != null) {
         final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
         final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
@@ -361,7 +361,7 @@ class ExpenditureViewModel extends ChangeNotifier {
         await WidgetsBinding.instance.endOfFrame;
       }
       
-      final companyId = RoleUtils.getUserCompanyId(_user);
+      final companyId = local.RoleUtils.getUserCompanyId(_user);
       if (companyId == null) {
         _showErrorSnackBar('Unable to determine company');
         return false;
@@ -391,7 +391,7 @@ class ExpenditureViewModel extends ChangeNotifier {
       _showSuccessSnackBar('Project "$projectName" created successfully');
       
       // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = RoleUtils.getUserCompanyId(_user);
+      final freshCompanyId = local.RoleUtils.getUserCompanyId(_user);
       if (freshCompanyId != null) {
         final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
         final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
@@ -425,7 +425,7 @@ class ExpenditureViewModel extends ChangeNotifier {
         await WidgetsBinding.instance.endOfFrame;
       }
       
-      final companyId = RoleUtils.getUserCompanyId(_user);
+      final companyId = local.RoleUtils.getUserCompanyId(_user);
       if (companyId == null) {
         _showErrorSnackBar('Unable to determine company');
         return false;
@@ -459,7 +459,7 @@ class ExpenditureViewModel extends ChangeNotifier {
       }
       
       // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = RoleUtils.getUserCompanyId(_user);
+      final freshCompanyId = local.RoleUtils.getUserCompanyId(_user);
       if (freshCompanyId != null) {
         final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
         final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
@@ -486,7 +486,7 @@ class ExpenditureViewModel extends ChangeNotifier {
       _showSuccessSnackBar('Expense deleted successfully');
       
       // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = RoleUtils.getUserCompanyId(_user);
+      final freshCompanyId = local.RoleUtils.getUserCompanyId(_user);
       if (freshCompanyId != null) {
         final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
         final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
@@ -559,7 +559,7 @@ class ExpenditureViewModel extends ChangeNotifier {
         description: _itemDescriptionController.text.trim(),
         amount: double.parse(_itemAmountController.text.trim()),
         category: category, // Category field (nullable)
-        companyId: RoleUtils.getUserCompanyId(_user) ?? '',
+        companyId: local.RoleUtils.getUserCompanyId(_user) ?? '',
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
         isSynced: true,
@@ -596,7 +596,7 @@ class ExpenditureViewModel extends ChangeNotifier {
 
   // Statistics
   Future<double> getTotalOfficeExpenses() async {
-    final companyId = RoleUtils.getUserCompanyId(_user);
+    final companyId = local.RoleUtils.getUserCompanyId(_user);
     if (companyId == null) return 0.0;
     
     try {
@@ -608,7 +608,7 @@ class ExpenditureViewModel extends ChangeNotifier {
   }
 
   Future<double> getTotalProjectExpenses() async {
-    final companyId = RoleUtils.getUserCompanyId(_user);
+    final companyId = local.RoleUtils.getUserCompanyId(_user);
     if (companyId == null) return 0.0;
     
     try {

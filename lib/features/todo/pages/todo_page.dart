@@ -15,6 +15,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/intl.dart';
 import 'package:shared/shared.dart';
+import '../../../core/role_utils.dart' as local;
 import 'package:drift/drift.dart' as d;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import '../../../core/services/auth_service.dart';
@@ -99,7 +100,7 @@ class _ToDoPageState extends State<ToDoPage> {
       }
       
       final userId = _currentUser!['id']?.toString() ?? '';
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
       
       debugPrint('TodoPage: Triggering initial data load for user: $userId, company: $companyId, date: $_selectedDate');
       
@@ -121,8 +122,8 @@ class _ToDoPageState extends State<ToDoPage> {
     // For ToDo, we aggregate from trading_file_entries, trading_entries, and working_progress
     // Check if at least one source is accessible
     try {
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final isSuperAdmin = local.RoleUtils.isSuperAdmin(_currentUser);
+      final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
       
       if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {
         if (!mounted) return;
@@ -156,11 +157,10 @@ class _ToDoPageState extends State<ToDoPage> {
       final s = await storage.readSettings();
       final authToken = s['authToken'] as String?;
       if (authToken != null) {
-        final authService = AuthService();
-        final user = await authService.getCurrentUser(authToken);
+        _currentUser = await AuthService.getCurrentUser(authToken);
         if (!mounted) return;
         setState(() {
-          _currentUser = user;
+          _currentUser = _currentUser;
         });
       }
     } catch (e) {
@@ -194,7 +194,7 @@ class _ToDoPageState extends State<ToDoPage> {
     if (_currentUser == null) return;
     
     final userId = _currentUser!['id']?.toString() ?? '';
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
     
     debugPrint('TodoPage: Loading tasks for user: $userId, company: $companyId, date: $_selectedDate');
     
@@ -266,7 +266,7 @@ class _ToDoPageState extends State<ToDoPage> {
           String priority = 'Medium',
         }) async {
           final userId = _currentUser!['id']?.toString() ?? '';
-          final companyId = RoleUtils.getUserCompanyId(_currentUser);
+          final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
           
           await Provider.of<TodoViewModel>(context, listen: false).addReminder(
             userId: userId,

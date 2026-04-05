@@ -191,8 +191,7 @@ class ReportsViewModel extends ChangeNotifier {
       final authToken = settings['authToken'] as String?;
       
       if (authToken != null) {
-        final authService = AuthService();
-        _currentUser = await authService.getCurrentUser(authToken);
+        _currentUser = await AuthService.getCurrentUser(authToken);
       }
     } catch (e) {
       debugPrint('Error loading current user: $e');

@@ -20,6 +20,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
+import '../../../core/role_utils.dart' as local;
 import 'package:drift/drift.dart' as d;
 
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
@@ -120,8 +121,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
       final s = await storage.readSettings();
       final authToken = s['authToken'] as String?;
       if (authToken != null) {
-        final authService = AuthService();
-        final user = await authService.getCurrentUser(authToken);
+        final user = await AuthService.getCurrentUser(authToken);
         if (mounted) {
           setState(() {
             _currentUser = user;
@@ -151,9 +151,9 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
 
-    final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    final isAgent = RoleUtils.isAgent(_currentUser);
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final isSuperAdmin = local.RoleUtils.isSuperAdmin(_currentUser);
+    final isAgent = local.RoleUtils.isAgent(_currentUser);
+    final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
     final myUserId = _currentUser?['id']?.toString();
 
     if (isAgent && (myUserId == null || myUserId.trim().isEmpty)) {
@@ -694,7 +694,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                 } else {
                                   // Insert new record
                                   final id = now.millisecondsSinceEpoch.toString();
-                                  final companyId = RoleUtils.getUserCompanyId(_currentUser);
+                                  final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
                                   final userId = _currentUser?['id']?.toString();
                                   data['id'] = id;
                                   data['created_by'] = userId ?? '';

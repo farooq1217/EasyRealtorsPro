@@ -39,8 +39,7 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _resetEmailController = TextEditingController();
   final TextEditingController _resetCodeController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final AuthService _authService = AuthService();
-
+  
   @override
   void dispose() {
     _emailController.dispose();
@@ -73,7 +72,7 @@ class _LoginPageState extends State<LoginPage> {
       });
 
       try {
-        final result = await _authService.login(
+        final result = await AuthService.login(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
           rememberMe: _rememberMe,
@@ -123,7 +122,7 @@ class _LoginPageState extends State<LoginPage> {
                   if (!mounted) return;
                   Future.delayed(const Duration(seconds: 3), () async {
                     debugPrint('LoginPage: Triggering background sync after navigation...');
-                    await _authService.triggerBackgroundSyncAfterLogin();
+                    await AuthService.triggerBackgroundSyncAfterLogin();
                   });
                 });
               });
@@ -194,8 +193,8 @@ class _LoginPageState extends State<LoginPage> {
           ElevatedButton(
             onPressed: () async {
               // Generate 2FA secret
-              final secret = _authService.generate2FASecret();
-              final result = await _authService.setup2FA(_emailController.text.trim(), secret);
+              final secret = AuthService.generate2FASecret();
+              final result = await AuthService.setup2FA(_emailController.text.trim(), secret);
               
               if (result['success'] == true) {
                 Navigator.pop(context);
@@ -332,7 +331,7 @@ class _LoginPageState extends State<LoginPage> {
                   
                   setDialogState(() => isLoading = true);
                   
-                  final result = await _authService.register(
+                  final result = await AuthService.register(
                     email: emailCtl.text.trim(),
                     password: passwordCtl.text,
                     fullName: fullNameCtl.text.trim(),
@@ -399,7 +398,7 @@ class _LoginPageState extends State<LoginPage> {
                   if (_resetCodeController.text.isEmpty)
                     ElevatedButton(
                       onPressed: () async {
-                        final result = await _authService.requestPasswordReset(
+                        final result = await AuthService.requestPasswordReset(
                           _resetEmailController.text.trim(),
                         );
                         if (mounted) {
@@ -454,7 +453,7 @@ class _LoginPageState extends State<LoginPage> {
               if (_resetCodeController.text.isNotEmpty)
                 ElevatedButton(
                   onPressed: () async {
-                    final result = await _authService.resetPassword(
+                    final result = await AuthService.resetPassword(
                       _resetEmailController.text.trim(),
                       _resetCodeController.text.trim(),
                       _newPasswordController.text.trim(),

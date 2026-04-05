@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import '../../core/font_utils.dart';
@@ -48,7 +49,21 @@ class ModernSidebar extends StatelessWidget {
       
       // Check permissionsMap first for dynamic module access
       try {
-        final permissionsMap = currentUser?['permissionsMap'] as Map<String, dynamic>?;
+        final permissionsMapRaw = currentUser?['permissionsMap'];
+        Map<String, dynamic>? permissionsMap;
+        
+        // CRITICAL FIX: Handle JSON string permissionsMap from database
+        if (permissionsMapRaw is String) {
+          try {
+            permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
+          } catch (e) {
+            debugPrint('ModernSidebar: Failed to decode permissionsMap JSON: $e');
+            permissionsMap = null;
+          }
+        } else if (permissionsMapRaw is Map<String, dynamic>) {
+          permissionsMap = permissionsMapRaw;
+        }
+        
         if (permissionsMap != null && permissionsMap.containsKey(moduleKey)) {
           final hasPermission = permissionsMap[moduleKey] == true;
           debugPrint('ModernSidebar: Module $moduleKey found in permissionsMap: $hasPermission');
@@ -306,15 +321,6 @@ class ModernSidebar extends StatelessWidget {
                       visible: _canSee('expenditure'),
                       showLabel: isOpen,
                     ),
-                    SidebarMenuItem(
-                      icon: Icons.bar_chart_outlined,
-                      selectedIcon: Icons.bar_chart,
-                      label: 'Reports',
-                      isSelected: selectedIndex == 8,
-                      onTap: _canSee('reports') ? () => onDestinationSelected(8) : null,
-                      visible: _canSee('reports'),
-                      showLabel: isOpen,
-                    ),
                     // Trading - Direct Navigation
                     if (onTradingTap != null)
                       SidebarMenuItem(
@@ -326,27 +332,34 @@ class ModernSidebar extends StatelessWidget {
                         visible: true,
                         showLabel: isOpen,
                       ),
-                    // Super Admin Menu Items
-                    if (isAdminRole) ...[
-                      SidebarMenuItem(
-                        icon: Icons.people_outline,
-                        selectedIcon: Icons.people,
-                        label: 'User Management',
-                        isSelected: selectedIndex == 9,
-                        onTap: () => onDestinationSelected(9),
-                        visible: true,
-                        showLabel: isOpen,
-                      ),
-                      SidebarMenuItem(
-                        icon: Icons.business_outlined,
-                        selectedIcon: Icons.business,
-                        label: 'Company Management',
-                        isSelected: selectedIndex == 11,
-                        onTap: () => onDestinationSelected(11),
-                        visible: isSuperAdmin, // Only visible to super_admin
-                        showLabel: isOpen,
-                      ),
-                    ],
+                    SidebarMenuItem(
+                      icon: Icons.bar_chart_outlined,
+                      selectedIcon: Icons.bar_chart,
+                      label: 'Reports',
+                      isSelected: selectedIndex == 8,
+                      onTap: _canSee('reports') ? () => onDestinationSelected(8) : null,
+                      visible: _canSee('reports'),
+                      showLabel: isOpen,
+                    ),
+                    // Admin Menu Items with individual visibility control
+                    SidebarMenuItem(
+                      icon: Icons.people_outline,
+                      selectedIcon: Icons.people,
+                      label: 'User Management',
+                      isSelected: selectedIndex == 9,
+                      onTap: () => onDestinationSelected(9),
+                      visible: _canSee('users'), // Visible to both Super Admins and Company Admins based on 'users' permission
+                      showLabel: isOpen,
+                    ),
+                    SidebarMenuItem(
+                      icon: Icons.business_outlined,
+                      selectedIcon: Icons.business,
+                      label: 'Company Management',
+                      isSelected: selectedIndex == 11,
+                      onTap: () => onDestinationSelected(11),
+                      visible: isSuperAdmin, // Only visible to super_admin
+                      showLabel: isOpen,
+                    ),
                     SidebarMenuItem(
                       icon: Icons.settings_outlined,
                       selectedIcon: Icons.settings,

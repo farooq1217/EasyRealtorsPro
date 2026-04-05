@@ -13,6 +13,7 @@ import 'services/permission_helper.dart';
 import 'services/background_sync_manager.dart';
 import 'services/network_sync_manager.dart';
 import 'services/notification_service.dart';
+import 'role_utils.dart' as local;
 
 /// Main application widget with MaterialApp configuration
 class AdminApp extends StatefulWidget {
@@ -351,7 +352,7 @@ class _GuardedEntryState extends State<_GuardedEntry> {
       final sessionId = settings['currentSessionId'] as String?;
 
       // Require valid auth token + session
-      final hasValidToken = token != null && await AuthService().verifyToken(token);
+      final hasValidToken = token != null && await AuthService.verifyToken(token);
       if (!hasValidToken) {
         if (!mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
@@ -361,7 +362,7 @@ class _GuardedEntryState extends State<_GuardedEntry> {
         return;
       }
 
-      final user = await AuthService().getCurrentUser(token);
+      final user = await AuthService.getCurrentUser(token);
       if (user == null) {
         if (!mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
@@ -418,8 +419,7 @@ class _RedirectToHomeState extends State<_RedirectToHome> {
           final authToken = s['authToken'] as String?;
           Map<String, dynamic>? user;
           if (authToken != null && (routeName == '/users' || routeName == '/companies')) {
-            user = await AuthService().getCurrentUser(authToken);
-            if (RoleUtils.isAgent(user)) {
+            if (local.RoleUtils.isAgent(user)) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Permission Denied'), backgroundColor: Colors.red),

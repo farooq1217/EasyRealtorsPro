@@ -18,6 +18,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../firestore_sync_service.dart';
+import 'role_utils.dart' as local;
 
 // ============================================================================
 // BACKGROUND ISOLATE UTILITIES
@@ -44,9 +45,9 @@ Query buildSecureFirestoreQuery({
     throw Exception('Firestore not available');
   }
 
-  final isSuperAdmin = RoleUtils.isSuperAdmin(currentUser);
-  final isAgent = RoleUtils.isAgent(currentUser);
-  final companyId = RoleUtils.getUserCompanyId(currentUser);
+  final isSuperAdmin = local.RoleUtils.isSuperAdmin(currentUser);
+  final isAgent = local.RoleUtils.isAgent(currentUser);
+  final companyId = local.RoleUtils.getUserCompanyId(currentUser);
 
   // Security: If not super admin, companyId is REQUIRED
   if (!isSuperAdmin && (companyId == null || companyId.isEmpty)) {

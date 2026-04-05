@@ -13,6 +13,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
+import '../../../core/role_utils.dart' as local;
 import 'package:drift/drift.dart' as d;
 import '../../../core/services/auth_service.dart';
 import '../../../shimmer_widgets.dart';
@@ -57,8 +58,8 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
     super.initState();
     
     // Initialize report view model
-    final isSuperAdmin = RoleUtils.isSuperAdmin(null) || PermissionHelper.isBypassUser(null);
-    final companyId = RoleUtils.getUserCompanyId(null);
+    final isSuperAdmin = local.RoleUtils.isSuperAdmin(null) || PermissionHelper.isBypassUser(null);
+    final companyId = local.RoleUtils.getUserCompanyId(null);
     final repository = ReportRepositoryImpl(widget.db, companyId: companyId, isSuperAdmin: isSuperAdmin);
     _reportViewModel = ReportViewModel(repository);
     
@@ -138,7 +139,7 @@ class _AgentWorkingDetailPageState extends State<AgentWorkingDetailPage> {
     await logReportHistory(
       db: widget.db,
       currentUser: currentUser,
-      companyId: RoleUtils.getUserCompanyId(currentUser),
+      companyId: local.RoleUtils.getUserCompanyId(currentUser),
       module: 'agent_working',
       entityId: entityId,
       reportType: title,

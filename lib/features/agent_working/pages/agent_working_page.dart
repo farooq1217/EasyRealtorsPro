@@ -17,6 +17,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
+import '../../../core/role_utils.dart' as local;
 import '../../../core/font_utils.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
@@ -79,8 +80,8 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     });
     
     // Initialize view model with repository
-    final isSuperAdmin = RoleUtils.isSuperAdmin(null) || PermissionHelper.isBypassUser(null);
-    final companyId = RoleUtils.getUserCompanyId(null);
+    final isSuperAdmin = local.RoleUtils.isSuperAdmin(null) || PermissionHelper.isBypassUser(null);
+    final companyId = local.RoleUtils.getUserCompanyId(null);
     final repository = AgentRepositoryImpl(widget.db, companyId: companyId, isSuperAdmin: isSuperAdmin);
     _viewModel = AgentViewModel(repository);
     

@@ -8,7 +8,8 @@ import '../../data/repositories/report_repository_impl.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../core/services/app_storage.dart' show AppStorage;
-import 'package:shared/shared.dart' show WorkingProgressData, Expenditure, RoleUtils;
+import 'package:shared/shared.dart' show WorkingProgressData, Expenditure;
+import '../../core/role_utils.dart';
 
 class ReportViewModel extends ChangeNotifier {
   final ReportRepository _repository;
@@ -79,8 +80,7 @@ class ReportViewModel extends ChangeNotifier {
       final s = await storage.readSettings();
       final authToken = s['authToken'] as String?;
       if (authToken != null) {
-        final authService = AuthService();
-        final user = await authService.getCurrentUser(authToken);
+        final user = await AuthService.getCurrentUser(authToken);
         _currentUser = user;
       }
     } catch (e) {

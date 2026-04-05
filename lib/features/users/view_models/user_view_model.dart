@@ -6,7 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-import 'package:shared/src/auth/role_utils.dart';
+import '../../../core/role_utils.dart' as local;
+import 'package:shared/shared.dart';
 import '../models/user_model.dart';
 import '../repositories/user_repository.dart';
 import '../repositories/user_repository_impl.dart';
@@ -14,7 +15,6 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/services/permission_helper.dart';
 import '../../../core/app_utils.dart';
-import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 
 class UserViewModel extends ChangeNotifier {
@@ -94,8 +94,8 @@ class UserViewModel extends ChangeNotifier {
       debugPrint('UserViewModel: Widget mounted, processing stored ${_users.length} users');
       
       // Process the stored data that was received before widget was mounted
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
-      final effectiveCompanyId = RoleUtils.getUserCompanyId(_currentUser);
+      final isSuperAdmin = local.RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final effectiveCompanyId = local.RoleUtils.getUserCompanyId(_currentUser);
       
       debugPrint('UserViewModel: Processing stored data - isSuperAdmin=$isSuperAdmin, effectiveCompanyId=$effectiveCompanyId');
       
@@ -165,22 +165,22 @@ class UserViewModel extends ChangeNotifier {
   // Computed properties
   bool get canAdd => 
     PermissionHelper.getModulePermissionLevel(_currentUser, 'users').contains('add') || 
-    RoleUtils.isCompanyAdmin(_currentUser) ||
-    RoleUtils.isSuperAdmin(_currentUser);
+    local.RoleUtils.isCompanyAdmin(_currentUser) ||
+    local.RoleUtils.isSuperAdmin(_currentUser);
 
   bool get canEdit => 
     PermissionHelper.getModulePermissionLevel(_currentUser, 'users').contains('edit') || 
-    RoleUtils.isCompanyAdmin(_currentUser) ||
-    RoleUtils.isSuperAdmin(_currentUser);
+    local.RoleUtils.isCompanyAdmin(_currentUser) ||
+    local.RoleUtils.isSuperAdmin(_currentUser);
 
   bool get canDelete => 
     PermissionHelper.getModulePermissionLevel(_currentUser, 'users').contains('delete') || 
-    RoleUtils.isCompanyAdmin(_currentUser) ||
-    RoleUtils.isSuperAdmin(_currentUser);
+    local.RoleUtils.isCompanyAdmin(_currentUser) ||
+    local.RoleUtils.isSuperAdmin(_currentUser);
 
   // Helper method to check if current user is Super Admin
   bool get isCurrentUserSuperAdmin => 
-    RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+    local.RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
 
   // Public sync method
   Future<void> syncFromFirestore() async {
@@ -317,7 +317,7 @@ class UserViewModel extends ChangeNotifier {
   // Helper method to force refresh users list
   Future<void> _loadUsersFromRepository() async {
     try {
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
       _users = await _repository.getUsers(companyId);
       _applySearchFilter();
       debugPrint('UserViewModel: Force refreshed ${_users.length} users');
@@ -383,8 +383,7 @@ class UserViewModel extends ChangeNotifier {
       final authToken = settings['authToken'] as String?;
       
       if (authToken != null) {
-        final authService = AuthService();
-        _currentUser = await authService.getCurrentUser(authToken);
+        _currentUser = await AuthService.getCurrentUser(authToken);
         AuthService.currentUser = _currentUser;
       }
     } catch (e) {
@@ -394,8 +393,8 @@ class UserViewModel extends ChangeNotifier {
 
   Future<void> _loadCompanies() async {
     try {
-      final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
-      final companyId = RoleUtils.getUserCompanyId(_currentUser);
+      final isSuperAdmin = local.RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
       
       // For now, load companies directly. In a full implementation, 
       // this would use CompanyRepository
@@ -419,15 +418,15 @@ class UserViewModel extends ChangeNotifier {
   }
 
   Future<void> _setupStreams() async {
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
     
     // CRITICAL DEBUG: Log company filtering for Umer Shahzad
     if (_currentUser?['email']?.toString().toLowerCase() == 'umershahzad596@gmail.com') {
       debugPrint('USER VIEW MODEL DEBUG: Umer Shahzad setting up streams');
       debugPrint('USER VIEW MODEL DEBUG: Company ID: $companyId');
-      debugPrint('USER VIEW MODEL DEBUG: User role: ${RoleUtils.getUserRole(_currentUser)}');
-      debugPrint('USER VIEW MODEL DEBUG: isCompanyAdmin: ${RoleUtils.isCompanyAdmin(_currentUser)}');
-      debugPrint('USER VIEW MODEL DEBUG: isSuperAdmin: ${RoleUtils.isSuperAdmin(_currentUser)}');
+      debugPrint('USER VIEW MODEL DEBUG: User role: ${local.RoleUtils.getUserRole(_currentUser)}');
+      debugPrint('USER VIEW MODEL DEBUG: isCompanyAdmin: ${local.RoleUtils.isCompanyAdmin(_currentUser)}');
+      debugPrint('USER VIEW MODEL DEBUG: isSuperAdmin: ${local.RoleUtils.isSuperAdmin(_currentUser)}');
     }
     
     // Cancel existing subscription
@@ -825,7 +824,7 @@ class UserViewModel extends ChangeNotifier {
 
   // User ID management
   Future<void> backfillUserIds() async {
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
     if (companyId == null) return;
 
     try {
@@ -856,7 +855,7 @@ class UserViewModel extends ChangeNotifier {
 
   // Statistics
   Future<Map<String, dynamic>> getUserStatistics() async {
-    final companyId = RoleUtils.getUserCompanyId(_currentUser);
+    final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
     return await _repository.getUserStatistics(companyId);
   }
 

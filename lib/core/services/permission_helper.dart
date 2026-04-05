@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import '../role_utils.dart' as local;
 import 'package:shared/shared.dart';
 
 /// Global permission helper for checking user permissions
@@ -17,13 +18,13 @@ class PermissionHelper {
     if (isBypassUser(user)) return 'full_access';
     
     // Super Admin always has full access
-    if (RoleUtils.isSuperAdmin(user)) return 'full_access';
+    if (local.RoleUtils.isSuperAdmin(user)) return 'full_access';
     
     final permissions = user['permissions'];
     // Legacy installs may not have permissions persisted for non-super users.
     // Default Agents/Company Admins to view_add (can view + add) so modules are visible.
     if (permissions == null) {
-      if (RoleUtils.isAgent(user) || RoleUtils.isCompanyAdmin(user)) return 'view_add';
+      if (local.RoleUtils.isAgent(user) || local.RoleUtils.isCompanyAdmin(user)) return 'view_add';
       return null;
     }
     
@@ -64,11 +65,32 @@ class PermissionHelper {
   static Map<String, String> getModulePermissionsMap(Map<String, dynamic>? user) {
     final perms = _parsePermissions(user?['permissions']);
     if (perms == null) return const {};
+    
+    // Try permissionsMap first (new format)
     final raw = perms['permissionsMap'];
+    Map<String, dynamic> permissionsMap;
+    
     if (raw is Map) {
-      return raw.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+      permissionsMap = Map<String, dynamic>.from(raw);
+    } else {
+      // If no permissionsMap, check if permissions object itself contains module permissions
+      permissionsMap = <String, dynamic>{};
+      perms.forEach((key, value) {
+        if (key != 'role' && key != 'company_id' && key != 'companyId') {
+          permissionsMap[key.toString()] = value;
+        }
+      });
     }
-    return const {};
+    
+    // CRITICAL FIX: Inject required permissions for Company Admins
+    final userRole = perms['role']?.toString().toLowerCase();
+    if (userRole == 'company_admin') {
+      debugPrint('PermissionHelper: Injecting Company Admin permissions into permissionsMap');
+      permissionsMap['users'] = 'full_access';
+      permissionsMap['reports'] = 'full_access';
+    }
+    
+    return permissionsMap.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
   }
 
   static String normalizeLegacyToModuleLevel(String? level) {
@@ -89,10 +111,20 @@ class PermissionHelper {
   static String getModulePermissionLevel(Map<String, dynamic>? user, String moduleKey) {
     if (user == null) return 'no_access';
     if (isBypassUser(user)) return 'view_add_edit';
-    if (RoleUtils.isSuperAdmin(user)) return 'view_add_edit';
+    if (local.RoleUtils.isSuperAdmin(user)) return 'view_add_edit';
+    
+    // CRITICAL FIX: Explicit bypass for Company Admins for specific modules
+    if (local.RoleUtils.isCompanyAdmin(user) && moduleKey == 'users') { 
+      debugPrint('PermissionHelper: Company Admin override - granting full_access to users module');
+      return 'full_access'; 
+    }
+    if (local.RoleUtils.isCompanyAdmin(user) && moduleKey == 'reports') { 
+      debugPrint('PermissionHelper: Company Admin override - granting full_access to reports module');
+      return 'full_access'; 
+    }
     
     // ROLE-BASED SHORTCUTS: Skip permissionsMap checking for known roles
-    final userRole = RoleUtils.getUserRole(user);
+    final userRole = local.RoleUtils.getUserRole(user);
     
     // DEBUG: Add detailed logging for 'users' module
     if (moduleKey == 'users') {
@@ -101,7 +133,7 @@ class PermissionHelper {
       debugPrint('  User email: $email');
       debugPrint('  getUserRole: $userRole');
       debugPrint('  isBypassUser: ${isBypassUser(user)}');
-      debugPrint('  isSuperAdmin: ${RoleUtils.isSuperAdmin(user)}');
+      debugPrint('  isSuperAdmin: ${local.RoleUtils.isSuperAdmin(user)}');
     }
     
     if (userRole == 'company_admin') {
@@ -135,16 +167,22 @@ class PermissionHelper {
   static bool canViewModule(Map<String, dynamic>? user, String moduleKey) {
     if (isBypassUser(user)) return true;
     
+    // CRITICAL FIX: Company Admins MUST have access to users and reports modules
+    if (local.RoleUtils.isCompanyAdmin(user) && (moduleKey == 'users' || moduleKey == 'reports')) {
+      debugPrint('PermissionHelper.canViewModule: Company Admin override granted for module: $moduleKey');
+      return true;
+    }
+    
     // DEBUG: Add detailed logging for 'users' module
     if (moduleKey == 'users') {
       final email = (user?['email'] ?? user?['username'])?.toString().toLowerCase();
       debugPrint('PermissionHelper.canViewModule(users) DEBUG:');
       debugPrint('  User email: $email');
       debugPrint('  isBypassUser: ${isBypassUser(user)}');
-      debugPrint('  RoleUtils.isSuperAdmin: ${RoleUtils.isSuperAdmin(user)}');
-      debugPrint('  RoleUtils.isCompanyAdmin: ${RoleUtils.isCompanyAdmin(user)}');
-      debugPrint('  RoleUtils.isAgent: ${RoleUtils.isAgent(user)}');
-      debugPrint('  RoleUtils.getUserRole: ${RoleUtils.getUserRole(user)}');
+      debugPrint('  local.RoleUtils.isSuperAdmin: ${local.RoleUtils.isSuperAdmin(user)}');
+      debugPrint('  local.RoleUtils.isCompanyAdmin: ${local.RoleUtils.isCompanyAdmin(user)}');
+      debugPrint('  local.RoleUtils.isAgent: ${local.RoleUtils.isAgent(user)}');
+      debugPrint('  local.RoleUtils.getUserRole: ${local.RoleUtils.getUserRole(user)}');
       
       final level = getModulePermissionLevel(user, moduleKey);
       debugPrint('  getModulePermissionLevel: $level');
@@ -158,13 +196,13 @@ class PermissionHelper {
   static bool canAddModule(Map<String, dynamic>? user, String moduleKey) {
     if (user == null) return false;
     if (isBypassUser(user)) return true;
-    if (RoleUtils.isSuperAdmin(user)) return true;
+    if (local.RoleUtils.isSuperAdmin(user)) return true;
     
     // ROLE-BASED SHORTCUT: Company Admin can add within their company
-    if (RoleUtils.isCompanyAdmin(user)) return true;
+    if (local.RoleUtils.isCompanyAdmin(user)) return true;
     
     // ROLE-BASED SHORTCUT: Agent cannot add anything
-    if (RoleUtils.isAgent(user)) return false;
+    if (local.RoleUtils.isAgent(user)) return false;
     
     final level = getModulePermissionLevel(user, moduleKey);
     return level == 'view_add' || level == 'view_add_edit';
@@ -173,13 +211,13 @@ class PermissionHelper {
   static bool canEditModule(Map<String, dynamic>? user, String moduleKey) {
     if (user == null) return false;
     if (isBypassUser(user)) return true;
-    if (RoleUtils.isSuperAdmin(user)) return true;
+    if (local.RoleUtils.isSuperAdmin(user)) return true;
     
     // ROLE-BASED SHORTCUT: Company Admin can edit within their company
-    if (RoleUtils.isCompanyAdmin(user)) return true;
+    if (local.RoleUtils.isCompanyAdmin(user)) return true;
     
     // ROLE-BASED SHORTCUT: Agent cannot edit anything
-    if (RoleUtils.isAgent(user)) return false;
+    if (local.RoleUtils.isAgent(user)) return false;
     
     final level = getModulePermissionLevel(user, moduleKey);
     return level == 'view_add_edit';
@@ -188,13 +226,13 @@ class PermissionHelper {
   static bool canDeleteModule(Map<String, dynamic>? user, String moduleKey) {
     if (user == null) return false;
     if (isBypassUser(user)) return true;
-    if (RoleUtils.isSuperAdmin(user)) return true;
+    if (local.RoleUtils.isSuperAdmin(user)) return true;
     
     // ROLE-BASED SHORTCUT: Company Admin can delete within their company
-    if (RoleUtils.isCompanyAdmin(user)) return true;
+    if (local.RoleUtils.isCompanyAdmin(user)) return true;
     
     // ROLE-BASED SHORTCUT: Agent cannot delete anything
-    if (RoleUtils.isAgent(user)) return false;
+    if (local.RoleUtils.isAgent(user)) return false;
     
     final level = getModulePermissionLevel(user, moduleKey);
     return level == 'view_add_edit';
@@ -204,7 +242,7 @@ class PermissionHelper {
   static bool canView(Map<String, dynamic>? user) {
     if (user == null) return false;
     if (isBypassUser(user)) return true;
-    if (RoleUtils.isSuperAdmin(user)) return true;
+    if (local.RoleUtils.isSuperAdmin(user)) return true;
     final map = getModulePermissionsMap(user);
     if (map.isNotEmpty) {
       return map.values.any((v) => v.toString().trim() != 'no_access');
@@ -217,7 +255,7 @@ class PermissionHelper {
   static bool canAdd(Map<String, dynamic>? user) {
     if (user == null) return false;
     if (isBypassUser(user)) return true;
-    if (RoleUtils.isSuperAdmin(user) || RoleUtils.isCompanyAdmin(user)) return true;
+    if (local.RoleUtils.isSuperAdmin(user) || local.RoleUtils.isCompanyAdmin(user)) return true;
     final level = getPermissionLevel(user);
     return level == 'view_add' || level == 'full_access';
   }
@@ -226,7 +264,7 @@ class PermissionHelper {
   static bool canEdit(Map<String, dynamic>? user) {
     if (user == null) return false;
     if (isBypassUser(user)) return true;
-    if (RoleUtils.isSuperAdmin(user) || RoleUtils.isCompanyAdmin(user)) return true;
+    if (local.RoleUtils.isSuperAdmin(user) || local.RoleUtils.isCompanyAdmin(user)) return true;
     final level = getPermissionLevel(user);
     return level == 'full_access';
   }
@@ -235,7 +273,7 @@ class PermissionHelper {
   static bool canDelete(Map<String, dynamic>? user) {
     if (user == null) return false;
     if (isBypassUser(user)) return true;
-    if (RoleUtils.isSuperAdmin(user) || RoleUtils.isCompanyAdmin(user)) return true;
+    if (local.RoleUtils.isSuperAdmin(user) || local.RoleUtils.isCompanyAdmin(user)) return true;
     return false;
   }
   

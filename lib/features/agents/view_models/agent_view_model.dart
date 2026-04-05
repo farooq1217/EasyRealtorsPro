@@ -7,7 +7,8 @@ import '../repositories/agent_repository_impl.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../../core/services/app_storage.dart' show AppStorage;
-import 'package:shared/shared.dart' show WorkingProgressData, WorkingComment, RoleUtils;
+import 'package:shared/shared.dart' show WorkingProgressData, WorkingComment;
+import '../../../core/role_utils.dart';
 
 class AgentViewModel extends ChangeNotifier {
   final AgentRepository _repository;
@@ -191,8 +192,7 @@ class AgentViewModel extends ChangeNotifier {
       final s = await storage.readSettings();
       final authToken = s['authToken'] as String?;
       if (authToken != null) {
-        final authService = AuthService();
-        final user = await authService.getCurrentUser(authToken);
+        final user = await AuthService.getCurrentUser(authToken);
         _currentUser = user;
       }
     } catch (e) {

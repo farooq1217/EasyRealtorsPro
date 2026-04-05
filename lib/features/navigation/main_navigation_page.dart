@@ -73,7 +73,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     final settings = await storage.readSettings();
     final token = settings['authToken'] as String?;
     if (token != null) {
-      final user = await AuthService().getCurrentUser(token);
+      final user = await AuthService.getCurrentUser(token);
       if (mounted) {
         setState(() {
           _currentUser = user;
@@ -141,7 +141,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     final settings = await storage.readSettings();
     final sessionId = settings['currentSessionId'] as String?;
     await storage.writeSettings({'authToken': null, 'currentSessionId': null});
-    await AuthService().logout(sessionId);
+    await AuthService.logout(sessionId);
     if (mounted) {
       Navigator.of(context).pushNamedAndRemoveUntil(
         '/',

@@ -37,7 +37,7 @@ class RentalReceiptGenerator {
     Map<String, dynamic>? currentUser;
     
     if (authToken != null) {
-      currentUser = await AuthService().getCurrentUser(authToken);
+      currentUser = await AuthService.getCurrentUser(authToken);
     }
     
     // Create a dummy database instance for branding
@@ -417,7 +417,7 @@ class RentalReceiptGenerator {
       Map<String, dynamic>? currentUser;
       
       if (authToken != null) {
-        currentUser = await AuthService().getCurrentUser(authToken);
+        currentUser = await AuthService.getCurrentUser(authToken);
       }
       
       // Create database instance

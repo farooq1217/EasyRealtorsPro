@@ -16,6 +16,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
+import '../../../core/role_utils.dart' as local;
 import 'package:drift/drift.dart' as d;
 import '../../../core/services/auth_service.dart';
 import '../../../shimmer_widgets.dart';
@@ -62,8 +63,8 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
   void initState() {
     super.initState();
     final currentUser = AuthService.currentUser;
-    final isSuperAdmin = RoleUtils.isSuperAdmin(currentUser) || PermissionHelper.isBypassUser(currentUser);
-    final companyId = RoleUtils.getUserCompanyId(currentUser);
+    final isSuperAdmin = local.RoleUtils.isSuperAdmin(currentUser) || PermissionHelper.isBypassUser(currentUser);
+    final companyId = local.RoleUtils.getUserCompanyId(currentUser);
     
     _viewModel = AgentViewModel(
       AgentRepositoryImpl(

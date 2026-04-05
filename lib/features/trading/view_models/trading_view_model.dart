@@ -2,7 +2,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared/shared.dart' show TradingEntry, RoleUtils, AppDatabase;
+import 'package:shared/shared.dart' show TradingEntry, AppDatabase;
+import '../../../core/role_utils.dart' as local;
 import '../repositories/trading_repository.dart';
 import '../repositories/trading_repository_impl.dart' show AlreadyDeletedException;
 import '../../../core/services/auth_service.dart';
@@ -90,8 +91,8 @@ class TradingViewModel extends ChangeNotifier {
   Future<void> _initializeUser() async {
     try {
       _currentUser = AuthService.currentUser;
-      _isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || 
-                      RoleUtils.hasPermission(_currentUser, 'bypass_all');
+      _isSuperAdmin = local.RoleUtils.isSuperAdmin(_currentUser) || 
+                      local.RoleUtils.hasPermission(_currentUser, 'bypass_all');
       
       // Enhanced Super Admin detection for mayof286@gmail.com
       if (_currentUser != null && _currentUser!['email'] == 'mayof286@gmail.com') {
@@ -99,7 +100,7 @@ class TradingViewModel extends ChangeNotifier {
         debugPrint('TradingViewModel: Detected Super Admin mayof286@gmail.com - full bypass enabled');
       }
       
-      _userCompanyId = RoleUtils.getUserCompanyId(_currentUser);
+      _userCompanyId = local.RoleUtils.getUserCompanyId(_currentUser);
       
       await loadEntries();
     } catch (e) {

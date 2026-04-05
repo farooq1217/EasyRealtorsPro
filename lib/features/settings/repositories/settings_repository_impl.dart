@@ -318,9 +318,8 @@ class SettingsRepositoryImpl implements SettingsRepository {
       final s = await storage.readSettings();
       final authToken = s['authToken'] as String?;
       Map<String, dynamic>? mergedUser = AuthService.currentUser;
-      final authService = AuthService();
       if (authToken != null) {
-        final user = await authService.getCurrentUser(authToken);
+        final user = await AuthService.getCurrentUser(authToken);
         mergedUser = user ?? mergedUser;
       }
 

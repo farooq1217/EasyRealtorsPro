@@ -3,6 +3,7 @@ import 'package:drift/drift.dart' as d;
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared/shared.dart';
+import '../../../core/role_utils.dart' as local;
 import 'package:uuid/uuid.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/services/auth_service.dart';
@@ -66,9 +67,8 @@ class CompanyRepositoryImpl implements CompanyRepository {
       final authToken = settings['authToken'] as String?;
       
       if (authToken != null) {
-        final authService = AuthService();
-        final user = await authService.getCurrentUser(authToken);
-        return RoleUtils.isSuperAdmin(user) || PermissionHelper.isBypassUser(user);
+        final user = await AuthService.getCurrentUser(authToken);
+        return local.RoleUtils.isSuperAdmin(user) || PermissionHelper.isBypassUser(user);
       }
       return false;
     } catch (e) {

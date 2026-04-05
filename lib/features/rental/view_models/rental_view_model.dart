@@ -2,13 +2,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
-import 'package:shared/shared.dart' show RoleUtils;
 import '../repositories/rental_repository.dart';
 import '../repositories/rental_repository_impl.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/permission_helper.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/shared_utils.dart';
+import '../../../core/role_utils.dart';
 
 /// ViewModel for rental items with real-time updates and state management
 class RentalViewModel extends ChangeNotifier {
@@ -90,7 +90,7 @@ class RentalViewModel extends ChangeNotifier {
       final authToken = settings['authToken'] as String?;
       
       if (authToken != null) {
-        _currentUser = await AuthService().getCurrentUser(authToken);
+        _currentUser = await AuthService.getCurrentUser(authToken);
         _isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
         _isAgent = RoleUtils.isAgent(_currentUser);
         _companyId = RoleUtils.getUserCompanyId(_currentUser);
