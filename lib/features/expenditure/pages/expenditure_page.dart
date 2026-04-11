@@ -290,11 +290,23 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
       );
     }
 
-    // Calculate total amount
-    final totalAmount = list.fold<double>(
-      0.0,
-      (sum, item) => sum + item.amount,
-    );
+    // Calculate total amount - use Grand Totals for Projects, regular amounts for Office
+    double totalAmount;
+    if (type == "Project") {
+      // For projects, we need to calculate grand totals asynchronously
+      // This will be handled by individual FutureBuilder in each item
+      // For the summary card, we'll use bucket amounts as fallback
+      totalAmount = list.fold<double>(
+        0.0,
+        (sum, item) => sum + item.amount,
+      );
+    } else {
+      // For office expenses, use regular amounts
+      totalAmount = list.fold<double>(
+        0.0,
+        (sum, item) => sum + item.amount,
+      );
+    }
 
     return Column(
       children: [
@@ -382,14 +394,63 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                                 ),
                               ),
                             const Spacer(),
-                            Text(
-                              f.format(item.amount),
-                              style: AppFonts.poppins(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                                color: Colors.red.shade600,
-                              ),
-                            ),
+                            // Show Grand Total for Projects, Regular Amount for Office
+                            type == "Project" 
+                              ? FutureBuilder<double>(
+                                  future: _viewModel.getProjectGrandTotal(item.id),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.hasData) {
+                                      return Text(
+                                        f.format(snapshot.data!),
+                                        style: AppFonts.poppins(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                          color: Colors.red.shade600,
+                                        ),
+                                      );
+                                    } else if (snapshot.hasError) {
+                                      return Text(
+                                        f.format(item.amount), // Fallback to bucket amount
+                                        style: AppFonts.poppins(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                          color: Colors.red.shade600,
+                                        ),
+                                      );
+                                    } else {
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade600),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Loading...',
+                                            style: AppFonts.poppins(
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 14,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }
+                                  },
+                                )
+                              : Text(
+                                  f.format(item.amount),
+                                  style: AppFonts.poppins(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                    color: Colors.red.shade600,
+                                  ),
+                                ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -1282,290 +1343,495 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
   
   @override
   Widget build(BuildContext context) {
-    // Use the passed viewModel directly instead of Consumer
-    final viewModel = widget.viewModel;
-    
-    if (_loading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text('Expense Details', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
-        ),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-        
-        final subItemsTotal = viewModel.subItemsTotal;
-        
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(
-              'Expense Details',
-              style: AppFonts.poppins(fontWeight: FontWeight.w600),
-            ),
-            actions: [
-              // Professional Receipt Generation for individual expense
-              IconButton(
-                icon: const Icon(Icons.receipt_long),
-                onPressed: () => _generateProfessionalReceipt(viewModel),
-                tooltip: 'Generate Professional Receipt',
+    return ChangeNotifierProvider<ExpenditureViewModel>.value(
+      value: widget.viewModel,
+      child: Consumer<ExpenditureViewModel>(
+        builder: (context, viewModel, child) {
+          if (_loading) {
+            return Scaffold(
+              appBar: AppBar(
+                title: Text('Expense Details', style: AppFonts.poppins(fontWeight: FontWeight.w600)),
               ),
-              // Add button for sub-items
-              if (viewModel.canAdd)
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: () => _showAddSubItemDialog(context, viewModel),
-                  tooltip: 'Add Sub-Item',
-                ),
-            ],
-          ),
-          body: Column(
-            children: [
-              // Summary Card
-              Container(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.expense.category ?? widget.expense.description,
-                      style: AppFonts.poppins(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today,
-                          color: Colors.white70,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          widget.expense.date,
-                          style: AppFonts.poppins(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Main Amount',
-                              style: AppFonts.poppins(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                            Text(
-                              f.format(widget.expense.amount),
-                              style: AppFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              'Sub-Items Total',
-                              style: AppFonts.poppins(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                            Text(
-                              f.format(subItemsTotal),
-                              style: AppFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      height: 1,
-                      color: Colors.white30,
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Total Expense',
-                          style: AppFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          f.format(widget.expense.amount + subItemsTotal),
-                          style: AppFonts.poppins(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              body: const Center(child: CircularProgressIndicator()),
+            );
+          }
               
-              // Sub-Items Section
-              Expanded(
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Row(
+          final subItemsTotal = viewModel.subItemsTotal;
+              
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(
+                'Expense Details',
+                style: AppFonts.poppins(fontWeight: FontWeight.w600),
+              ),
+              actions: [
+                // Professional Receipt Generation for individual expense
+                IconButton(
+                  icon: const Icon(Icons.receipt_long),
+                  onPressed: () => _generateProfessionalReceipt(viewModel),
+                  tooltip: 'Generate Professional Receipt',
+                ),
+                // Add button for sub-items
+                if (viewModel.canAdd)
+                  IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed: () => _showAddSubItemDialog(context, viewModel),
+                    tooltip: 'Add Sub-Item',
+                  ),
+              ],
+            ),
+            body: Column(
+              children: [
+                // Summary Card
+                Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.expense.category ?? widget.expense.description,
+                        style: AppFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today,
+                            color: Colors.white70,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            widget.expense.date,
+                            style: AppFonts.poppins(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Main Amount',
+                                style: AppFonts.poppins(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Text(
+                                f.format(widget.expense.amount),
+                                style: AppFonts.poppins(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                'Sub-Items Total',
+                                style: AppFonts.poppins(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Text(
+                                f.format(subItemsTotal),
+                                style: AppFonts.poppins(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        height: 1,
+                        color: Colors.white30,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Expense Breakdown',
+                            'Total Expense',
                             style: AppFonts.poppins(
-                              fontSize: 18,
+                              color: Colors.white,
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          if (viewModel.canAdd)
-                            IconButton(
-                              icon: const Icon(Icons.add_circle),
-                              onPressed: () => _showAddSubItemDialog(context, viewModel),
-                              tooltip: 'Add Sub-Item',
+                          Text(
+                            f.format(widget.expense.amount + subItemsTotal),
+                            style: AppFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
                             ),
+                          ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: viewModel.subItems.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.receipt_long,
-                                    size: 64,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'No Sub-Items Found',
-                                    style: AppFonts.poppins(
-                                      fontSize: 16,
-                                      color: Colors.grey.shade600,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  if (viewModel.canAdd)
-                                    Text(
-                                      'Tap + to add breakdown items',
-                                      style: AppFonts.poppins(
-                                        fontSize: 14,
-                                        color: Colors.grey.shade500,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              itemCount: viewModel.subItems.length,
-                              itemBuilder: (context, i) {
-                                final item = viewModel.subItems[i];
-                                
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  elevation: 2,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.all(16),
-                                    leading: Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade100,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          "${i + 1}",
-                                          style: AppFonts.poppins(
-                                            color: Colors.grey.shade700,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    title: Text(
-                                      item.description,
-                                      style: AppFonts.poppins(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    trailing: Text(
-                                      f.format(item.amount),
-                                      style: AppFonts.poppins(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                        color: Colors.red.shade600,
-                                      ),
-                                    ),
-                                    onLongPress: () => _handleDeleteSubItem(context, viewModel, item),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+                
+                // Sub-Items Section - REACTIVE PART
+                Expanded(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Expense Breakdown',
+                              style: AppFonts.poppins(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (viewModel.canAdd)
+                              IconButton(
+                                icon: const Icon(Icons.add_circle),
+                                onPressed: () => _showAddSubItemDialog(context, viewModel),
+                                tooltip: 'Add Sub-Item',
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                       
+                      // Category Summary Section - REACTIVE PART
+                      if (viewModel.subItems.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Category Summary',
+                                style: AppFonts.poppins(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              _buildCategorySummary(viewModel.subItems),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                       
+                      // Sub-Items ListView - REACTIVE PART
+                      Expanded(
+                        child: viewModel.subItems.isEmpty
+                                    ? Center(
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.receipt_long,
+                                              size: 64,
+                                              color: Colors.grey.shade400,
+                                            ),
+                                            const SizedBox(height: 16),
+                                            Text(
+                                              'No Sub-Items Found',
+                                              style: AppFonts.poppins(
+                                                fontSize: 16,
+                                                color: Colors.grey.shade600,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            if (viewModel.canAdd)
+                                              Text(
+                                                'Tap + to add breakdown items',
+                                                style: AppFonts.poppins(
+                                                  fontSize: 14,
+                                                  color: Colors.grey.shade500,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      )
+                                    : ListView.builder(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                        itemCount: viewModel.subItems.length,
+                                        itemBuilder: (context, i) {
+                                          final item = viewModel.subItems[i];
+                                           
+                                          // Add long press for delete functionality
+                                          return InkWell(
+                                            onLongPress: () => _handleDeleteSubItem(context, viewModel, item),
+                                            child: Card(
+                                              margin: const EdgeInsets.only(bottom: 8),
+                                              elevation: 2,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(16),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    // Category Badge
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                      decoration: BoxDecoration(
+                                                        color: _getCategoryColor(item.category ?? 'Uncategorized').withOpacity(0.1),
+                                                        borderRadius: BorderRadius.circular(16),
+                                                        border: Border.all(
+                                                          color: _getCategoryColor(item.category ?? 'Uncategorized').withOpacity(0.3),
+                                                          width: 1,
+                                                        ),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Container(
+                                                            width: 6,
+                                                            height: 6,
+                                                            decoration: BoxDecoration(
+                                                              color: _getCategoryColor(item.category ?? 'Uncategorized'),
+                                                              shape: BoxShape.circle,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(width: 6),
+                                                          Text(
+                                                            item.category?.isNotEmpty == true ? item.category! : 'Uncategorized',
+                                                            style: AppFonts.poppins(
+                                                              fontSize: 12,
+                                                              fontWeight: FontWeight.w600,
+                                                              color: _getCategoryColor(item.category ?? 'Uncategorized'),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 12),
+                                                    
+                                                    // Main Content Row
+                                                    Row(
+                                                      children: [
+                                                        // Number indicator
+                                                        Container(
+                                                          width: 36,
+                                                          height: 36,
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.grey.shade100,
+                                                            borderRadius: BorderRadius.circular(8),
+                                                          ),
+                                                          child: Center(
+                                                            child: Text(
+                                                              "${i + 1}",
+                                                              style: AppFonts.poppins(
+                                                                color: Colors.grey.shade700,
+                                                                fontWeight: FontWeight.bold,
+                                                                fontSize: 14,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 12),
+                                                         
+                                                        // Description and Amount
+                                                        Expanded(
+                                                          child: Column(
+                                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                                            children: [
+                                                              Text(
+                                                                item.description,
+                                                                style: AppFonts.poppins(
+                                                                  fontWeight: FontWeight.w600,
+                                                                  fontSize: 14,
+                                                                  color: Colors.black87,
+                                                                ),
+                                                              ),
+                                                              const SizedBox(height: 4),
+                                                              Text(
+                                                                f.format(item.amount),
+                                                                style: AppFonts.poppins(
+                                                                  fontWeight: FontWeight.bold,
+                                                                  fontSize: 16,
+                                                                  color: Colors.red.shade600,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+  
+  // Build Category Summary Widget
+  Widget _buildCategorySummary(List<domain.ExpenditureSubItem> subItems) {
+    // Group sub-items by category and calculate totals
+    final Map<String, double> categoryTotals = {};
+    
+    for (final item in subItems) {
+      final category = item.category?.isNotEmpty == true ? item.category! : 'Uncategorized';
+      categoryTotals[category] = (categoryTotals[category] ?? 0.0) + item.amount;
+    }
+    
+    // Sort categories by amount (descending)
+    final sortedCategories = categoryTotals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFFF6B35).withOpacity(0.05),
+            const Color(0xFF4A90E2).withOpacity(0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.grey.shade200,
+          width: 1,
+        ),
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        children: sortedCategories.map((entry) {
+          final category = entry.key;
+          final amount = entry.value;
+          final color = _getCategoryColor(category);
+          
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: color.withOpacity(0.3),
+                width: 1,
               ),
-            ],
-          ),
-        );
-                    }
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  category,
+                  style: AppFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  ':',
+                  style: AppFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  f.format(amount),
+                  style: AppFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+  
+  // Get category color for consistent theming
+  Color _getCategoryColor(String category) {
+    final categoryColors = {
+      'Civil work material': Colors.brown,
+      'Sanitary material': Colors.blue,
+      'Electric material': Colors.yellow,
+      'Steel work material': Colors.grey,
+      'Wood work material': Colors.orange,
+      'Labor': Colors.green,
+      'Transport': Colors.purple,
+      'Utility bill': Colors.cyan,
+      'Rental tools': Colors.indigo,
+      'Other': Colors.red,
+      'Uncategorized': Colors.grey,
+    };
+    
+    return categoryColors[category] ?? Colors.grey;
+  }
   
   // Method to show add sub-item dialog
   void _showAddSubItemDialog(BuildContext context, ExpenditureViewModel viewModel) {
-    // Define the exact category items as requested
+    // Define exact category items as requested
     const List<String> categoryItems = [
       "Civil work material",
       "Sanitary material", 
@@ -1585,96 +1851,275 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setState) {
-            return AlertDialog(
-              title: Text('Add Sub-Item'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: viewModel.itemDescriptionController,
-                    decoration: InputDecoration(
-                      labelText: 'Description',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  SizedBox(height: 16),
-                  TextField(
-                    controller: viewModel.itemAmountController,
-                    decoration: InputDecoration(
-                      labelText: 'Amount',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                  SizedBox(height: 16),
-                  // Category Dropdown
-                  DropdownButtonFormField<String>(
-                    value: selectedCategory,
-                    decoration: InputDecoration(
-                      labelText: 'Category',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: categoryItems.map((String category) {
-                      return DropdownMenuItem<String>(
-                        value: category,
-                        child: Text(category),
-                      );
-                    }).toList(),
-                    onChanged: (String? newValue) {
-                      setState(() {
-                        selectedCategory = newValue;
-                        showCustomCategory = (newValue == "Other");
-                        if (!showCustomCategory) {
-                          customCategoryController.clear();
-                        }
-                      });
-                    },
-                  ),
-                  // Show custom category field when "Other" is selected
-                  if (showCustomCategory) ...[
-                    SizedBox(height: 16),
-                    TextField(
-                      controller: customCategoryController,
-                      decoration: InputDecoration(
-                        labelText: 'Enter Custom Category',
-                        border: OutlineInputBorder(),
-                        hintText: 'Specify custom category...',
+            return Dialog(
+              insetPadding: const EdgeInsets.all(20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.5,
+                  minWidth: 450,
+                  maxHeight: MediaQuery.of(context).size.height * 0.8,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Dialog Header
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF6B35).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.add_circle_outline,
+                              color: Color(0xFFFF6B35),
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Text(
+                              'Add Sub-Item',
+                              style: AppFonts.poppins(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(dialogContext),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    // Determine final category value
-                    String finalCategory = '';
-                    if (selectedCategory != null) {
-                      if (selectedCategory == "Other" && customCategoryController.text.isNotEmpty) {
-                        finalCategory = customCategoryController.text.trim();
-                      } else if (selectedCategory != "Other") {
-                        finalCategory = selectedCategory!;
-                      }
-                    }
+                      const SizedBox(height: 32),
+                      
 
-                    // Set the category in the view model before saving
-                    viewModel.setSelectedSubItemCategory(finalCategory.isEmpty ? null : finalCategory);
-                    
-                    final success = await viewModel.saveSubItem(widget.expense.id);
-                    if (success && dialogContext.mounted) {
-                      Navigator.pop(dialogContext);
-                    }
-                  },
-                  child: Text('Save Item'),
+                      // Form Content
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Description Field
+                              Text(
+                                'Description',
+                                style: AppFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: viewModel.itemDescriptionController,
+                                decoration: InputDecoration(
+                                  hintText: 'Enter description...',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: Colors.grey.shade300),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.grey.shade50,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              
+
+                              // Amount Field
+                              Text(
+                                'Amount',
+                                style: AppFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: viewModel.itemAmountController,
+                                decoration: InputDecoration(
+                                  hintText: 'Enter amount...',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: Colors.grey.shade300),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.grey.shade50,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                ),
+                                keyboardType: TextInputType.number,
+                              ),
+                              const SizedBox(height: 24),
+                              
+
+                              // Category Dropdown
+                              Text(
+                                'Category',
+                                style: AppFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              DropdownButtonFormField<String>(
+                                value: selectedCategory,
+                                decoration: InputDecoration(
+                                  hintText: 'Select category...',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: Colors.grey.shade300),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.grey.shade50,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                ),
+                                items: categoryItems.map((String category) {
+                                  return DropdownMenuItem<String>(
+                                    value: category,
+                                    child: Text(
+                                      category,
+                                      style: AppFonts.poppins(fontWeight: FontWeight.w500),
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (String? newValue) {
+                                  setState(() {
+                                    selectedCategory = newValue;
+                                    showCustomCategory = (newValue == "Other");
+                                    if (!showCustomCategory) {
+                                      customCategoryController.clear();
+                                    }
+                                  });
+                                },
+                              ),
+                              
+
+                              // Show custom category field when "Other" is selected
+                              if (showCustomCategory) ...[
+                                const SizedBox(height: 24),
+                                Text(
+                                  'Custom Category',
+                                  style: AppFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: customCategoryController,
+                                  decoration: InputDecoration(
+                                    hintText: 'Specify custom category...',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide(color: Colors.grey.shade300),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey.shade50,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      
+
+                      // Action Buttons
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: Text(
+                              'Cancel',
+                              style: AppFonts.poppins(
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: () async {
+                              // Determine final category value
+                              String finalCategory = '';
+                              if (selectedCategory != null) {
+                                if (selectedCategory == "Other" && customCategoryController.text.isNotEmpty) {
+                                  finalCategory = customCategoryController.text.trim();
+                                } else if (selectedCategory != "Other") {
+                                  finalCategory = selectedCategory!;
+                                }
+                              }
+
+                              // CRITICAL FIX: Pass category directly to saveSubItem method
+                              // instead of relying on ViewModel state which might have timing issues
+                              final success = await viewModel.saveSubItemWithCategory(
+                                widget.expense.id,
+                                category: finalCategory.isEmpty ? null : finalCategory,
+                              );
+                              
+                              if (success && dialogContext.mounted) {
+                                Navigator.pop(dialogContext);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFF6B35),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: Text(
+                              'Save Item',
+                              style: AppFonts.poppins(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             );
           },
         );

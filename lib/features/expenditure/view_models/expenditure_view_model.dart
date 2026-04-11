@@ -92,6 +92,38 @@ class ExpenditureViewModel extends ChangeNotifier {
     return _subItems.fold(0.0, (sum, item) => sum + item.amount);
   }
   
+  // Calculate grand total for a project (bucket amount + all sub-items)
+  Future<double> getProjectGrandTotal(String projectId) async {
+    try {
+      // Find the project/bucket item
+      final project = _projectExpenses.firstWhere(
+        (item) => item.id == projectId,
+        orElse: () => domain.ExpenditureItem(
+          id: '',
+          date: '',
+          description: '',
+          amount: 0.0,
+          category: null,
+          categoryType: 'project_expense',
+          isActive: true,
+          isSynced: true,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+      );
+      
+      // Load all sub-items for this project
+      final subItems = await _repository.getExpenditureSubItems(projectId);
+      final subItemsTotal = subItems.fold(0.0, (sum, item) => sum + item.amount);
+      
+      // Return bucket amount + sub-items total
+      return project.amount + subItemsTotal;
+    } catch (e) {
+      debugPrint('Error calculating project grand total: $e');
+      return 0.0;
+    }
+  }
+  
   bool get canAdd => 
     PermissionHelper.getModulePermissionLevel(_user, 'expenditure').contains('add') || 
     local.RoleUtils.isCompanyAdmin(_user);
@@ -113,6 +145,14 @@ class ExpenditureViewModel extends ChangeNotifier {
       
       await _loadUser();
       await _repository.ensureExpenditureTableColumns();
+      debugPrint('ExpenditureViewModel: About to ensure category column exists');
+      try {
+        await (_repository as ExpenditureRepositoryImpl).ensureExpenditureSubItemsCategoryColumn();
+        debugPrint('ExpenditureViewModel: Category column check completed');
+      } catch (e) {
+        debugPrint('ExpenditureViewModel: Error in category column check: $e');
+        // Don't rethrow - continue with initialization even if column check fails
+      }
       
       // CRITICAL: Set loading to false before setting up streams
       _loading = false;
@@ -510,6 +550,14 @@ class ExpenditureViewModel extends ChangeNotifier {
   // Sub-items operations
   Future<void> loadSubItems(String parentId) async {
     try {
+      // CRITICAL: Ensure category column exists before loading sub-items
+      try {
+        await (_repository as ExpenditureRepositoryImpl).ensureExpenditureSubItemsCategoryColumn();
+        debugPrint('ExpenditureViewModel: Category column ensured before loading sub-items');
+      } catch (e) {
+        debugPrint('ExpenditureViewModel: Error ensuring category column: $e');
+      }
+      
       _subItemsSubscription?.cancel();
       _subItemsSubscription = _repository.watchExpenditureSubItems(parentId).listen((subItems) {
         _subItems = subItems;
@@ -574,6 +622,72 @@ class ExpenditureViewModel extends ChangeNotifier {
       _itemAmountController.clear();
       _itemCategoryController.clear();
       _selectedItemCategory = null;
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error saving sub-item: $e');
+      _showErrorSnackBar('Failed to save sub-item');
+      return false;
+    }
+  }
+
+  // CRITICAL FIX: New method that accepts category as parameter
+  // This ensures the selected category is properly saved to database
+  Future<bool> saveSubItemWithCategory(String parentId, {String? category}) async {
+    if (_itemDescriptionController.text.trim().isEmpty ||
+        _itemAmountController.text.trim().isEmpty) {
+      _showErrorSnackBar('Please fill all fields');
+      return false;
+    }
+    
+    try {
+      // CRITICAL: Use category parameter directly instead of ViewModel state
+      // This ensures the selected category from dialog is saved correctly
+      debugPrint('ExpenditureViewModel: Saving sub-item with category: $category');
+          
+      // Category is optional - allow saving without it
+      if (category != null && category.isEmpty) {
+        _showErrorSnackBar('Invalid category');
+        return false;
+      }
+      
+      final subItem = domain.ExpenditureSubItem(
+        id: const Uuid().v4(),
+        parentId: parentId,
+        description: _itemDescriptionController.text.trim(),
+        amount: double.parse(_itemAmountController.text.trim()),
+        category: category, // CRITICAL: Category from dialog parameter
+        companyId: local.RoleUtils.getUserCompanyId(_user) ?? '',
+        createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
+        isActive: true,
+        isSynced: true,
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
+      );
+      
+      debugPrint('ExpenditureViewModel: Sub-item data before save: ${subItem.toMap()}');
+      
+      await _repository.addExpenditureSubItem(subItem);
+      
+      // Clear form
+      _itemDescriptionController.clear();
+      _itemAmountController.clear();
+      _itemCategoryController.clear();
+      _selectedItemCategory = null;
+      
+      debugPrint('ExpenditureViewModel: Sub-item saved successfully with category: $category');
+      
+      // FOOLPROOF FIX: Manually fetch fresh sub-items and update state
+      // This ensures immediate UI update after adding sub-item
+      try {
+        final freshSubItems = await _repository.getExpenditureSubItems(subItem.parentId);
+        _subItems = freshSubItems;
+        debugPrint('ExpenditureViewModel: Manual refresh completed - sub-items: ${freshSubItems.length}');
+        notifyListeners(); // Force UI rebuild immediately
+      } catch (e) {
+        debugPrint('Error refreshing sub-items after save: $e');
+        notifyListeners(); // Still try to update UI even if refresh fails
+      }
       
       return true;
     } catch (e) {

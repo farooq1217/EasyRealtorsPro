@@ -1169,11 +1169,13 @@ Future<void> _ensureBusinessTables(dynamic db) async {
       category_id TEXT,
       office_month TEXT,
       category TEXT,
+      category_type TEXT,
       date TEXT NOT NULL,
       description TEXT NOT NULL,
       amount REAL NOT NULL,
       is_active INTEGER NOT NULL DEFAULT 1,
       is_synced INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   ''');
@@ -1202,6 +1204,7 @@ Future<void> _ensureBusinessTables(dynamic db) async {
       created_by TEXT,
       description TEXT NOT NULL,
       amount REAL NOT NULL,
+      category TEXT,
       is_active INTEGER NOT NULL DEFAULT 1,
       is_synced INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,

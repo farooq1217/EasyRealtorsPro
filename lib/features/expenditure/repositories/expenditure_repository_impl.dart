@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:drift/drift.dart' as d;
 import 'package:uuid/uuid.dart';
 import '../../expenditure/models/expenditure_item.dart' as domain;
@@ -217,12 +218,34 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<List<domain.ExpenditureSubItem>> getExpenditureSubItems(String parentId) async {
     try {
-      final rows = await db.customSelect(
-        'SELECT * FROM expenditure_sub_items WHERE parent_id = ? AND (is_active IS NULL OR is_active = 1) ORDER BY created_at DESC',
-        variables: [d.Variable.withString(parentId)],
-      ).get();
-      
-      return rows.map((r) => domain.ExpenditureSubItem.fromMap(r.data)).toList();
+      // CRITICAL: First try with category column, fallback to without if it doesn't exist
+      try {
+        final rows = await db.customSelect(
+          'SELECT id, parent_id, description, amount, category, company_id, created_by, is_active, is_synced, created_at, updated_at '
+          'FROM expenditure_sub_items '
+          'WHERE parent_id = ? AND (is_active IS NULL OR is_active = 1) '
+          'ORDER BY created_at DESC',
+          variables: [d.Variable.withString(parentId)],
+        ).get();
+        
+        return rows.map((r) => domain.ExpenditureSubItem.fromMap(r.data)).toList();
+      } catch (e) {
+        // Fallback: Query without category column if it doesn't exist
+        debugPrint('ExpenditureRepository: Category column missing, using fallback query');
+        final rows = await db.customSelect(
+          'SELECT id, parent_id, description, amount, company_id, created_by, is_active, is_synced, created_at, updated_at '
+          'FROM expenditure_sub_items '
+          'WHERE parent_id = ? AND (is_active IS NULL OR is_active = 1) '
+          'ORDER BY created_at DESC',
+          variables: [d.Variable.withString(parentId)],
+        ).get();
+        
+        return rows.map((row) {
+          final data = Map<String, dynamic>.from(row.data);
+          data['category'] = null; // Add null category for compatibility
+          return domain.ExpenditureSubItem.fromMap(data);
+        }).toList();
+      }
     } catch (e) {
       throw Exception('Failed to fetch expenditure sub-items: $e');
     }
@@ -237,7 +260,6 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
           parentId: subItem.parentId,
           description: subItem.description,
           amount: subItem.amount,
-          // category: subItem.category == null ? const d.Value.absent() : d.Value(subItem.category!), // Temporarily commented
           companyId: subItem.companyId == null ? const d.Value.absent() : d.Value(subItem.companyId!),
           createdBy: subItem.createdBy == null ? const d.Value.absent() : d.Value(subItem.createdBy!),
           isActive: d.Value(subItem.isActive),
@@ -246,6 +268,21 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
           updatedAt: subItem.updatedAt ?? DateTime.now().toIso8601String(),
         ),
       );
+      
+      // CRITICAL: Since the generated companion doesn't include category, 
+      // we need to update it separately - but only if the column exists
+      if (subItem.category != null) {
+        try {
+          await db.customStatement(
+            'UPDATE expenditure_sub_items SET category = ? WHERE id = ?',
+            [subItem.category, subItem.id],
+          );
+          debugPrint('ExpenditureRepository: Category saved successfully: ${subItem.category}');
+        } catch (e) {
+          // If category column doesn't exist, log but don't fail
+          debugPrint('ExpenditureRepository: Category column missing, category not saved: $e');
+        }
+      }
     } catch (e) {
       throw Exception('Failed to add expenditure sub-item: $e');
     }
@@ -263,23 +300,34 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Stream<List<domain.ExpenditureSubItem>> watchExpenditureSubItems(String parentId) {
     try {
-      return (db.select(db.expenditureSubItems)
-          ..where((tbl) => tbl.parentId.equals(parentId))
-          ..where((tbl) => tbl.isActive.equals(true))
+      // CRITICAL: First try with category column, fallback to without if it doesn't exist
+      try {
+        return db.customSelect(
+          'SELECT id, parent_id, description, amount, category, company_id, created_by, is_active, is_synced, created_at, updated_at '
+          'FROM expenditure_sub_items '
+          'WHERE parent_id = ? AND (is_active IS NULL OR is_active = 1) '
+          'ORDER BY created_at DESC',
+          variables: [d.Variable.withString(parentId)],
         )
         .watch()
-        .map((rows) => rows.map((row) => domain.ExpenditureSubItem.fromMap({
-          'id': row.id,
-          'parent_id': row.parentId,
-          'description': row.description,
-          'amount': row.amount,
-          'company_id': row.companyId,
-          'created_by': row.createdBy,
-          'is_active': row.isActive ? 1 : 0,
-          'is_synced': row.isSynced ? 1 : 0,
-          'created_at': row.createdAt,
-          'updated_at': row.updatedAt,
-        })).toList());
+        .map((rows) => rows.map((row) => domain.ExpenditureSubItem.fromMap(row.data)).toList());
+      } catch (e) {
+        // Fallback: Query without category column if it doesn't exist
+        debugPrint('ExpenditureRepository: Category column missing, using fallback query');
+        return db.customSelect(
+          'SELECT id, parent_id, description, amount, company_id, created_by, is_active, is_synced, created_at, updated_at '
+          'FROM expenditure_sub_items '
+          'WHERE parent_id = ? AND (is_active IS NULL OR is_active = 1) '
+          'ORDER BY created_at DESC',
+          variables: [d.Variable.withString(parentId)],
+        )
+        .watch()
+        .map((rows) => rows.map((row) {
+          final data = Map<String, dynamic>.from(row.data);
+          data['category'] = null; // Add null category for compatibility
+          return domain.ExpenditureSubItem.fromMap(data);
+        }).toList());
+      }
     } catch (e) {
       throw Exception('Failed to watch expenditure sub-items: $e');
     }
@@ -327,6 +375,36 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   Future<void> ensureExpenditureItemsTable() async {
     // No-op since expenditure_items table doesn't exist in schema
     // Sub-items functionality is disabled
+  }
+
+  /// CRITICAL: Ensure category column exists in expenditure_sub_items table
+  Future<void> ensureExpenditureSubItemsCategoryColumn() async {
+    try {
+      debugPrint('ExpenditureRepository: Starting category column check');
+      
+      // First, try to add the column directly (this will fail if it already exists, which is fine)
+      try {
+        await db.customStatement('ALTER TABLE expenditure_sub_items ADD COLUMN category TEXT');
+        debugPrint('ExpenditureRepository: Category column added successfully');
+      } catch (e) {
+        // Column might already exist, which is fine
+        debugPrint('ExpenditureRepository: Category column addition failed (might already exist): $e');
+      }
+      
+      // Now verify the column exists
+      final cols = await db.customSelect('PRAGMA table_info(expenditure_sub_items)').get();
+      final columnNames = cols.map((r) => r.data['name']?.toString()).toList();
+      debugPrint('ExpenditureRepository: Found columns: $columnNames');
+      
+      if (columnNames.contains('category')) {
+        debugPrint('ExpenditureRepository: Category column verified to exist');
+      } else {
+        debugPrint('ExpenditureRepository: WARNING: Category column still missing after addition attempt');
+      }
+    } catch (e) {
+      debugPrint('ExpenditureRepository: Error ensuring category column: $e');
+      // Don't throw - allow the app to continue even if column addition fails
+    }
   }
 
   @override
