@@ -69,7 +69,10 @@ class _UsersPageState extends State<UsersPage> {
       // Super Admin can see all roles
       return _roles;
     } else {
-      // Company Admin can only assign Agent role
+      // Company Admin Users:
+      // - Can only see and filter by: Agent role only
+      // - Both "Super Admin" and "Company Admin" roles are hidden from them
+      // - Can only assign Agent role to other users
       return [
         {'id': null, 'name': 'All roles'},
         {'id': 'agent', 'name': 'Agent'},
@@ -334,20 +337,60 @@ class _UsersPageState extends State<UsersPage> {
   }
 
   Widget _buildCompanyDropdown(UserViewModel userViewModel, CompanyViewModel companyViewModel) {
-    // Build companies list with "All" option
-    List<Map<String, dynamic>> companies = [
-      {'id': null, 'name': 'All companies'},
-      ...companyViewModel.companies.map((company) => {
-        'id': company.id,
-        'name': company.name,
-      }).toList(),
-    ];
+    // RBAC: Restrict company options based on user role
+    List<Map<String, dynamic>> companies = [];
+    bool isDropdownEnabled = true;
+    String? selectedValue = _selectedCompanyId;
+    String hintText = 'All companies';
+    
+    if (userViewModel.isCurrentUserSuperAdmin) {
+      // Super Admin: Can see all companies including "All companies" option
+      companies = [
+        {'id': null, 'name': 'All companies'},
+        ...companyViewModel.companies.map((company) => {
+          'id': company.id,
+          'name': company.name,
+        }).toList(),
+      ];
+    } else {
+      // Company Admin: Can only see their own company, dropdown is disabled
+      final userCompanyId = userViewModel.currentUser?['company_id']?.toString();
+      if (userCompanyId != null) {
+        final userCompany = companyViewModel.companies.firstWhere(
+          (company) => company.id == userCompanyId,
+          orElse: () => companyViewModel.companies.isNotEmpty 
+              ? companyViewModel.companies.first 
+              : companyViewModel.companies.first,
+        );
+        
+        companies = [
+          {
+            'id': userCompanyId,
+            'name': userCompany.name,
+          },
+        ];
+        
+        // Force selection to user's company and disable dropdown
+        selectedValue = userCompanyId;
+        isDropdownEnabled = false;
+        hintText = userCompany.name;
+        
+        // Update state if needed
+        if (_selectedCompanyId != userCompanyId) {
+          setState(() {
+            _selectedCompanyId = userCompanyId;
+          });
+          // Apply filters with user's company
+          userViewModel.applyFilters(userCompanyId, _selectedRole, _selectedStatus);
+        }
+      }
+    }
     
     return DropdownButtonFormField<String>(
-      value: _selectedCompanyId,
+      value: selectedValue,
       decoration: InputDecoration(
         labelText: 'Company',
-        hintText: 'All companies',
+        hintText: hintText,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(color: Colors.grey.shade300),
@@ -357,20 +400,20 @@ class _UsersPageState extends State<UsersPage> {
           borderSide: const BorderSide(color: Color(0xFF4A90E2)),
         ),
         filled: true,
-        fillColor: Colors.grey.shade50,
+        fillColor: isDropdownEnabled ? Colors.grey.shade50 : Colors.grey.shade100,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
       items: companies.map((company) => DropdownMenuItem<String>(
         value: company['id'] as String?,
         child: Text(company['name']),
       )).toList(),
-      onChanged: (value) {
+      onChanged: isDropdownEnabled ? (value) {
         setState(() {
           _selectedCompanyId = value;
         });
         // Apply filters using ViewModel's new filtering system
         userViewModel.applyFilters(value, _selectedRole, _selectedStatus);
-      },
+      } : null,
     );
   }
 

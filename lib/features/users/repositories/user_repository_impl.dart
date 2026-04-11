@@ -173,6 +173,7 @@ class UserRepositoryImpl implements UserRepository {
         id: user.id.isEmpty ? const Uuid().v4() : user.id,
         createdAt: user.createdAt ?? now,
         updatedAt: now,
+        isSynced: false, // Mark as unsynced for immediate sync
       );
       
       await db.customStatement(
@@ -181,7 +182,7 @@ class UserRepositoryImpl implements UserRepository {
           id, username, user_id, name, email, contact_no, permissions, 
           company_id, status, is_active, is_synced, created_at, updated_at,
           password_hash, salt, iterations, is_first_login, profile_picture_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
         [
           userWithTimestamp.id,
@@ -205,11 +206,16 @@ class UserRepositoryImpl implements UserRepository {
         ],
       );
       
-      // Mark as unsynced for Firestore sync
+      debugPrint('UserRepository: User added to SQLite: ${userWithTimestamp.name} (${userWithTimestamp.email})');
+      
+      // CRITICAL FIX: Immediate Firestore sync after local save
       if (!_sqliteOnlyMode) {
-        await markUserAsUnsynced(userWithTimestamp.id);
+        await _syncUserToFirestore(userWithTimestamp);
+      } else {
+        debugPrint('UserRepository: Firestore sync skipped in SQLite-only mode');
       }
     } catch (e) {
+      debugPrint('UserRepository: Error adding user: $e');
       throw Exception('Failed to add user: $e');
     }
   }
@@ -218,7 +224,7 @@ class UserRepositoryImpl implements UserRepository {
   Future<void> updateUser(UserModel user) async {
     try {
       final now = DateTime.now().toIso8601String();
-      final updatedUser = user.copyWith(updatedAt: now);
+      final updatedUser = user.copyWith(updatedAt: now, isSynced: false); // Mark as unsynced for immediate sync
       
       await db.customStatement(
         '''
@@ -250,11 +256,16 @@ class UserRepositoryImpl implements UserRepository {
         ],
       );
       
-      // Mark as unsynced for Firestore sync
+      debugPrint('UserRepository: User updated in SQLite: ${updatedUser.name} (${updatedUser.email})');
+      
+      // CRITICAL FIX: Immediate Firestore sync after local update
       if (!_sqliteOnlyMode) {
-        await markUserAsUnsynced(updatedUser.id);
+        await _syncUserToFirestore(updatedUser);
+      } else {
+        debugPrint('UserRepository: Firestore sync skipped in SQLite-only mode');
       }
     } catch (e) {
+      debugPrint('UserRepository: Error updating user: $e');
       throw Exception('Failed to update user: $e');
     }
   }
@@ -697,6 +708,64 @@ class UserRepositoryImpl implements UserRepository {
     }
   }
 
+  // CRITICAL FIX: Immediate sync method for cross-device synchronization
+  Future<void> _syncUserToFirestore(UserModel user) async {
+    if (!_isFirestoreOperationAllowed()) {
+      debugPrint('UserRepository: Firestore sync not allowed in SQLite-only mode');
+      return;
+    }
+    
+    await _executeFirestoreOperation(() async {
+      try {
+        final firestore = FirebaseFirestore.instance;
+        final usersCollection = firestore.collection('users');
+        
+        // Use email as document ID for consistency
+        final firestoreDocId = user.email.toLowerCase().trim();
+        debugPrint('UserRepository: Syncing user to Firestore: ${user.name} (doc: $firestoreDocId)');
+        
+        // Convert user to Firestore format
+        final firestoreData = {
+          'id': user.id,
+          'username': user.username,
+          'user_id': user.userId,
+          'name': user.name,
+          'email': user.email,
+          'contact_no': user.contactNo ?? '',
+          'permissions': user.permissions ?? {},
+          'company_id': user.companyId ?? '',
+          'status': user.status ?? 'active',
+          'is_active': user.isActive,
+          'is_synced': 1, // Mark as synced in Firestore
+          'created_at': user.createdAt ?? DateTime.now().toIso8601String(),
+          'updated_at': user.updatedAt,
+          'password_hash': user.passwordHash ?? '',
+          'salt': user.salt ?? '',
+          'iterations': user.iterations ?? 10000,
+          'is_first_login': user.isFirstLogin,
+          'profile_picture_path': user.profilePicturePath ?? '',
+        };
+        
+        // Set document in Firestore
+        await usersCollection.doc(firestoreDocId).set(firestoreData, SetOptions(merge: true));
+        
+        // Mark as synced in local SQLite
+        await markUserAsSynced(user.id);
+        
+        debugPrint('UserRepository: User synced to Firestore successfully: ${user.name}');
+      } catch (e) {
+        debugPrint('UserRepository: Error syncing user to Firestore: $e');
+        // Enhanced error logging for network issues
+        if (e.toString().contains('SocketException') || 
+            e.toString().contains('TimeoutException') ||
+            e.toString().contains('NetworkException')) {
+          debugPrint('UserRepository: Network error detected - check internet connection');
+        }
+        rethrow; // Re-throw to trigger proper error handling
+      }
+    });
+  }
+
   @override
   Future<void> syncUsersFromFirestore() async {
     if (!_isFirestoreOperationAllowed()) {
@@ -711,39 +780,66 @@ class UserRepositoryImpl implements UserRepository {
         final firestore = FirebaseFirestore.instance;
         final usersCollection = firestore.collection('users');
         
-        // Get all users from Firestore
-        final querySnapshot = await usersCollection.get();
+        // CRITICAL FIX: Tenant isolation - only sync users for current user's company
+        final currentUser = AuthService.currentUser;
+        final isSuperAdmin = RoleUtils.isSuperAdmin(currentUser) || PermissionHelper.isBypassUser(currentUser);
+        final userCompanyId = RoleUtils.getUserCompanyId(currentUser);
+        
+        Query query;
+        if (isSuperAdmin) {
+          // Super Admin: Sync all users
+          query = usersCollection;
+          debugPrint('UserRepository: Super Admin sync - fetching all users');
+        } else if (userCompanyId != null && userCompanyId!.isNotEmpty) {
+          // Company Admin: Sync only users from their company
+          query = usersCollection.where('company_id', isEqualTo: userCompanyId);
+          debugPrint('UserRepository: Company Admin sync - fetching users for company: $userCompanyId');
+        } else {
+          debugPrint('UserRepository: No company ID found - skipping sync');
+          return;
+        }
+        
+        final querySnapshot = await query.get();
         debugPrint('UserRepository: Fetched ${querySnapshot.docs.length} users from Firestore');
         
         // Begin transaction for bulk insert
         await db.transaction(() async {
           for (final doc in querySnapshot.docs) {
-            final data = doc.data();
+            final rawData = doc.data();
+            
+            // Skip if data is null
+            if (rawData == null) {
+              debugPrint('UserRepository: Skipping null data for document ${doc.id}');
+              continue;
+            }
+            
+            // Cast to Map<String, dynamic> for safe access
+            final data = rawData as Map<String, dynamic>;
             
             // Convert Firestore data to UserModel format
-            // ✨ FIX: Safely handle boolean fields that can be int or bool from Firestore ✨
+            // FIX: Safely handle boolean fields that can be int or bool from Firestore
             final isActiveRaw = data['is_active'];
             final isFirstLoginRaw = data['is_first_login'];
             
             final userMap = {
               'id': doc.id,
-              'username': data['username'] ?? '',
-              'user_id': data['user_id'] ?? doc.id,
-              'name': data['name'] ?? '',
-              'email': data['email'] ?? '',
-              'contact_no': data['contact_no'] ?? '',
-              'permissions': data['permissions'] ?? {},
-              'company_id': data['company_id'] ?? '',
-              'status': data['status'] ?? 'active',
-              'is_active': isActiveRaw == 1 || isActiveRaw == true, // Handle both int and bool
+              'username': data['username']?.toString() ?? '',
+              'user_id': data['user_id']?.toString() ?? doc.id,
+              'name': data['name']?.toString() ?? '',
+              'email': data['email']?.toString() ?? '',
+              'contact_no': data['contact_no']?.toString() ?? '',
+              'permissions': data['permissions']?.toString() ?? '{}',
+              'company_id': data['company_id']?.toString() ?? '',
+              'status': data['status']?.toString() ?? 'active',
+              'is_active': (isActiveRaw == 1 || isActiveRaw == true) ? 1 : 0, // Handle both int and bool
               'is_synced': 1, // Mark as synced
-              'created_at': data['created_at'] ?? DateTime.now().toIso8601String(),
-              'updated_at': data['updated_at'] ?? DateTime.now().toIso8601String(),
-              'password_hash': data['password_hash'] ?? '',
-              'salt': data['salt'] ?? '',
-              'iterations': data['iterations'] ?? 10000,
-              'is_first_login': isFirstLoginRaw == 1 || isFirstLoginRaw == true, // Handle both int and bool
-              'profile_picture_path': data['profile_picture_path'] ?? '',
+              'created_at': data['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+              'updated_at': data['updated_at']?.toString() ?? DateTime.now().toIso8601String(),
+              'password_hash': data['password_hash']?.toString() ?? '',
+              'salt': data['salt']?.toString() ?? '',
+              'iterations': int.tryParse(data['iterations']?.toString() ?? '') ?? 10000,
+              'is_first_login': (isFirstLoginRaw == 1 || isFirstLoginRaw == true) ? 1 : 0, // Handle both int and bool
+              'profile_picture_path': data['profile_picture_path']?.toString() ?? '',
             };
             
             // Insert or replace user in SQLite
@@ -758,24 +854,24 @@ class UserRepositoryImpl implements UserRepository {
                 :password_hash, :salt, :iterations, :is_first_login, :profile_picture_path
               )''',
               variables: [
-                d.Variable.withString(userMap['id']),
-                d.Variable.withString(userMap['username']),
-                d.Variable.withString(userMap['user_id']),
-                d.Variable.withString(userMap['name']),
-                d.Variable.withString(userMap['email']),
-                d.Variable.withString(userMap['contact_no']),
-                d.Variable.withString(userMap['permissions'].toString()),
-                d.Variable.withString(userMap['company_id']),
-                d.Variable.withString(userMap['status']),
-                d.Variable.withInt(userMap['is_active'] ? 1 : 0),
-                d.Variable.withInt(userMap['is_synced']),
-                d.Variable.withString(userMap['created_at']),
-                d.Variable.withString(userMap['updated_at']),
-                d.Variable.withString(userMap['password_hash']),
-                d.Variable.withString(userMap['salt']),
-                d.Variable.withInt(userMap['iterations']),
-                d.Variable.withInt(userMap['is_first_login'] ? 1 : 0),
-                d.Variable.withString(userMap['profile_picture_path']),
+                d.Variable.withString(userMap['id']?.toString() ?? ''),
+                d.Variable.withString(userMap['username']?.toString() ?? ''),
+                d.Variable.withString(userMap['user_id']?.toString() ?? ''),
+                d.Variable.withString(userMap['name']?.toString() ?? ''),
+                d.Variable.withString(userMap['email']?.toString() ?? ''),
+                d.Variable.withString(userMap['contact_no']?.toString() ?? ''),
+                d.Variable.withString(userMap['permissions']?.toString() ?? '{}'),
+                d.Variable.withString(userMap['company_id']?.toString() ?? ''),
+                d.Variable.withString(userMap['status']?.toString() ?? ''),
+                d.Variable.withInt(int.tryParse(userMap['is_active']?.toString() ?? '') ?? 0),
+                d.Variable.withInt(int.tryParse(userMap['is_synced']?.toString() ?? '') ?? 1),
+                d.Variable.withString(userMap['created_at']?.toString() ?? ''),
+                d.Variable.withString(userMap['updated_at']?.toString() ?? ''),
+                d.Variable.withString(userMap['password_hash']?.toString() ?? ''),
+                d.Variable.withString(userMap['salt']?.toString() ?? ''),
+                d.Variable.withInt(int.tryParse(userMap['iterations']?.toString() ?? '') ?? 10000),
+                d.Variable.withInt(int.tryParse(userMap['is_first_login']?.toString() ?? '') ?? 0),
+                d.Variable.withString(userMap['profile_picture_path']?.toString() ?? ''),
               ],
             );
             

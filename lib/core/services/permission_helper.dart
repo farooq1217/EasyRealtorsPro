@@ -104,7 +104,7 @@ class PermissionHelper {
       case 'no_access':
         return 'no_access';
       default:
-        return 'view_add';
+        return 'no_access'; // CRITICAL FIX: Default to no_access for strict RBAC
     }
   }
 
@@ -143,18 +143,23 @@ class PermissionHelper {
       }
       return 'view_add_edit';
     }
-    if (userRole == 'agent') {
-      // Agent gets view-only access
-      if (moduleKey == 'users') {
-        debugPrint('  Agent detected, returning view_only for users module');
-      }
-      return 'view_only';
-    }
-    
-    // Fallback to permissionsMap for unknown roles
+    // CRITICAL FIX: Check permissionsMap FIRST for agents before role-based shortcuts
     final map = getModulePermissionsMap(user);
     final v = map[moduleKey];
-    if (v != null && v.trim().isNotEmpty) return v.trim();
+    if (v != null && v.trim().isNotEmpty) {
+      debugPrint('PermissionHelper: Module $moduleKey found in permissionsMap: ${v.trim()}');
+      return v.trim();
+    }
+    
+    if (userRole == 'agent') {
+      // Agent gets NO access by default, only explicit permissions in permissionsMap are allowed
+      if (moduleKey == 'users') {
+        debugPrint('  Agent detected, returning no_access for users module');
+        return 'no_access';
+      }
+      debugPrint('  Agent detected - module $moduleKey not explicitly granted, returning no_access');
+      return 'no_access'; // CRITICAL FIX: Deny by default for agents
+    }
     
     // Only log this for debugging unknown roles, not for standard roles
     debugPrint('PermissionHelper: Unknown role "$userRole" with empty permissionsMap for module $moduleKey');

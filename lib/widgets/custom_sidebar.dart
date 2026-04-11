@@ -47,6 +47,13 @@ class ModernSidebar extends StatelessWidget {
     bool _canSee(String moduleKey) {
       if (isBypass || isSuperAdmin) return true;
       
+      // CRITICAL FIX: Universal modules accessible to all authenticated users
+      const universalModules = {'dashboard', 'settings'};
+      if (universalModules.contains(moduleKey)) {
+        debugPrint('ModernSidebar: Module $moduleKey is universal - allowing access for all users');
+        return true;
+      }
+      
       // Check permissionsMap first for dynamic module access
       try {
         final permissionsMapRaw = currentUser?['permissionsMap'];
@@ -65,9 +72,19 @@ class ModernSidebar extends StatelessWidget {
         }
         
         if (permissionsMap != null && permissionsMap.containsKey(moduleKey)) {
-          final hasPermission = permissionsMap[moduleKey] == true;
-          debugPrint('ModernSidebar: Module $moduleKey found in permissionsMap: $hasPermission');
+          final permission = permissionsMap[moduleKey]?.toString().toLowerCase();
+          final hasPermission = permission == 'view_only' || 
+                               permission == 'view_add' || 
+                               permission == 'view_add_edit' || 
+                               permission == 'full_access';
+          debugPrint('ModernSidebar: Module $moduleKey found in permissionsMap: $permission -> $hasPermission');
           return hasPermission;
+        }
+        
+        // CRITICAL: For agents, if module is not in permissionsMap, deny access
+        if (role == 'agent') {
+          debugPrint('ModernSidebar: Agent role - module $moduleKey not found in permissionsMap, denying access');
+          return false;
         }
       } catch (e) {
         debugPrint('ModernSidebar: Error checking permissionsMap for $moduleKey: $e');
@@ -75,7 +92,46 @@ class ModernSidebar extends StatelessWidget {
       
       // Fallback to legacy permission level check
       final level = PermissionHelper.getModulePermissionLevel(currentUser, moduleKey);
-      return level != 'no_access';
+      final canAccess = level != 'no_access';
+      debugPrint('ModernSidebar: Fallback check for $moduleKey: level=$level -> canAccess=$canAccess');
+      
+      // CRITICAL FIX: For agents, enforce deny-by-default even in fallback
+      if (role == 'agent' && canAccess) {
+        // Double-check that this module is explicitly in permissionsMap for agents
+        try {
+          final permissionsMapRaw = currentUser?['permissionsMap'];
+          Map<String, dynamic>? permissionsMap;
+          
+          if (permissionsMapRaw is String) {
+            try {
+              permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
+            } catch (e) {
+              debugPrint('ModernSidebar: Failed to decode permissionsMap JSON in fallback: $e');
+              permissionsMap = null;
+            }
+          } else if (permissionsMapRaw is Map<String, dynamic>) {
+            permissionsMap = permissionsMapRaw;
+          }
+          
+          if (permissionsMap == null || !permissionsMap.containsKey(moduleKey)) {
+            debugPrint('ModernSidebar: Agent fallback - module $moduleKey not in permissionsMap, denying access');
+            return false;
+          }
+          
+          final permission = permissionsMap[moduleKey]?.toString().toLowerCase();
+          final hasExplicitPermission = permission == 'view_only' || 
+                                       permission == 'view_add' || 
+                                       permission == 'view_add_edit' || 
+                                       permission == 'full_access';
+          debugPrint('ModernSidebar: Agent explicit permission check for $moduleKey: $permission -> $hasExplicitPermission');
+          return hasExplicitPermission;
+        } catch (e) {
+          debugPrint('ModernSidebar: Error in agent fallback check for $moduleKey: $e');
+          return false;
+        }
+      }
+      
+      return canAccess;
     }
 
     return ConstrainedBox(
@@ -272,6 +328,7 @@ class ModernSidebar extends StatelessWidget {
                       label: 'Dashboard',
                       isSelected: selectedIndex == 0,
                       onTap: () => onDestinationSelected(0),
+                      visible: _canSee('dashboard'),
                       showLabel: isOpen,
                     ),
                     SidebarMenuItem(
@@ -328,8 +385,8 @@ class ModernSidebar extends StatelessWidget {
                         selectedIcon: Icons.currency_exchange,
                         label: 'Trading',
                         isSelected: false,
-                        onTap: onTradingTap,
-                        visible: true,
+                        onTap: _canSee('trading') ? onTradingTap : null,
+                        visible: _canSee('trading'),
                         showLabel: isOpen,
                       ),
                     SidebarMenuItem(
@@ -347,7 +404,7 @@ class ModernSidebar extends StatelessWidget {
                       selectedIcon: Icons.people,
                       label: 'User Management',
                       isSelected: selectedIndex == 9,
-                      onTap: () => onDestinationSelected(9),
+                      onTap: _canSee('users') ? () => onDestinationSelected(9) : null,
                       visible: _canSee('users'), // Visible to both Super Admins and Company Admins based on 'users' permission
                       showLabel: isOpen,
                     ),
@@ -365,8 +422,8 @@ class ModernSidebar extends StatelessWidget {
                       selectedIcon: Icons.settings,
                       label: 'Settings',
                       isSelected: selectedIndex == 5,
-                      onTap: () => onDestinationSelected(5),
-                      visible: true,
+                      onTap: _canSee('settings') ? () => onDestinationSelected(5) : null,
+                      visible: _canSee('settings'),
                       showLabel: isOpen,
                     ),
                   ],

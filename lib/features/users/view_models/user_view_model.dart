@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // ✨ CRITICAL FIX: Import for Firestore real-time listener ✨
 import '../../../core/role_utils.dart' as local;
 import 'package:shared/shared.dart';
 import '../models/user_model.dart';
@@ -60,6 +61,7 @@ class UserViewModel extends ChangeNotifier {
 
   // Stream subscriptions
   StreamSubscription<List<UserModel>>? _usersSubscription;
+  StreamSubscription<QuerySnapshot>? _firestoreUsersSubscription; // ✨ CRITICAL FIX: Real-time Firestore listener ✨
 
   // Getters
   bool get loading => _loading;
@@ -181,6 +183,163 @@ class UserViewModel extends ChangeNotifier {
   // Helper method to check if current user is Super Admin
   bool get isCurrentUserSuperAdmin => 
     local.RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+
+  // ✨ CRITICAL FIX: Real-time Firestore listener setup ✨
+  Future<void> _setupFirestoreListener() async {
+    try {
+      // Cancel existing subscription
+      await _firestoreUsersSubscription?.cancel();
+      
+      final isSuperAdmin = local.RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final userCompanyId = local.RoleUtils.getUserCompanyId(_currentUser);
+      
+      if (userCompanyId == null || userCompanyId!.isEmpty) {
+        debugPrint('UserViewModel: No company ID - skipping Firestore listener setup');
+        return;
+      }
+      
+      debugPrint('UserViewModel: Setting up Firestore listener for company: $userCompanyId');
+      
+      final firestore = FirebaseFirestore.instance;
+      final usersCollection = firestore.collection('users');
+      
+      // Set up query based on user role
+      Query query;
+      if (isSuperAdmin) {
+        query = usersCollection;
+        debugPrint('UserViewModel: Super Admin Firestore listener - watching all users');
+      } else {
+        query = usersCollection.where('company_id', isEqualTo: userCompanyId);
+        debugPrint('UserViewModel: Company Admin Firestore listener - watching company users: $userCompanyId');
+      }
+      
+      // Set up real-time listener
+      _firestoreUsersSubscription = query.snapshots().listen(
+        (snapshot) async {
+          debugPrint('UserViewModel: 🔥 Firestore update received - ${snapshot.docChanges.length} changes');
+          
+          if (!mounted) return;
+          
+          try {
+            // Process document changes
+            for (final change in snapshot.docChanges) {
+              final doc = change.doc;
+              final data = doc.data() as Map<String, dynamic>?;
+              
+              if (data == null) continue;
+              
+              final userEmail = data['email']?.toString().toLowerCase().trim();
+              debugPrint('UserViewModel: Processing Firestore change for user: $userEmail');
+              
+              // Convert Firestore data to UserModel format
+              final firestoreUser = UserModel(
+                id: data['id']?.toString() ?? doc.id,
+                username: data['username']?.toString() ?? '',
+                userId: data['user_id']?.toString() ?? doc.id,
+                name: data['name']?.toString() ?? '',
+                email: data['email']?.toString() ?? '',
+                contactNo: data['contact_no']?.toString(),
+                permissions: data['permissions']?.toString(),
+                companyId: data['company_id']?.toString() ?? userCompanyId,
+                status: data['status']?.toString() ?? 'active',
+                isActive: data['is_active'] == true || data['is_active'] == 1,
+                isSynced: true, // From Firestore, so it's synced
+                createdAt: data['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+                updatedAt: data['updated_at']?.toString() ?? DateTime.now().toIso8601String(),
+                passwordHash: data['password_hash']?.toString() ?? '',
+                salt: data['salt']?.toString() ?? '',
+                iterations: int.tryParse(data['iterations']?.toString() ?? '') ?? 10000,
+                isFirstLogin: data['is_first_login'] == true || data['is_first_login'] == 1,
+                profilePicturePath: data['profile_picture_path']?.toString() ?? '',
+              );
+              
+              // Handle different types of changes
+              switch (change.type) {
+                case DocumentChangeType.added:
+                  debugPrint('UserViewModel: ➕ User added from Firestore: ${firestoreUser.name}');
+                  await _handleFirestoreUserAdded(firestoreUser);
+                  break;
+                case DocumentChangeType.modified:
+                  debugPrint('UserViewModel: ✏️ User modified in Firestore: ${firestoreUser.name}');
+                  await _handleFirestoreUserModified(firestoreUser);
+                  break;
+                case DocumentChangeType.removed:
+                  debugPrint('UserViewModel: 🗑️ User removed from Firestore: ${firestoreUser.name}');
+                  await _handleFirestoreUserRemoved(firestoreUser);
+                  break;
+              }
+            }
+          } catch (e) {
+            debugPrint('UserViewModel: Error processing Firestore changes: $e');
+          }
+        },
+        onError: (e) {
+          debugPrint('UserViewModel: ❌ Firestore listener error: $e');
+          // Enhanced error logging for network issues
+          if (e.toString().contains('SocketException') || 
+              e.toString().contains('TimeoutException') ||
+              e.toString().contains('NetworkException')) {
+            debugPrint('UserViewModel: 🌐 Network error in Firestore listener - will retry');
+          }
+        },
+      );
+      
+      debugPrint('UserViewModel: ✅ Firestore listener set up successfully');
+    } catch (e) {
+      debugPrint('UserViewModel: ❌ Error setting up Firestore listener: $e');
+    }
+  }
+
+  // Handle user added from Firestore
+  Future<void> _handleFirestoreUserAdded(UserModel user) async {
+    try {
+      // Check if user already exists in local list
+      final existingIndex = _users.indexWhere((u) => u.email.toLowerCase() == user.email.toLowerCase());
+      if (existingIndex == -1) {
+        // New user - add to local list
+        _users.insert(0, user); // Insert at beginning for latest first
+        _applySearchFilter();
+        debugPrint('UserViewModel: ✅ Added new user from Firestore: ${user.name}');
+      }
+    } catch (e) {
+      debugPrint('UserViewModel: Error handling Firestore user added: $e');
+    }
+  }
+
+  // Handle user modified from Firestore
+  Future<void> _handleFirestoreUserModified(UserModel user) async {
+    try {
+      final existingIndex = _users.indexWhere((u) => u.email.toLowerCase() == user.email.toLowerCase());
+      if (existingIndex != -1) {
+        // Update existing user
+        _users[existingIndex] = user;
+        _applySearchFilter();
+        debugPrint('UserViewModel: ✅ Updated user from Firestore: ${user.name}');
+      } else {
+        // User not found locally - add as new
+        _users.insert(0, user);
+        _applySearchFilter();
+        debugPrint('UserViewModel: ✅ Added modified user as new from Firestore: ${user.name}');
+      }
+    } catch (e) {
+      debugPrint('UserViewModel: Error handling Firestore user modified: $e');
+    }
+  }
+
+  // Handle user removed from Firestore
+  Future<void> _handleFirestoreUserRemoved(UserModel user) async {
+    try {
+      final existingIndex = _users.indexWhere((u) => u.email.toLowerCase() == user.email.toLowerCase());
+      if (existingIndex != -1) {
+        // Remove user from local list
+        _users.removeAt(existingIndex);
+        _applySearchFilter();
+        debugPrint('UserViewModel: ✅ Removed user from Firestore: ${user.name}');
+      }
+    } catch (e) {
+      debugPrint('UserViewModel: Error handling Firestore user removed: $e');
+    }
+  }
 
   // Public sync method
   Future<void> syncFromFirestore() async {
@@ -360,13 +519,18 @@ class UserViewModel extends ChangeNotifier {
       await _loadCurrentUser();
       await _repository.ensureUserTableColumns();
       
-      // CRITICAL: Sync users from Firestore before loading companies
-      debugPrint('UserViewModel: Starting Firestore sync...');
+      // ✨ CRITICAL FIX: Initial sync from Firestore before loading companies
+      debugPrint('UserViewModel: Starting initial Firestore sync...');
       await _repository.syncUsersFromFirestore();
-      debugPrint('UserViewModel: Firestore sync completed');
+      debugPrint('UserViewModel: Initial Firestore sync completed');
       
       await _loadCompanies();
       await _setupStreams();
+      
+      // ✨ CRITICAL FIX: Set up real-time Firestore listener for cross-device sync
+      debugPrint('UserViewModel: Setting up real-time Firestore listener...');
+      await _setupFirestoreListener();
+      debugPrint('UserViewModel: Real-time Firestore listener setup completed');
     } catch (e) {
       _error = 'Failed to initialize: $e';
       debugPrint('Error initializing UserViewModel: $e');
@@ -898,8 +1062,9 @@ class UserViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    _isDisposed = true;
     _usersSubscription?.cancel();
+    _firestoreUsersSubscription?.cancel(); // CRITICAL FIX: Cleanup Firestore listener
+    debugPrint('UserViewModel: Disposed - all subscriptions cancelled');
     _nameController.dispose();
     _emailController.dispose();
     _contactController.dispose();
@@ -907,7 +1072,6 @@ class UserViewModel extends ChangeNotifier {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _userIdController.dispose();
-    
     super.dispose();
   }
 }
