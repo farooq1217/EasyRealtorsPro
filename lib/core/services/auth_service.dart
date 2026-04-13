@@ -2661,7 +2661,7 @@ class AuthService {
   }
 
   // Get current user merged with Firestore user doc (role/company/permissions)
-  static Future<Map<String, dynamic>?> getCurrentUser(String? token) async {
+  static Future<Map<String, dynamic>?> getCurrentUser(String? token, {bool waitForFirestore = false}) async {
     if (token == null || !_verifyJWT(token)) return null;
 
     // CRITICAL: Check memory cache first to prevent infinite file access loop
@@ -2713,24 +2713,46 @@ class AuthService {
       debugPrint('AuthService: Error reading from local DB in getCurrentUser: $e');
     }
 
-    // Priority 3: Fetch Firestore user doc if Firebase is available (non-blocking)
+    // Priority 3: Fetch Firestore user doc if Firebase is available
     if (merged != null) {
-      // We have local data, return it immediately and fetch Firestore in background
-      _fetchFirestoreUserInBackground(email.toLowerCase(), merged);
-      
-      // Update cache
-      _cachedUser = merged;
-      _cachedToken = token;
-      _cacheTimestamp = DateTime.now();
-      AuthService.currentUser = merged;
-      
-      // Emit user update to stream
-      _emitUserUpdate(merged);
-      
-      if (kDebugMode && showAuthLogs) {
-        debugPrint('AuthService: Returning local user data, fetching Firestore in background');
+      if (waitForFirestore) {
+        // Wait for Firestore data to be loaded before returning
+        final firestoreUser = await _fetchFirestoreUserAndWait(email.toLowerCase(), merged);
+        if (firestoreUser != null) {
+          merged = firestoreUser;
+        }
+        
+        // Update cache
+        _cachedUser = merged;
+        _cachedToken = token;
+        _cacheTimestamp = DateTime.now();
+        AuthService.currentUser = merged;
+        
+        // Emit user update to stream
+        _emitUserUpdate(merged);
+        
+        if (kDebugMode && showAuthLogs) {
+          debugPrint('AuthService: Returning user data with Firestore permissions loaded');
+        }
+        return merged;
+      } else {
+        // We have local data, return it immediately and fetch Firestore in background
+        _fetchFirestoreUserInBackground(email.toLowerCase(), merged);
+        
+        // Update cache
+        _cachedUser = merged;
+        _cachedToken = token;
+        _cacheTimestamp = DateTime.now();
+        AuthService.currentUser = merged;
+        
+        // Emit user update to stream
+        _emitUserUpdate(merged);
+        
+        if (kDebugMode && showAuthLogs) {
+          debugPrint('AuthService: Returning local user data, fetching Firestore in background');
+        }
+        return merged;
       }
-      return merged;
     }
 
     // Fallback: Try to get from Firestore if no local data exists
@@ -2798,6 +2820,73 @@ class AuthService {
     return null;
   }
 
+  // Helper method to fetch Firestore user data and wait for completion
+  static Future<Map<String, dynamic>?> _fetchFirestoreUserAndWait(String email, Map<String, dynamic>? localUser) async {
+    try {
+      if (Firebase.apps.isNotEmpty && !_isWindows) {
+        await ensureFirebasePersistence();
+        final auth = fb.FirebaseAuth.instance;
+        String? uid = auth.currentUser?.uid;
+        Map<String, dynamic>? fsUser;
+        
+        if (uid != null && uid.isNotEmpty) {
+          final doc = await FirebaseThreadingHandler.executeWithThreadSafety(
+            () => FirebaseFirestore.instance.collection('users').doc(uid).get(),
+            operationName: 'AuthService fetchFirestoreUserAndWait',
+          );
+          if (doc.exists) fsUser = doc.data();
+        }
+        
+        if (fsUser == null) {
+          final snap = await FirebaseThreadingHandler.executeWithThreadSafety(
+            () => FirebaseFirestore.instance.collection('users').where('email', isEqualTo: email.toLowerCase()).limit(1).get(),
+            operationName: 'AuthService fetchFirestoreUserAndWait email query',
+          );
+          if (snap.docs.isNotEmpty) {
+            fsUser = snap.docs.first.data();
+            uid = snap.docs.first.id;
+          }
+        }
+        
+        if (fsUser != null) {
+          // CRITICAL FIX: Preserve local data and only add missing fields from Firestore
+          // This ensures permissionsMap from local database is not overwritten
+          final merged = Map<String, dynamic>.from(localUser ?? <String, dynamic>{});
+          
+          // Only add fields from Firestore that don't exist in local data
+          fsUser.forEach((key, value) {
+            if (!merged.containsKey(key) || merged[key] == null) {
+              merged[key] = value;
+            }
+          });
+          
+          // CRITICAL: Ensure permissionsMap is preserved from local data
+          if (localUser != null && localUser.containsKey('permissionsMap')) {
+            merged['permissionsMap'] = localUser['permissionsMap'];
+          }
+          
+          // Update cache
+          _cachedUser = merged;
+          _cachedToken = _cachedToken; // Preserve existing token
+          _cacheTimestamp = DateTime.now();
+          AuthService.currentUser = merged;
+          
+          // Emit user update to stream
+          _emitUserUpdate(merged);
+          
+          debugPrint('AuthService: Firestore user data loaded and merged for $email');
+          debugPrint('AuthService: Preserved PermissionsMap: ${merged['permissionsMap']}');
+          
+          return merged;
+        }
+      }
+    } catch (e) {
+      debugPrint('AuthService: Error fetching Firestore user data: $e');
+    }
+    
+    return localUser;
+  }
+
   // Helper method to fetch Firestore user data in background without blocking
   static Future<void> _fetchFirestoreUserInBackground(String email, Map<String, dynamic> localUser) async {
     try {
@@ -2805,6 +2894,7 @@ class AuthService {
         final auth = fb.FirebaseAuth.instance;
         String? uid = auth.currentUser?.uid;
         Map<String, dynamic>? fsUser;
+        
         if (uid != null && uid.isNotEmpty) {
           final doc = await FirebaseThreadingHandler.executeWithThreadSafety(
             () => FirebaseFirestore.instance.collection('users').doc(uid).get(),

@@ -45,59 +45,101 @@ class ModernSidebar extends StatelessWidget {
     final isSuperAdmin = role == 'super_admin';
     
     bool _canSee(String moduleKey) {
-      if (isBypass || isSuperAdmin) return true;
+      // CRITICAL SECURITY FIX: Strict RBAC enforcement
       
-      // CRITICAL FIX: Universal modules accessible to all authenticated users
-      const universalModules = {'dashboard', 'settings'};
-      if (universalModules.contains(moduleKey)) {
-        debugPrint('ModernSidebar: Module $moduleKey is universal - allowing access for all users');
+      // Bypass users and Super Admins get all access
+      if (isBypass || isSuperAdmin) {
         return true;
       }
       
-      // Check permissionsMap first for dynamic module access
-      try {
-        final permissionsMapRaw = currentUser?['permissionsMap'];
-        Map<String, dynamic>? permissionsMap;
-        
-        // CRITICAL FIX: Handle JSON string permissionsMap from database
-        if (permissionsMapRaw is String) {
-          try {
-            permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
-          } catch (e) {
-            debugPrint('ModernSidebar: Failed to decode permissionsMap JSON: $e');
-            permissionsMap = null;
-          }
-        } else if (permissionsMapRaw is Map<String, dynamic>) {
-          permissionsMap = permissionsMapRaw;
-        }
-        
-        if (permissionsMap != null && permissionsMap.containsKey(moduleKey)) {
-          final permission = permissionsMap[moduleKey]?.toString().toLowerCase();
-          final hasPermission = permission == 'view_only' || 
-                               permission == 'view_add' || 
-                               permission == 'view_add_edit' || 
-                               permission == 'full_access';
-          debugPrint('ModernSidebar: Module $moduleKey found in permissionsMap: $permission -> $hasPermission');
-          return hasPermission;
-        }
-        
-        // CRITICAL: For agents, if module is not in permissionsMap, deny access
-        if (role == 'agent') {
-          debugPrint('ModernSidebar: Agent role - module $moduleKey not found in permissionsMap, denying access');
-          return false;
-        }
-      } catch (e) {
-        debugPrint('ModernSidebar: Error checking permissionsMap for $moduleKey: $e');
+      // Universal modules accessible to all authenticated users
+      const universalModules = {'dashboard', 'settings'};
+      if (universalModules.contains(moduleKey)) {
+        return true;
       }
       
-      // Fallback to legacy permission level check
+      // Check permission level
       final level = PermissionHelper.getModulePermissionLevel(currentUser, moduleKey);
-      final canAccess = level != 'no_access';
-      debugPrint('ModernSidebar: Fallback check for $moduleKey: level=$level -> canAccess=$canAccess');
       
-      // CRITICAL FIX: For agents, enforce deny-by-default even in fallback
-      if (role == 'agent' && canAccess) {
-        // Double-check that this module is explicitly in permissionsMap for agents
+      // If permissions are still loading, show module temporarily (will be updated when loaded)
+      if (level == 'loading') {
+        return true;
+      }
+      
+      // Strict permission check - only allow if explicitly granted
+      final hasExplicitAccess = level != 'no_access';
+      
+      if (!hasExplicitAccess) {
+        return false;
+      }
+      
+      // CRITICAL SECURITY FIX: Double-check permissionsMap for agents to ensure explicit assignment
+      if (role == 'agent') {
+        try {
+          var permissionsMapRaw = currentUser?['permissionsMap'];
+          
+          // If permissionsMap is not a direct field, check inside the permissions field
+          if (permissionsMapRaw == null) {
+            final permissionsField = currentUser?['permissions'];
+            if (permissionsField != null) {
+              try {
+                Map<String, dynamic>? permissions;
+                if (permissionsField is String) {
+                  permissions = jsonDecode(permissionsField) as Map<String, dynamic>?;
+                } else if (permissionsField is Map<String, dynamic>) {
+                  permissions = permissionsField;
+                }
+                
+                if (permissions != null) {
+                  permissionsMapRaw = permissions['permissionsMap'];
+                }
+              } catch (e) {
+                return false;
+              }
+            }
+          }
+          
+          Map<String, dynamic>? permissionsMap;
+          
+          // Handle JSON string permissionsMap from database
+          if (permissionsMapRaw is String) {
+            try {
+              permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
+            } catch (e) {
+              return false;
+            }
+          } else if (permissionsMapRaw is Map<String, dynamic>) {
+            permissionsMap = permissionsMapRaw;
+          }
+          
+          // CRITICAL: Agent MUST have explicit permission in permissionsMap
+          if (permissionsMap == null || !permissionsMap.containsKey(moduleKey)) {
+            return false;
+          }
+          
+          final permission = permissionsMap[moduleKey]?.toString().toLowerCase();
+          final hasValidPermission = permission == 'view_only' || 
+                                     permission == 'view_add' || 
+                                     permission == 'view_add_edit' || 
+                                     permission == 'full_access';
+          
+          if (!hasValidPermission) {
+            return false;
+          }
+          
+          return true;
+        } catch (e) {
+          return false; // Deny on error for security
+        }
+      }
+      
+      // Company Admins get access to users and reports, plus any explicit permissions
+      if (role == 'company_admin') {
+        if (moduleKey == 'users' || moduleKey == 'reports') {
+          return true;
+        }
+        
+        // Check explicit permissions for other modules
         try {
           final permissionsMapRaw = currentUser?['permissionsMap'];
           Map<String, dynamic>? permissionsMap;
@@ -106,32 +148,29 @@ class ModernSidebar extends StatelessWidget {
             try {
               permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
             } catch (e) {
-              debugPrint('ModernSidebar: Failed to decode permissionsMap JSON in fallback: $e');
-              permissionsMap = null;
+              return false;
             }
           } else if (permissionsMapRaw is Map<String, dynamic>) {
             permissionsMap = permissionsMapRaw;
           }
           
-          if (permissionsMap == null || !permissionsMap.containsKey(moduleKey)) {
-            debugPrint('ModernSidebar: Agent fallback - module $moduleKey not in permissionsMap, denying access');
-            return false;
-          }
-          
-          final permission = permissionsMap[moduleKey]?.toString().toLowerCase();
-          final hasExplicitPermission = permission == 'view_only' || 
+          if (permissionsMap != null && permissionsMap.containsKey(moduleKey)) {
+            final permission = permissionsMap[moduleKey]?.toString().toLowerCase();
+            final hasValidPermission = permission == 'view_only' || 
                                        permission == 'view_add' || 
                                        permission == 'view_add_edit' || 
                                        permission == 'full_access';
-          debugPrint('ModernSidebar: Agent explicit permission check for $moduleKey: $permission -> $hasExplicitPermission');
-          return hasExplicitPermission;
+            
+            return hasValidPermission;
+          }
         } catch (e) {
-          debugPrint('ModernSidebar: Error in agent fallback check for $moduleKey: $e');
-          return false;
+          // Error checking permissions, deny access for security
         }
+        
+        return false;
       }
       
-      return canAccess;
+      return hasExplicitAccess;
     }
 
     return ConstrainedBox(

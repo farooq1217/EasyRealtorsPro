@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import '../../../widgets/custom_sidebar.dart';
 import '../../../core/font_utils.dart';
 import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/permission_helper.dart';
+import '../../../core/services/permission_sync_service.dart';
 import '../../../core/app.dart' show AdminApp;
 import '../dashboard/dashboard_page.dart';
 import '../inventory/pages/inventory_page.dart';
@@ -58,6 +60,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   ThemeMode _themeMode = ThemeMode.system;
   int? _badgeFiles;
   int? _badgeRentals;
+  StreamSubscription<Map<String, dynamic>?>? _userStreamSubscription;
   
   @override
   void initState() {
@@ -66,6 +69,16 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     _loadUserData();
     _loadTheme();
     _loadBadges();
+    
+    // CRITICAL: Listen to user stream for reactive sidebar updates
+    _userStreamSubscription = AuthService.currentUserStream.listen((user) {
+      if (mounted) {
+        debugPrint('MainNavigationPage: User stream update received - ${user?['email']}');
+        setState(() {
+          _currentUser = user;
+        });
+      }
+    });
   }
 
   Future<void> _loadUserData() async {
@@ -91,6 +104,13 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         _themeMode = _themeFrom(mode);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    // CRITICAL: Clean up stream subscription to prevent memory leaks
+    _userStreamSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadBadges() async {
@@ -140,8 +160,10 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     final storage = AppStorage();
     final settings = await storage.readSettings();
     final sessionId = settings['currentSessionId'] as String?;
-    await storage.writeSettings({'authToken': null, 'currentSessionId': null});
-    await AuthService.logout(sessionId);
+    
+    // CRITICAL: Use PermissionSyncService for comprehensive logout
+    await PermissionSyncService.performLogout(sessionId);
+    
     if (mounted) {
       Navigator.of(context).pushNamedAndRemoveUntil(
         '/',

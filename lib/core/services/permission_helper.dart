@@ -113,60 +113,118 @@ class PermissionHelper {
     if (isBypassUser(user)) return 'view_add_edit';
     if (local.RoleUtils.isSuperAdmin(user)) return 'view_add_edit';
     
-    // CRITICAL FIX: Explicit bypass for Company Admins for specific modules
+    // CRITICAL FIX: Allow permissions to load, but maintain security
+    // If permissions are still loading, return 'loading' state for sidebar to handle
+    if (_arePermissionsStillLoading(user)) {
+      return 'loading';
+    }
+    
+    // CRITICAL FIX: Explicit bypass for Company Admins for specific modules ONLY
     if (local.RoleUtils.isCompanyAdmin(user) && moduleKey == 'users') { 
-      debugPrint('PermissionHelper: Company Admin override - granting full_access to users module');
       return 'full_access'; 
     }
     if (local.RoleUtils.isCompanyAdmin(user) && moduleKey == 'reports') { 
-      debugPrint('PermissionHelper: Company Admin override - granting full_access to reports module');
       return 'full_access'; 
     }
     
-    // ROLE-BASED SHORTCUTS: Skip permissionsMap checking for known roles
     final userRole = local.RoleUtils.getUserRole(user);
     
-    // DEBUG: Add detailed logging for 'users' module
-    if (moduleKey == 'users') {
-      final email = (user['email'] ?? user['username'])?.toString().toLowerCase();
-      debugPrint('PermissionHelper.getModulePermissionLevel(users) DEBUG:');
-      debugPrint('  User email: $email');
-      debugPrint('  getUserRole: $userRole');
-      debugPrint('  isBypassUser: ${isBypassUser(user)}');
-      debugPrint('  isSuperAdmin: ${local.RoleUtils.isSuperAdmin(user)}');
-    }
-    
+        
+    // CRITICAL SECURITY FIX: Company Admins only get access to specific modules
     if (userRole == 'company_admin') {
-      // Company Admin gets full access within their company
-      if (moduleKey == 'users') {
-        debugPrint('  Company Admin detected, returning view_add_edit for users module');
+      // Company Admin gets access to users and reports ONLY
+      if (moduleKey == 'users' || moduleKey == 'reports') {
+        return 'view_add_edit';
       }
-      return 'view_add_edit';
-    }
-    // CRITICAL FIX: Check permissionsMap FIRST for agents before role-based shortcuts
-    final map = getModulePermissionsMap(user);
-    final v = map[moduleKey];
-    if (v != null && v.trim().isNotEmpty) {
-      debugPrint('PermissionHelper: Module $moduleKey found in permissionsMap: ${v.trim()}');
-      return v.trim();
+      // For all other modules, check permissionsMap explicitly
+      final map = getModulePermissionsMap(user);
+      final v = map[moduleKey];
+      if (v != null && v.trim().isNotEmpty) {
+        return v.trim();
+      }
+      return 'no_access';
     }
     
+    // CRITICAL SECURITY FIX: Agents MUST have explicit permissions in permissionsMap
     if (userRole == 'agent') {
-      // Agent gets NO access by default, only explicit permissions in permissionsMap are allowed
-      if (moduleKey == 'users') {
-        debugPrint('  Agent detected, returning no_access for users module');
-        return 'no_access';
+      final map = getModulePermissionsMap(user);
+      final v = map[moduleKey];
+      
+      if (v != null && v.trim().isNotEmpty) {
+        final permission = v.trim().toLowerCase();
+        // Only allow valid permission levels
+        if (permission == 'view_only' || permission == 'view_add' || permission == 'view_add_edit' || permission == 'full_access') {
+          return permission;
+        }
       }
-      debugPrint('  Agent detected - module $moduleKey not explicitly granted, returning no_access');
-      return 'no_access'; // CRITICAL FIX: Deny by default for agents
+      
+      return 'no_access';
     }
     
-    // Only log this for debugging unknown roles, not for standard roles
-    debugPrint('PermissionHelper: Unknown role "$userRole" with empty permissionsMap for module $moduleKey');
+    // CRITICAL SECURITY FIX: Default to no_access for all unknown scenarios
+    return 'no_access';
+  }
+
+  /// Check if permissions are still loading (permissionsMap not populated yet)
+  static bool _arePermissionsStillLoading(Map<String, dynamic>? user) {
+    if (user == null) {
+      debugPrint('PermissionHelper: user is null - still loading');
+      return true;
+    }
     
-    if (map.isNotEmpty) return 'no_access';
-    final legacy = getPermissionLevel(user);
-    return normalizeLegacyToModuleLevel(legacy);
+    // Check if permissionsMap exists and has content
+    // First check if permissionsMap exists as a direct field
+    var permissionsMapRaw = user['permissionsMap'];
+    
+    // DEBUG: Only log when permissions are actually loading
+    if (permissionsMapRaw == null) {
+      debugPrint('PermissionHelper: User permissions field is null or empty');
+    }
+    
+    // If not, check inside the permissions field (JSON string)
+    if (permissionsMapRaw == null) {
+      final permissionsField = user['permissions'];
+      if (permissionsField != null) {
+        try {
+          Map<String, dynamic>? permissions;
+          if (permissionsField is String) {
+            permissions = jsonDecode(permissionsField) as Map<String, dynamic>?;
+          } else if (permissionsField is Map<String, dynamic>) {
+            permissions = permissionsField;
+          }
+          
+          if (permissions != null) {
+            permissionsMapRaw = permissions['permissionsMap'];
+          }
+        } catch (e) {
+          debugPrint('PermissionHelper: Error parsing permissions field: $e');
+        }
+      }
+    }
+    
+    if (permissionsMapRaw == null) {
+      debugPrint('PermissionHelper: permissionsMap is null - still loading');
+      return true;
+    }
+    
+    try {
+      Map<String, dynamic>? permissionsMap;
+      if (permissionsMapRaw is String) {
+        permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
+      } else if (permissionsMapRaw is Map<String, dynamic>) {
+        permissionsMap = permissionsMapRaw;
+      }
+      
+      if (permissionsMap == null || permissionsMap.isEmpty) {
+        debugPrint('PermissionHelper: permissionsMap is empty - still loading');
+        return true;
+      }
+      
+      return false; // Permissions are loaded
+    } catch (e) {
+      debugPrint('PermissionHelper: Error checking permissions loading state: $e');
+      return true; // Assume still loading if there's an error
+    }
   }
 
   static bool canViewModule(Map<String, dynamic>? user, String moduleKey) {

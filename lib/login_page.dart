@@ -8,6 +8,7 @@ import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import 'core/services/auth_service.dart';
+import 'core/services/permission_sync_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firestore_sync_service.dart';
@@ -96,36 +97,86 @@ class _LoginPageState extends State<LoginPage> {
             return;
           }
 
-          // OPTIMIZATION: Navigate to dashboard immediately, trigger background sync after navigation
+          // CRITICAL FIX: Wait for permissions to be fully loaded before navigation
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Login successful'), backgroundColor: Colors.green, duration: Duration(seconds: 2)),
+              const SnackBar(content: Text('Login successful, loading permissions...'), backgroundColor: Colors.green, duration: Duration(seconds: 2)),
             );
             
-            // Navigate immediately without waiting for sync
-            await Future.delayed(const Duration(seconds: 1)); // Minimal delay for success message
-            if (mounted) {
-              final navArgs = result['requiresProfileCompletion'] == true
-                  ? {
-                      'initialNavIndex': 5,
-                      'initialNotice': (result['profileRedirectMessage'] as String?) ??
-                          'Please complete your profile to continue',
-                    }
-                  : null;
-              // THREAD SAFETY: Wrap navigation and background sync in proper UI thread callbacks
-              SchedulerBinding.instance.addPostFrameCallback((_) {
-                if (!mounted) return;
-                Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
+            // CRITICAL: Force refresh permissions and wait for them to be fully loaded
+            setState(() { _isLoading = true; });
+            
+            try {
+              final token = result['token'] as String?;
+              if (token != null) {
+                debugPrint('LoginPage: Refreshing user permissions...');
                 
-                // TRIGGER BACKGROUND SYNC AFTER NAVIGATION - Thread Safe
-                SchedulerBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted) return;
-                  Future.delayed(const Duration(seconds: 3), () async {
-                    debugPrint('LoginPage: Triggering background sync after navigation...');
-                    await AuthService.triggerBackgroundSyncAfterLogin();
-                  });
-                });
-              });
+                // Force permission refresh
+                await PermissionSyncService.refreshUserPermissions(token);
+                
+                // Wait for permissions to be fully loaded with timeout
+                final userWithPermissions = await PermissionSyncService.waitForPermissionsLoad(
+                  token,
+                  timeout: const Duration(seconds: 8),
+                );
+                
+                if (userWithPermissions != null) {
+                  debugPrint('LoginPage: Permissions loaded successfully, navigating to dashboard...');
+                  
+                  if (mounted) {
+                    final navArgs = result['requiresProfileCompletion'] == true
+                        ? {
+                            'initialNavIndex': 5,
+                            'initialNotice': (result['profileRedirectMessage'] as String?) ??
+                                'Please complete your profile to continue',
+                          }
+                        : null;
+                    
+                    // THREAD SAFETY: Wrap navigation in proper UI thread callbacks
+                    SchedulerBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
+                      
+                      // TRIGGER BACKGROUND SYNC AFTER NAVIGATION - Thread Safe
+                      SchedulerBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        Future.delayed(const Duration(seconds: 3), () async {
+                          debugPrint('LoginPage: Triggering background sync after navigation...');
+                          await AuthService.triggerBackgroundSyncAfterLogin();
+                        });
+                      });
+                    });
+                  }
+                } else {
+                  debugPrint('LoginPage: Timeout loading permissions, proceeding with navigation anyway...');
+                  if (mounted) {
+                    // Navigate anyway after timeout
+                    final navArgs = result['requiresProfileCompletion'] == true
+                        ? {
+                            'initialNavIndex': 5,
+                            'initialNotice': (result['profileRedirectMessage'] as String?) ??
+                                'Please complete your profile to continue',
+                          }
+                        : null;
+                    
+                    Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
+                  }
+                }
+              }
+            } catch (e) {
+              debugPrint('LoginPage: Error loading permissions: $e');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error loading permissions: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            } finally {
+              if (mounted) {
+                setState(() { _isLoading = false; });
+              }
             }
           }
         } else if (result['requires2FA'] == true) {
