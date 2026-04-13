@@ -17,6 +17,7 @@ import 'package:image/image.dart' as img_pkg;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:drift/drift.dart' as d;
 import '../firestore_sync_service.dart';
 import 'role_utils.dart' as local;
 
@@ -814,7 +815,7 @@ Future<void> exportProtectedPdf(BuildContext context) async {
 /// Get the first available company ID for super admin operations
 Future<String> _getFirstCompanyId(dynamic db) async {
   try {
-    final result = await db.customSelect('SELECT id FROM companies WHERE is_active = 1 LIMIT 1', variables: []).get();
+    final result = await db.customSelect('SELECT id FROM companies WHERE is_active = 1 LIMIT 1', variables: <d.Variable<Object>>[]).get();
     if (result.isNotEmpty) {
       return result.first.data['id'] as String;
     }

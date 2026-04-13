@@ -152,7 +152,7 @@ abstract class OfflineFirstRepository {
     }
 
     return _database
-        .customSelect(query, variables: variables ?? [])
+        .customSelect(query, variables: <d.Variable<Object>>[...(variables ?? [])])
         .watch()
         .map((rows) => rows.map((row) => row.data).toList());
   }
@@ -176,7 +176,7 @@ abstract class OfflineFirstRepository {
     }
     
     return _database
-        .customSelect(query, variables: [_convertToVariable(filterValue)])
+        .customSelect(query, variables: <d.Variable<Object>>[_convertToVariable(filterValue)])
         .watch()
         .map((rows) => rows.map((row) => row.data).toList());
   }

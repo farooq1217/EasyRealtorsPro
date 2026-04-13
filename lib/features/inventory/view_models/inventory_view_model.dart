@@ -93,6 +93,7 @@ class InventoryViewModel extends ChangeNotifier {
 
   // Load items based on current filters
   Future<void> loadItems({String? companyId, bool? isSuper}) async {
+    debugPrint('InventoryViewModel: loadItems called - companyId: $companyId, isSuper: $isSuper');
     _isLoading = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -104,6 +105,9 @@ class InventoryViewModel extends ChangeNotifier {
       final effectiveCompanyId = companyId ?? _currentUserCompanyId;
       final effectiveIsSuper = isSuper ?? _currentUserIsSuper;
       
+      debugPrint('InventoryViewModel: Effective context - companyId: $effectiveCompanyId, isSuper: $effectiveIsSuper');
+      debugPrint('InventoryViewModel: Filters - type: $_selectedType, society: $_selectedSocietyId, block: $_selectedBlockId, status: $_selectedStatusFilter, search: $_searchQuery');
+      
       _allItems = await _inventoryRepository.getFilteredItems(
         type: _selectedType,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
@@ -112,6 +116,8 @@ class InventoryViewModel extends ChangeNotifier {
         statusFilter: _selectedStatusFilter,
         companyId: effectiveCompanyId, // Use effective company context
       );
+      
+      debugPrint('InventoryViewModel: Repository returned ${_allItems.length} items');
       _filteredItems = _allItems;
     } catch (e) {
       debugPrint('Error loading inventory items: $e');

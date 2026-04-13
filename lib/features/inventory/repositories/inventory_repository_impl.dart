@@ -195,21 +195,30 @@ class InventoryRepositoryImpl implements InventoryRepository {
   // Private helper methods
   Future<List<InventoryItem>> _getFiles({String? companyId}) async {
     try {
+      debugPrint('InventoryRepository: _getFiles called - companyId: $companyId, isSuperAdmin: $isSuperAdmin');
       String whereClause = 'WHERE is_active = 1';
       List<dynamic> whereArgs = [];
       
-      if (companyId != null && companyId.isNotEmpty) {
-        whereClause += ' AND company_id = ?';
-        whereArgs.add(companyId);
-      } else if (!isSuperAdmin) {
-        whereClause += ' AND 1=0'; // Return no results only for non-super admins
+      // Super Admin bypass: No company filtering at all
+      if (!isSuperAdmin) {
+        if (companyId != null && companyId.isNotEmpty) {
+          whereClause += ' AND company_id = ?';
+          whereArgs.add(companyId);
+        } else {
+          whereClause += ' AND 1=0'; // Return no results for non-super admins without company
+        }
       }
       
-      final result = await db.customSelect('''
+      final query = '''
         SELECT * FROM files_table 
         $whereClause
         ORDER BY updated_at DESC
-      ''', variables: <d.Variable<Object>>[...whereArgs.map((arg) => d.Variable.withString(arg.toString()))]).get();
+      ''';
+      debugPrint('InventoryRepository: Executing files query: $query');
+      debugPrint('InventoryRepository: Query args: ${whereArgs.map((arg) => arg.toString()).toList()}');
+      
+      final result = await db.customSelect(query, variables: <d.Variable<Object>>[...whereArgs.map((arg) => d.Variable.withString(arg.toString()))]).get();
+      debugPrint('InventoryRepository: Files query returned ${result.length} rows');
       
       // Explicit type-safe mapping
       final List<InventoryItem> items = [];
@@ -217,11 +226,6 @@ class InventoryRepositoryImpl implements InventoryRepository {
         final Map<String, dynamic> data = Map<String, dynamic>.from(row.data);
         final item = InventoryItem.fromMap(data, InventoryType.file);
         items.add(item);
-      }
-      
-      // Filter by company if not super admin
-      if (!isSuperAdmin && companyId != null) {
-        return items.where((item) => item.companyId == companyId).toList();
       }
       
       return items;
@@ -233,21 +237,30 @@ class InventoryRepositoryImpl implements InventoryRepository {
 
   Future<List<InventoryItem>> _getProperties({String? companyId}) async {
     try {
+      debugPrint('InventoryRepository: _getProperties called - companyId: $companyId, isSuperAdmin: $isSuperAdmin');
       String whereClause = 'WHERE is_active = 1';
       List<dynamic> whereArgs = [];
       
-      if (companyId != null && companyId.isNotEmpty) {
-        whereClause += ' AND company_id = ?';
-        whereArgs.add(companyId);
-      } else if (!isSuperAdmin) {
-        whereClause += ' AND 1=0'; // Return no results only for non-super admins
+      // Super Admin bypass: No company filtering at all
+      if (!isSuperAdmin) {
+        if (companyId != null && companyId.isNotEmpty) {
+          whereClause += ' AND company_id = ?';
+          whereArgs.add(companyId);
+        } else {
+          whereClause += ' AND 1=0'; // Return no results for non-super admins without company
+        }
       }
       
-      final result = await db.customSelect('''
+      final query = '''
         SELECT * FROM properties 
         $whereClause
         ORDER BY updated_at DESC
-      ''', variables: <d.Variable<Object>>[...whereArgs.map((arg) => d.Variable.withString(arg.toString()))]).get();
+      ''';
+      debugPrint('InventoryRepository: Executing properties query: $query');
+      debugPrint('InventoryRepository: Query args: ${whereArgs.map((arg) => arg.toString()).toList()}');
+      
+      final result = await db.customSelect(query, variables: <d.Variable<Object>>[...whereArgs.map((arg) => d.Variable.withString(arg.toString()))]).get();
+      debugPrint('InventoryRepository: Properties query returned ${result.length} rows');
       
       // Explicit type-safe mapping
       final List<InventoryItem> items = [];
