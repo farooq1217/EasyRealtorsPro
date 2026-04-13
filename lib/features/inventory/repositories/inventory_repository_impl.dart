@@ -12,11 +12,14 @@ class InventoryRepositoryImpl implements InventoryRepository {
   InventoryRepositoryImpl(this.db, {required this.companyId, required this.isSuperAdmin});
 
   @override
-  Future<List<InventoryItem>> getAllItems() async {
+  Future<List<InventoryItem>> getAllItems({String? companyId}) async {
     try {
+      // Use provided companyId or fall back to instance companyId
+      final effectiveCompanyId = companyId ?? this.companyId;
+      
       // Get both files and properties
-      final filesResult = await _getFiles();
-      final propertiesResult = await _getProperties();
+      final filesResult = await _getFiles(companyId: effectiveCompanyId);
+      final propertiesResult = await _getProperties(companyId: effectiveCompanyId);
       
       // Combine and sort by updated_at
       final allItems = [...filesResult, ...propertiesResult];
@@ -30,12 +33,15 @@ class InventoryRepositoryImpl implements InventoryRepository {
   }
 
   @override
-  Future<List<InventoryItem>> getItemsByType(InventoryType type) async {
+  Future<List<InventoryItem>> getItemsByType(InventoryType type, {String? companyId}) async {
     try {
+      // Use provided companyId or fall back to instance companyId
+      final effectiveCompanyId = companyId ?? this.companyId;
+      
       if (type == InventoryType.file) {
-        return await _getFiles();
+        return await _getFiles(companyId: effectiveCompanyId);
       } else {
-        return await _getProperties();
+        return await _getProperties(companyId: effectiveCompanyId);
       }
     } catch (e) {
       debugPrint('Error loading items by type $type: $e');
@@ -50,14 +56,15 @@ class InventoryRepositoryImpl implements InventoryRepository {
     String? societyId,
     String? blockId,
     String? statusFilter,
+    String? companyId,
   }) async {
     try {
       List<InventoryItem> items;
       
       if (type != null) {
-        items = await getItemsByType(type);
+        items = await getItemsByType(type, companyId: companyId);
       } else {
-        items = await getAllItems();
+        items = await getAllItems(companyId: companyId);
       }
 
       // Apply filters
@@ -101,26 +108,28 @@ class InventoryRepositoryImpl implements InventoryRepository {
           INSERT INTO files_table (
             id, name, client_name, file_no, reference_no, mobile_no, 
             society_id, block_id, sale_status, path, remarks, cnic,
-            updated_at, company_id, is_active
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            updated_at, company_id, is_active, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
         ''', [
           map['id'], map['name'], map['client_name'], map['file_no'], 
           map['reference_no'], map['mobile_no'], map['society_id'], 
           map['block_id'], map['sale_status'], map['path'], 
-          map['remarks'], map['cnic'], map['updated_at'], map['company_id']
+          map['remarks'], map['cnic'], map['updated_at'], map['company_id'], 
+          map['created_by'] ?? ''
         ]);
       } else {
         await db.customStatement('''
           INSERT INTO properties (
             id, client_name, reference_no, property_name, demand, price,
             society_id, block_id, sale_status, remarks, cnic,
-            updated_at, company_id, is_active
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            updated_at, company_id, is_active, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
         ''', [
           map['id'], map['client_name'], map['reference_no'], 
           map['property_name'], map['demand'], map['price'],
           map['society_id'], map['block_id'], map['sale_status'], 
-          map['remarks'], map['cnic'], map['updated_at'], map['company_id']
+          map['remarks'], map['cnic'], map['updated_at'], map['company_id'], 
+          map['created_by'] ?? ''
         ]);
       }
     } catch (e) {
@@ -184,13 +193,23 @@ class InventoryRepositoryImpl implements InventoryRepository {
   }
 
   // Private helper methods
-  Future<List<InventoryItem>> _getFiles() async {
+  Future<List<InventoryItem>> _getFiles({String? companyId}) async {
     try {
+      String whereClause = 'WHERE is_active = 1';
+      List<dynamic> whereArgs = [];
+      
+      if (companyId != null && companyId.isNotEmpty) {
+        whereClause += ' AND company_id = ?';
+        whereArgs.add(companyId);
+      } else if (!isSuperAdmin) {
+        whereClause += ' AND 1=0'; // Return no results only for non-super admins
+      }
+      
       final result = await db.customSelect('''
         SELECT * FROM files_table 
-        WHERE is_active = 1
+        $whereClause
         ORDER BY updated_at DESC
-      ''').get();
+      ''', variables: <d.Variable<Object>>[...whereArgs.map((arg) => d.Variable.withString(arg.toString()))]).get();
       
       // Explicit type-safe mapping
       final List<InventoryItem> items = [];
@@ -212,13 +231,23 @@ class InventoryRepositoryImpl implements InventoryRepository {
     }
   }
 
-  Future<List<InventoryItem>> _getProperties() async {
+  Future<List<InventoryItem>> _getProperties({String? companyId}) async {
     try {
+      String whereClause = 'WHERE is_active = 1';
+      List<dynamic> whereArgs = [];
+      
+      if (companyId != null && companyId.isNotEmpty) {
+        whereClause += ' AND company_id = ?';
+        whereArgs.add(companyId);
+      } else if (!isSuperAdmin) {
+        whereClause += ' AND 1=0'; // Return no results only for non-super admins
+      }
+      
       final result = await db.customSelect('''
         SELECT * FROM properties 
-        WHERE is_active = 1
+        $whereClause
         ORDER BY updated_at DESC
-      ''').get();
+      ''', variables: <d.Variable<Object>>[...whereArgs.map((arg) => d.Variable.withString(arg.toString()))]).get();
       
       // Explicit type-safe mapping
       final List<InventoryItem> items = [];
@@ -226,11 +255,6 @@ class InventoryRepositoryImpl implements InventoryRepository {
         final Map<String, dynamic> data = Map<String, dynamic>.from(row.data);
         final item = InventoryItem.fromMap(data, InventoryType.property);
         items.add(item);
-      }
-      
-      // Filter by company if not super admin
-      if (!isSuperAdmin && companyId != null) {
-        return items.where((item) => item.companyId == companyId).toList();
       }
       
       return items;

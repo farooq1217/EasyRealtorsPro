@@ -2,11 +2,11 @@
 import '../../inventory/models/inventory_item.dart';
 
 abstract class InventoryRepository {
-  // Get all items (both files and properties)
-  Future<List<InventoryItem>> getAllItems();
+  // Get all items (both files and properties) with optional company filtering
+  Future<List<InventoryItem>> getAllItems({String? companyId});
   
-  // Get items by type
-  Future<List<InventoryItem>> getItemsByType(InventoryType type);
+  // Get items by type with optional company filtering
+  Future<List<InventoryItem>> getItemsByType(InventoryType type, {String? companyId});
   
   // Get filtered items with search and filters
   Future<List<InventoryItem>> getFilteredItems({
@@ -15,6 +15,7 @@ abstract class InventoryRepository {
     String? societyId,
     String? blockId,
     String? statusFilter,
+    String? companyId,
   });
   
   // Add new item

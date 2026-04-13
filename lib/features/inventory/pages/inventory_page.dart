@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/font_utils.dart';
+import 'package:drift/drift.dart' as d;
 
 import 'package:provider/provider.dart';
 import '../models/inventory_item.dart';
@@ -89,6 +90,8 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
         companyId: companyId,
         isSuperAdmin: isSuper,
       ),
+      companyId: companyId,
+      isSuper: isSuper,
     );
     
     if (mounted) {
@@ -99,7 +102,7 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
 
   Future<String> _getFirstCompanyIdFromUtils(dynamic db) async {
     try {
-      final result = await db.customSelect('SELECT id FROM companies WHERE is_active = 1 LIMIT 1').get();
+      final result = await db.customSelect('SELECT id FROM companies WHERE is_active = 1 LIMIT 1', variables: <d.Variable<Object>>[]).get();
       if (result.isNotEmpty) {
         return result.first.data['id'] as String;
       }

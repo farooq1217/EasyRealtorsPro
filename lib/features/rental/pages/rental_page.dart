@@ -180,10 +180,10 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
       readsFrom: {widget.db.rentalItems},
     ).get();
 
-    final cnt = await widget.db.customSelect('SELECT parent_id, COUNT(*) AS c FROM rental_comments GROUP BY parent_id').get();
+    final cnt = await widget.db.customSelect('SELECT parent_id, COUNT(*) AS c FROM rental_comments GROUP BY parent_id', variables: <d.Variable<Object>>[]).get();
     final prev = await widget.db.customSelect(
-      'SELECT rc.parent_id, rc.comment FROM rental_comments rc JOIN (SELECT parent_id, MAX(updated_at) AS m FROM rental_comments GROUP BY parent_id) t ON t.parent_id = rc.parent_id AND t.m = rc.updated_at')
-      .get();
+      'SELECT rc.parent_id, rc.comment FROM rental_comments rc JOIN (SELECT parent_id, MAX(updated_at) AS m FROM rental_comments GROUP BY parent_id) t ON t.parent_id = rc.parent_id AND t.m = rc.updated_at',
+      variables: <d.Variable<Object>>[]).get();
 
     if (!mounted) return;
 

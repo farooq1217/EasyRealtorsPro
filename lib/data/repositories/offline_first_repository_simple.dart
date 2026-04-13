@@ -93,6 +93,7 @@ abstract class OfflineFirstRepositorySimple {
   }) async {
     final result = await _database.customSelect(
       'SELECT * FROM $tableName WHERE is_active = 1 ORDER BY $orderBy',
+      variables: [],
     ).get();
     
     return result.map((row) => fromMap(row.data)).toList();

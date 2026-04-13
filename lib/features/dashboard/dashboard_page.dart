@@ -5,14 +5,22 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../../core/font_utils.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/role_utils.dart';
 import '../../../core/services/app_storage.dart';
 import '../trading/view_models/trading_view_model.dart';
+import '../trading/repositories/trading_repository_impl.dart';
 import '../inventory/view_models/inventory_view_model.dart';
+import '../inventory/repositories/inventory_repository_impl.dart';
 import '../expenditure/view_models/expenditure_view_model.dart';
+import '../expenditure/repositories/expenditure_repository_impl.dart';
 import '../users/view_models/user_view_model.dart';
+import '../users/repositories/user_repository_impl.dart';
 import '../todo/view_models/todo_view_model.dart';
 import '../todo/repositories/todo_repository_impl.dart';
 import '../rental/view_models/rental_view_model.dart';
+import '../rental/repositories/rental_repository_impl.dart';
+import '../companies/repositories/company_repository_impl.dart';
+import 'dashboard_view_model.dart';
 import 'widgets/sparkline_chart.dart';
 import 'widgets/revenue_area_chart.dart';
 import 'widgets/property_map_widget.dart';
@@ -27,111 +35,81 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  late DashboardViewModel _dashboardViewModel;
+
   @override
   void initState() {
     super.initState();
-    // Force data fetching on dashboard load using proper Provider access
+    
+    // Initialize DashboardViewModel with proper dependencies
+    _dashboardViewModel = DashboardViewModel(
+      userRepository: UserRepositoryImpl(widget.db),
+      companyRepository: CompanyRepositoryImpl(widget.db),
+      expenditureRepository: ExpenditureRepositoryImpl(widget.db),
+      rentalRepository: RentalRepositoryImpl(widget.db),
+      tradingRepository: TradingRepositoryImpl(widget.db),
+      inventoryRepository: InventoryRepositoryImpl(
+        widget.db,
+        companyId: RoleUtils.getUserCompanyId(AuthService.currentUser),
+        isSuperAdmin: RoleUtils.isSuperAdmin(AuthService.currentUser),
+      ),
+      usersRepository: UserRepositoryImpl(widget.db),
+      database: widget.db,
+    );
+    
+    // Initialize dashboard data
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final inventoryViewModel = Provider.of<InventoryViewModel>(context, listen: false);
-      final userViewModel = Provider.of<UserViewModel>(context, listen: false);
-      final rentalViewModel = Provider.of<RentalViewModel>(context, listen: false);
-      final expenditureViewModel = Provider.of<ExpenditureViewModel>(context, listen: false);
-      
-      // Load data if lists are empty to ensure Dashboard populates
-      debugPrint('Dashboard: Checking data - Societies: ${inventoryViewModel.societies.length}, Users: ${userViewModel.users.length}');
-      
-      if (inventoryViewModel.societies.isEmpty) {
-        debugPrint('Dashboard: Loading societies...');
-        inventoryViewModel.loadSocieties();
-      }
-      if (userViewModel.users.isEmpty) {
-        debugPrint('Dashboard: Loading users...');
-        userViewModel.initialize();
-      }
-      if (rentalViewModel.rentalItems.isEmpty) {
-        debugPrint('Dashboard: Loading rental items...');
-        rentalViewModel.initialize();
-      }
-      if (expenditureViewModel.currentTotal == 0) {
-        debugPrint('Dashboard: Loading expenses...');
-        expenditureViewModel.refreshData();
-      }
+      _dashboardViewModel.initialize();
     });
   }
 
   @override
+  void dispose() {
+    _dashboardViewModel.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Consumer<InventoryViewModel>(
-      builder: (context, inventoryViewModel, child) {
-        return Consumer<RentalViewModel>(
-          builder: (context, rentalViewModel, child) {
-            return Consumer<UserViewModel>(
-              builder: (context, userViewModel, child) {
-                return Consumer<ExpenditureViewModel>(
-                  builder: (context, expenditureViewModel, child) {
-                    return Consumer<TodoViewModel>(
-                      builder: (context, todoViewModel, child) {
-                        return Consumer<TradingViewModel>(
-                          builder: (context, tradingViewModel, child) {
-                            return Scaffold(
-                              backgroundColor: const Color(0xFFF8F9FA),
-                              body: SingleChildScrollView(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildSummaryCards(
-                                      context.watch<InventoryViewModel>(),
-                                      context.watch<RentalViewModel>(),
-                                      context.watch<UserViewModel>(),
-                                      context.watch<ExpenditureViewModel>(),
-                                      context.watch<TodoViewModel>(),
-                                    ),
-                                    const SizedBox(height: 24),
-                                    _buildCentralArea(
-                                      context.watch<TradingViewModel>(),
-                                      context.watch<InventoryViewModel>(),
-                                    ),
-                                    const SizedBox(height: 24),
-                                    _buildTradingPerformanceTable(context.watch<TradingViewModel>()),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            );
-          },
-        );
-      },
+    return ChangeNotifierProvider<DashboardViewModel>.value(
+      value: _dashboardViewModel,
+      child: Consumer<DashboardViewModel>(
+        builder: (context, dashboardViewModel, child) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFF8F9FA),
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSummaryCards(dashboardViewModel),
+                  const SizedBox(height: 24),
+                  _buildCentralArea(dashboardViewModel),
+                  const SizedBox(height: 24),
+                  _buildTradingPerformanceTable(dashboardViewModel),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
 
   // Top 4 Summary Cards with Sparkline Charts
-  Widget _buildSummaryCards(
-    InventoryViewModel inventoryViewModel,
-    RentalViewModel rentalViewModel,
-    UserViewModel userViewModel,
-    ExpenditureViewModel expenditureViewModel,
-    TodoViewModel todoViewModel,
-  ) {
+  Widget _buildSummaryCards(DashboardViewModel dashboardViewModel) {
     return Row(
       children: [
         // Total Inventory Card
         Expanded(
           child: _buildSummaryCard(
             title: 'Total Inventory',
-            value: inventoryViewModel.societies.length.toString(),
+            value: dashboardViewModel.totalInventory.toString(),
             icon: Icons.home,
             color: const Color(0xFF805AD5),
             sparklineData: _generateMockSparklineData(),
-            loading: false, // Remove infinite loading spinner
+            loading: dashboardViewModel.inventoryLoading,
           ),
         ),
         const SizedBox(width: 16),
@@ -139,11 +117,11 @@ class _DashboardPageState extends State<DashboardPage> {
         Expanded(
           child: _buildSummaryCard(
             title: 'Rental Items',
-            value: rentalViewModel.rentalItems.length.toString(),
+            value: dashboardViewModel.totalRentalItems.toString(),
             icon: Icons.apartment,
             color: const Color(0xFF4A90E2),
             sparklineData: _generateMockSparklineData(),
-            loading: false, // Remove infinite loading spinner
+            loading: dashboardViewModel.rentalsLoading,
           ),
         ),
         const SizedBox(width: 16),
@@ -151,11 +129,11 @@ class _DashboardPageState extends State<DashboardPage> {
         Expanded(
           child: _buildSummaryCard(
             title: 'Active Users',
-            value: userViewModel.users.length.toString(),
+            value: dashboardViewModel.totalActiveUsers.toString(),
             icon: Icons.people,
             color: const Color(0xFFFF6B35),
             sparklineData: _generateMockSparklineData(),
-            loading: false, // Remove infinite loading spinner
+            loading: dashboardViewModel.usersLoading,
           ),
         ),
         const SizedBox(width: 16),
@@ -163,12 +141,12 @@ class _DashboardPageState extends State<DashboardPage> {
         Expanded(
           child: _buildSummaryCard(
             title: 'Expenses & Tasks',
-            value: 'Rs ${expenditureViewModel.currentTotal.toStringAsFixed(0)}',
-            subtitle: 'Track expenses and tasks',
+            value: 'Rs ${dashboardViewModel.totalExpenses.toStringAsFixed(0)}',
+            subtitle: '${dashboardViewModel.totalTasks} tasks',
             icon: Icons.analytics,
             color: const Color(0xFF38A169),
             sparklineData: _generateMockSparklineData(),
-            loading: false, // Remove infinite loading spinner
+            loading: dashboardViewModel.expenditureLoading,
           ),
         ),
       ],
@@ -256,10 +234,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // Central Charts & Map Area
-  Widget _buildCentralArea(
-    TradingViewModel tradingViewModel,
-    InventoryViewModel inventoryViewModel,
-  ) {
+  Widget _buildCentralArea(DashboardViewModel dashboardViewModel) {
     return SizedBox(
       height: 450, // Fixed height to prevent layout issues
       child: Row(
@@ -303,7 +278,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   const SizedBox(height: 16),
                   Expanded(
                     child: RevenueAreaChart(
-                      tradingEntries: tradingViewModel.entries,
+                      tradingEntries: dashboardViewModel.tradingEntries,
                     ),
                   ),
                 ],
@@ -317,7 +292,7 @@ class _DashboardPageState extends State<DashboardPage> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: PropertyMapWidget(
-                tradingEntries: tradingViewModel.entries,
+                tradingEntries: dashboardViewModel.tradingEntries,
               ),
             ),
           ),
@@ -327,7 +302,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // Bottom Trading Performance Table
-  Widget _buildTradingPerformanceTable(TradingViewModel tradingViewModel) {
+  Widget _buildTradingPerformanceTable(DashboardViewModel dashboardViewModel) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -440,12 +415,12 @@ class _DashboardPageState extends State<DashboardPage> {
           // Table Data
           SizedBox(
             height: 300,
-            child: tradingViewModel.isLoading
+            child: dashboardViewModel.tradingLoading
                 ? const Center(child: CircularProgressIndicator())
                 : ListView.builder(
-                    itemCount: tradingViewModel.entries.take(10).length,
+                    itemCount: dashboardViewModel.tradingEntries.take(10).length,
                     itemBuilder: (context, index) {
-                      final entry = tradingViewModel.entries[index];
+                      final entry = dashboardViewModel.tradingEntries[index];
                       return _buildTradingRow(entry);
                     },
                   ),

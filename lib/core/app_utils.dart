@@ -814,7 +814,7 @@ Future<void> exportProtectedPdf(BuildContext context) async {
 /// Get the first available company ID for super admin operations
 Future<String> _getFirstCompanyId(dynamic db) async {
   try {
-    final result = await db.customSelect('SELECT id FROM companies WHERE is_active = 1 LIMIT 1').get();
+    final result = await db.customSelect('SELECT id FROM companies WHERE is_active = 1 LIMIT 1', variables: []).get();
     if (result.isNotEmpty) {
       return result.first.data['id'] as String;
     }

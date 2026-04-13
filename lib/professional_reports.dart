@@ -149,7 +149,7 @@ Future<ReportBranding?> loadReportBranding({
   try {
     final res = await db.customSelect(
       'SELECT id, name, metadata, address, contact, logo_url FROM companies WHERE id = ? LIMIT 1',
-      variables: [d.Variable.withString(effectiveCompanyId)],
+      variables: <d.Variable<Object>>[d.Variable.withString(effectiveCompanyId)],
     ).get();
     if (res.isNotEmpty) {
       companyName = res.first.data['name']?.toString() ?? '';

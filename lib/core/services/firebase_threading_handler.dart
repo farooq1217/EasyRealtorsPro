@@ -87,42 +87,40 @@ class FirebaseThreadingHandler {
     final controller = StreamController<T>.broadcast();
     
     runZonedGuarded(() {
-      // Ensure stream subscription happens on main thread
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        stream.listen(
-          (data) => controller.add(data),
-          onError: (error) {
-            // Enhanced error filtering for comprehensive platform warning
-            if (error.toString().contains('unknown-error')) {
-              debugPrint('FirebaseThreadingHandler: UNKNOWN ERROR DETECTED in ${streamName ?? 'stream'}: $error');
-              debugPrint('FirebaseThreadingHandler: This might be a issue affecting umershahzad596@gmail.com and shakeelahmed2161083@gmail.com');
-              debugPrint('FirebaseThreadingHandler: Error type: ${error.runtimeType}');
-              debugPrint('FirebaseThreadingHandler: Full error details: $error');
-              // Still pass error to controller for proper handling
-              controller.addError(error);
-            } else if ([
-              'channel sent a message',
-              'non-platform thread',
-              'Platform channel',
-              'background_fetch',
-              'flutter_background_fetch',
-              'path_provider',
-              'sqflite',
-              'shared_preferences',
-              'firebase_auth_plugin',
-              'id-token',
-            ].any((pattern) => error.toString().contains(pattern))) {
+      // Subscribe immediately without delay to ensure initial emissions
+      stream.listen(
+        (data) => controller.add(data),
+        onError: (error) {
+          // Enhanced error filtering for comprehensive platform warning
+          if (error.toString().contains('unknown-error')) {
+            debugPrint('FirebaseThreadingHandler: UNKNOWN ERROR DETECTED in ${streamName ?? 'stream'}: $error');
+            debugPrint('FirebaseThreadingHandler: This might be a issue affecting umershahzad596@gmail.com and shakeelahmed2161083@gmail.com');
+            debugPrint('FirebaseThreadingHandler: Error type: ${error.runtimeType}');
+            debugPrint('FirebaseThreadingHandler: Full error details: $error');
+            // Still pass error to controller for proper handling
+            controller.addError(error);
+          } else if ([
+            'channel sent a message',
+            'non-platform thread',
+            'Platform channel',
+            'background_fetch',
+            'flutter_background_fetch',
+            'path_provider',
+            'sqflite',
+            'shared_preferences',
+            'firebase_auth_plugin',
+            'id-token',
+          ].any((pattern) => error.toString().contains(pattern))) {
               debugPrint('FirebaseThreadingHandler: Stream platform thread warning silenced for ${streamName ?? 'stream'}: ${error.runtimeType}');
             } else {
               debugPrint('FirebaseThreadingHandler: Stream error in ${streamName ?? 'stream'}: $error');
               controller.addError(error);
             }
-          },
-          onDone: () {
-            controller.close();
-          },
-        );
-      });
+        },
+        onDone: () {
+          controller.close();
+        },
+      );
     }, (error, stack) {
       debugPrint('FirebaseThreadingHandler: Stream wrapper error for ${streamName ?? 'stream'}: $error');
       controller.addError(error);

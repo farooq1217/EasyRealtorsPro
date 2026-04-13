@@ -168,7 +168,7 @@ class TodoRepositoryImpl implements TodoRepository {
             : (isAgent
                 ? 'SELECT * FROM trading_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) AND date(date) = ? ORDER BY date ASC'
                 : 'SELECT * FROM trading_entries WHERE company_id = ? AND date(date) = ? ORDER BY date ASC'),
-        variables: [
+        variables: <d.Variable<Object>>[
           if (!isSuperAdmin) d.Variable.withString(companyId ?? ''),
           if (!isSuperAdmin && isAgent) d.Variable.withString(myUserId),
           if (!isSuperAdmin && isAgent) d.Variable.withString(myAlias),
@@ -206,7 +206,7 @@ class TodoRepositoryImpl implements TodoRepository {
             : (isAgent
                 ? 'SELECT * FROM trading_file_entries WHERE company_id = ? AND (created_by = ? OR created_by = ?) AND date(date) = ? ORDER BY date ASC'
                 : 'SELECT * FROM trading_file_entries WHERE company_id = ? AND date(date) = ? ORDER BY date ASC'),
-        variables: [
+        variables: <d.Variable<Object>>[
           if (!isSuperAdmin) d.Variable.withString(companyId ?? ''),
           if (!isSuperAdmin && isAgent) d.Variable.withString(myUserId),
           if (!isSuperAdmin && isAgent) d.Variable.withString(myAlias),
@@ -241,7 +241,7 @@ class TodoRepositoryImpl implements TodoRepository {
         isSuperAdmin
             ? 'SELECT * FROM working_progress WHERE date(transfer_date) = ? ORDER BY transfer_date ASC'
             : 'SELECT * FROM working_progress WHERE company_id = ? AND date(transfer_date) = ? ORDER BY transfer_date ASC',
-        variables: [
+        variables: <d.Variable<Object>>[
           if (!isSuperAdmin) d.Variable.withString(companyId ?? ''),
           d.Variable.withString(selectedDateStr),
         ],

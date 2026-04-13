@@ -18,6 +18,7 @@ class InventoryItem {
   final String companyId;
   final DateTime updatedAt;
   final DateTime createdAt;
+  final String? createdBy; // User who created this item
   
   // File-specific fields
   final String? fileNo;
@@ -49,6 +50,7 @@ class InventoryItem {
     required this.companyId,
     required this.updatedAt,
     required this.createdAt,
+    this.createdBy,
     this.fileNo,
     this.mobileNo,
     this.path,
@@ -75,6 +77,7 @@ class InventoryItem {
     required String companyId,
     required DateTime updatedAt,
     required DateTime createdAt,
+    String? createdBy,
     String? fileNo,
     String? mobileNo,
     String? path,
@@ -97,6 +100,7 @@ class InventoryItem {
       companyId: companyId,
       updatedAt: updatedAt,
       createdAt: createdAt,
+      createdBy: createdBy,
       fileNo: fileNo,
       mobileNo: mobileNo,
       path: path,
@@ -121,6 +125,7 @@ class InventoryItem {
     required String companyId,
     required DateTime updatedAt,
     required DateTime createdAt,
+    String? createdBy,
     String? propertyName,
     int? demand,
     int? price,
@@ -143,6 +148,7 @@ class InventoryItem {
       companyId: companyId,
       updatedAt: updatedAt,
       createdAt: createdAt,
+      createdBy: createdBy,
       propertyName: propertyName,
       demand: demand,
       price: price,
@@ -184,6 +190,7 @@ class InventoryItem {
         companyId: map['company_id']?.toString() ?? '',
         updatedAt: DateTime.parse(map['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
         createdAt: DateTime.parse(map['created_at']?.toString() ?? map['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
+        createdBy: map['created_by']?.toString(),
         fileNo: map['file_no']?.toString(),
         mobileNo: map['mobile_no']?.toString(),
         path: map['path']?.toString(),
@@ -206,6 +213,7 @@ class InventoryItem {
         companyId: map['company_id']?.toString() ?? '',
         updatedAt: DateTime.parse(map['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
         createdAt: DateTime.parse(map['created_at']?.toString() ?? map['updated_at']?.toString() ?? DateTime.now().toIso8601String()),
+        createdBy: map['created_by']?.toString(),
         propertyName: map['property_name']?.toString(),
         demand: int.tryParse(map['demand']?.toString() ?? '0'),
         price: int.tryParse(map['price']?.toString() ?? '0'),
@@ -231,6 +239,7 @@ class InventoryItem {
       'company_id': companyId,
       'updated_at': updatedAt.toUtc().toIso8601String(),
       'created_at': createdAt.toUtc().toIso8601String(),
+      'created_by': createdBy,
     };
 
     // Handle remarks vs image URLs
@@ -287,6 +296,7 @@ class InventoryItem {
     int? demand,
     int? price,
     List<String>? imageUrls,
+    String? createdBy,
   }) {
     return InventoryItem(
       id: id ?? this.id,
@@ -301,6 +311,7 @@ class InventoryItem {
       companyId: companyId ?? this.companyId,
       updatedAt: updatedAt ?? this.updatedAt,
       createdAt: createdAt ?? this.createdAt,
+      createdBy: createdBy ?? this.createdBy,
       fileNo: fileNo ?? this.fileNo,
       mobileNo: mobileNo ?? this.mobileNo,
       path: path ?? this.path,

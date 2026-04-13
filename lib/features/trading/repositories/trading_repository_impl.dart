@@ -74,7 +74,7 @@ class TradingRepositoryImpl implements TradingRepository {
         SELECT * FROM trading_entries 
         WHERE is_active = 1 $whereClause
         ORDER BY date DESC
-      ''', variables: vars.map((v) => d.Variable.withString(v.value ?? '')).toList()).get();
+      ''', variables: <d.Variable<Object>>[...vars.map((v) => d.Variable.withString(v.value ?? ''))]).get();
       
       return results.map((row) => _mapRowToTradingEntry(row.data)).toList();
     } catch (e) {
@@ -96,7 +96,7 @@ class TradingRepositoryImpl implements TradingRepository {
         SELECT * FROM trading_entries 
         WHERE is_active = 1 AND entry_type = ? $whereClause
         ORDER BY date DESC
-      ''', variables: vars.map((v) => d.Variable.withString(v.value ?? '')).toList()).get();
+      ''', variables: <d.Variable<Object>>[...vars]).get();
       
       return results.map((row) => _mapRowToTradingEntry(row.data)).toList();
     } catch (e) {
@@ -111,7 +111,7 @@ class TradingRepositoryImpl implements TradingRepository {
       final results = await db.customSelect('''
         SELECT * FROM trading_entries 
         WHERE is_active = 1 AND id = ?
-      ''', variables: [d.Variable.withString(id)]).get();
+      ''', variables: <d.Variable<Object>>[d.Variable.withString(id)]).get();
       
       if (results.isEmpty) return null;
       return _mapRowToTradingEntry(results.first.data);
@@ -130,7 +130,7 @@ class TradingRepositoryImpl implements TradingRepository {
       SELECT * FROM trading_entries 
       WHERE is_active = 1 $whereClause
       ORDER BY date DESC
-    ''', variables: vars.map((v) => d.Variable.withString(v.value ?? '')).toList()).watch().map((rows) => 
+    ''', variables: <d.Variable<Object>>[...vars.map((v) => d.Variable.withString(v.value ?? ''))]).watch().map((rows) => 
       rows.map((row) => _mapRowToTradingEntry(row.data)).toList()
     );
     
@@ -150,7 +150,7 @@ class TradingRepositoryImpl implements TradingRepository {
       SELECT * FROM trading_entries 
       WHERE is_active = 1 AND entry_type = ? $whereClause
       ORDER BY date DESC
-    ''', variables: vars.map((v) => d.Variable.withString(v.value ?? '')).toList()).watch().map((rows) => 
+    ''', variables: <d.Variable<Object>>[...vars.map((v) => d.Variable.withString(v.value ?? ''))]).watch().map((rows) => 
       rows.map((row) => _mapRowToTradingEntry(row.data)).toList()
     );
     
@@ -163,7 +163,7 @@ class TradingRepositoryImpl implements TradingRepository {
     return db.customSelect('''
       SELECT * FROM trading_entries 
       WHERE is_active = 1 AND id = ?
-    ''', variables: [d.Variable.withString(id)]).watch().map((rows) {
+    ''', variables: <d.Variable<Object>>[d.Variable.withString(id)]).watch().map((rows) {
       if (rows.isEmpty) return null;
       return _mapRowToTradingEntry(rows.first.data);
     });
@@ -190,7 +190,7 @@ class TradingRepositoryImpl implements TradingRepository {
           comments LIKE ?
         ) $whereClause
         ORDER BY date DESC
-      ''', variables: vars.map((v) => d.Variable.withString(v.value ?? '')).toList()).get();
+      ''', variables: <d.Variable<String>>[...vars.map((v) => d.Variable.withString(v.value ?? ''))]).get();
       
       return results.map((row) => _mapRowToTradingEntry(row.data)).toList();
     } catch (e) {
@@ -219,7 +219,7 @@ class TradingRepositoryImpl implements TradingRepository {
         comments LIKE ?
       ) $whereClause
       ORDER BY date DESC
-    ''', variables: vars.map((v) => d.Variable.withString(v.value ?? '')).toList()).watch().map((rows) => 
+    ''', variables: <d.Variable<String>>[...vars.map((v) => d.Variable.withString(v.value ?? ''))]).watch().map((rows) => 
       rows.map((row) => _mapRowToTradingEntry(row.data)).toList()
     );
   }
@@ -239,7 +239,7 @@ class TradingRepositoryImpl implements TradingRepository {
           END) as profit
         FROM trading_entries 
         WHERE is_active = 1 $whereClause
-      ''', variables: vars.map((v) => d.Variable.withString(v.value)).toList()).get();
+      ''', variables: <d.Variable<String>>[...vars.map((v) => d.Variable.withString(v.value))]).get();
       
       return result.first.data['profit'] as double? ?? 0.0;
     } catch (e) {
@@ -269,7 +269,7 @@ class TradingRepositoryImpl implements TradingRepository {
           SUM(quantity) as total_quantity
         FROM trading_entries 
         WHERE is_active = 1 $whereClause
-      ''', variables: vars.map((v) => d.Variable.withString(v.value)).toList()).get();
+      ''', variables: <d.Variable<String>>[...vars.map((v) => d.Variable.withString(v.value))]).get();
       
       final data = result.first.data;
       return {
@@ -295,7 +295,7 @@ class TradingRepositoryImpl implements TradingRepository {
         WHERE id = ? AND is_active = 1 AND (created_by = ? OR company_id IN (
           SELECT company_id FROM users WHERE id = ?
         ))
-      ''', variables: [
+      ''', variables: <d.Variable<String>>[
         d.Variable.withString(entryId),
         d.Variable.withString(userId),
         d.Variable.withString(userId),
@@ -325,7 +325,7 @@ class TradingRepositoryImpl implements TradingRepository {
         SELECT * FROM trading_entries 
         WHERE $whereClause
         ORDER BY date DESC
-      ''', variables: vars).get();
+      ''', variables: <d.Variable<Object>>[...vars]).get();
       
       return results.map((row) => _mapRowToTradingEntry(row.data)).toList();
     } catch (e) {
@@ -360,7 +360,7 @@ class TradingRepositoryImpl implements TradingRepository {
         SELECT * FROM trading_entries 
         WHERE is_active = 1 AND is_synced = 0 $whereClause
         ORDER BY updated_at DESC
-      ''', variables: vars.map((v) => d.Variable.withString(v)).toList()).get();
+      ''', variables: <d.Variable<Object>>[...vars.map((v) => d.Variable.withString(v))]).get();
       
       return results.map((row) => _mapRowToTradingEntry(row.data)).toList();
     } catch (e) {
@@ -436,7 +436,7 @@ class TradingRepositoryImpl implements TradingRepository {
     // Check if entry exists in local SQLite cache before attempting update
     final currentResult = await db.customSelect(
       'SELECT status, is_active FROM trading_entries WHERE id = ?',
-      variables: [d.Variable.withString(entryId)]
+      variables: <d.Variable<Object>>[d.Variable.withString(entryId)]
     ).getSingleOrNull();
     
     if (currentResult == null) {

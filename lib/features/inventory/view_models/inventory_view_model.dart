@@ -12,6 +12,10 @@ class InventoryViewModel extends ChangeNotifier {
   final InventoryRepository _inventoryRepository;
   final SettingsRepository _settingsRepository;
   
+  // User context for RBAC
+  String? _currentUserCompanyId;
+  bool? _currentUserIsSuper;
+  
   List<InventoryItem> _allItems = [];
   List<InventoryItem> _filteredItems = [];
   List<Map<String, String>> _societies = [];
@@ -47,9 +51,11 @@ class InventoryViewModel extends ChangeNotifier {
   String? _selectedBlockId;
   String? _selectedStatusFilter;
 
-  InventoryViewModel(this._inventoryRepository, this._settingsRepository) {
-    _initialized = true;
+  InventoryViewModel(this._inventoryRepository, this._settingsRepository, {String? companyId, bool? isSuper}) {
+    _currentUserCompanyId = companyId;
+    _currentUserIsSuper = isSuper;
     _mounted = true;
+    _initialized = true;
   }
 
   // Getters
@@ -80,13 +86,13 @@ class InventoryViewModel extends ChangeNotifier {
   // Load all data with proper parameters
   Future<void> loadAllData({String? companyId, bool? isSuper}) async {
     await Future.wait([
-      loadItems(),
+      loadItems(companyId: companyId, isSuper: isSuper),
       loadSocieties(companyId: companyId, isSuper: isSuper),
     ]);
   }
 
   // Load items based on current filters
-  Future<void> loadItems() async {
+  Future<void> loadItems({String? companyId, bool? isSuper}) async {
     _isLoading = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -94,12 +100,17 @@ class InventoryViewModel extends ChangeNotifier {
     });
     
     try {
+      // Use provided parameters or fall back to stored user context
+      final effectiveCompanyId = companyId ?? _currentUserCompanyId;
+      final effectiveIsSuper = isSuper ?? _currentUserIsSuper;
+      
       _allItems = await _inventoryRepository.getFilteredItems(
         type: _selectedType,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
         societyId: _selectedSocietyId,
         blockId: _selectedBlockId,
         statusFilter: _selectedStatusFilter,
+        companyId: effectiveCompanyId, // Use effective company context
       );
       _filteredItems = _allItems;
     } catch (e) {
@@ -226,7 +237,8 @@ class InventoryViewModel extends ChangeNotifier {
     if (_selectedType != type) {
       _selectedType = type;
       _resetFilters();
-      loadItems();
+      // Pass stored user context to loadItems
+      loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
     }
   }
 
@@ -234,7 +246,8 @@ class InventoryViewModel extends ChangeNotifier {
     if (_searchQuery != query) {
       _searchQuery = query;
       _currentPage = 1; // Reset to page 1 when search changes
-      loadItems();
+      // Pass stored user context to loadItems
+      loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
     }
   }
 
@@ -258,8 +271,9 @@ class InventoryViewModel extends ChangeNotifier {
         });
         
         // Load items without block filter
-        _currentPage = 1; // Reset to page 1 when filter changes
-        loadItems();
+      _currentPage = 1; // Reset to page 1 when filter changes
+      // Pass stored user context to loadItems
+      loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
         return;
       }
       
@@ -286,7 +300,8 @@ class InventoryViewModel extends ChangeNotifier {
       
       // Load items with new filters
       _currentPage = 1; // Reset to page 1 when filter changes
-      loadItems();
+      // Pass stored user context to loadItems
+      loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
     } else {
       debugPrint('InventoryViewModel: SocietyId is the same, no action taken');
     }
@@ -352,7 +367,8 @@ class InventoryViewModel extends ChangeNotifier {
         if (!mounted) return;
         notifyListeners(); // Immediate UI update for block change
       });
-      loadItems();
+      // Pass stored user context to loadItems
+      loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
     } else {
       debugPrint('InventoryViewModel: BlockId is the same, no action taken');
     }
@@ -361,13 +377,15 @@ class InventoryViewModel extends ChangeNotifier {
   void setSelectedStatusFilter(String? status) {
     if (_selectedStatusFilter != status) {
       _selectedStatusFilter = status;
-      loadItems();
+      // Pass stored user context to loadItems
+      loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
     }
   }
 
   void clearAllFilters() {
     _resetFilters();
-    loadItems();
+    // Pass stored user context to loadItems
+    loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
   }
 
   void _resetFilters() {
@@ -385,7 +403,7 @@ class InventoryViewModel extends ChangeNotifier {
       } else {
         await _inventoryRepository.addItem(item);
       }
-      await loadItems(); // Reload to reflect changes
+      await loadItems(companyId: null, isSuper: null); // Reload to reflect changes
     } catch (e) {
       debugPrint('Error saving inventory item: $e');
       rethrow; // Let UI handle error
@@ -455,6 +473,7 @@ class InventoryViewModel extends ChangeNotifier {
         societyId: _selectedSocietyId,
         blockId: _selectedBlockId,
         statusFilter: _selectedStatusFilter,
+        companyId: null, // Pass company context
       );
       _filteredItems = _allItems;
       

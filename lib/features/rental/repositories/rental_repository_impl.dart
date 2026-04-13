@@ -113,7 +113,7 @@ class RentalRepositoryImpl implements RentalRepository {
   Future<Map<String, dynamic>?> getRentalItemById(String id) async {
     final result = await _database.customSelect(
       'SELECT * FROM rental_items WHERE id = ? AND is_active = 1',
-      variables: [d.Variable.withString(id)],
+      variables: <d.Variable<Object>>[d.Variable.withString(id)],
       readsFrom: {_database.rentalItems},
     ).get();
 
@@ -364,13 +364,13 @@ class RentalRepositoryImpl implements RentalRepository {
   }
 
   /// Build query variables list
-  List<d.Variable<String>> _buildQueryVariables({
+  List<d.Variable<Object>> _buildQueryVariables({
     String? companyId,
     String? createdBy,
     String? searchQuery,
     RentalStatus? statusFilter,
   }) {
-    final variables = <d.Variable<String>>[];
+    final variables = <d.Variable<Object>>[];
     
     if (companyId != null) {
       variables.add(d.Variable.withString(companyId));

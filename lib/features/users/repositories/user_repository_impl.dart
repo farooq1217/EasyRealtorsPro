@@ -134,7 +134,7 @@ class UserRepositoryImpl implements UserRepository {
         FROM users 
         WHERE id = ? AND (is_active = 1 OR is_active IS NULL)
         ''',
-        variables: [d.Variable.withString(id)],
+        variables: <d.Variable<Object>>[d.Variable.withString(id)],
       ).get();
       
       if (result.isEmpty) return null;
@@ -155,7 +155,7 @@ class UserRepositoryImpl implements UserRepository {
         FROM users 
         WHERE email = ? AND (is_active = 1 OR is_active IS NULL)
         ''',
-        variables: [d.Variable.withString(email)],
+        variables: <d.Variable<Object>>[d.Variable.withString(email)],
       ).get();
       
       if (result.isEmpty) return null;
@@ -179,34 +179,38 @@ class UserRepositoryImpl implements UserRepository {
       await db.customStatement(
         '''
         INSERT OR REPLACE INTO users (
-          id, username, user_id, name, email, contact_no, permissions, 
-          company_id, status, is_active, is_synced, created_at, updated_at,
-          password_hash, salt, iterations, is_first_login, profile_picture_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, username, password_hash, salt, iterations, user_id, name, email, 
+          contact_no, role, permissions, company_id, status, is_first_login, 
+          is_active, profile_picture_path, created_at, updated_at, is_synced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''',
         [
           userWithTimestamp.id,
           userWithTimestamp.username,
+          userWithTimestamp.passwordHash,
+          userWithTimestamp.salt,
+          userWithTimestamp.iterations,
           userWithTimestamp.userId,
           userWithTimestamp.name,
           userWithTimestamp.email,
           userWithTimestamp.contactNo,
+          userWithTimestamp.role, // Role derived from permissions
           userWithTimestamp.permissions, // Already a String, no encoding needed
           userWithTimestamp.companyId,
           userWithTimestamp.status,
+          userWithTimestamp.isFirstLogin == true ? 1 : 0,
           userWithTimestamp.isActive ? 1 : 0,
-          userWithTimestamp.isSynced ? 1 : 0,
+          userWithTimestamp.profilePicturePath,
           userWithTimestamp.createdAt,
           userWithTimestamp.updatedAt,
-          userWithTimestamp.passwordHash,
-          userWithTimestamp.salt,
-          userWithTimestamp.iterations,
-          userWithTimestamp.isFirstLogin == true ? 1 : 0,
-          userWithTimestamp.profilePicturePath,
+          userWithTimestamp.isSynced ? 1 : 0,
         ],
       );
       
       debugPrint('UserRepository: User added to SQLite: ${userWithTimestamp.name} (${userWithTimestamp.email})');
+      debugPrint('UserRepository: DEBUG - User Company ID: ${userWithTimestamp.companyId}');
+      debugPrint('UserRepository: DEBUG - User Role: ${userWithTimestamp.role}');
+      debugPrint('UserRepository: DEBUG - User Permissions: ${userWithTimestamp.permissions}');
       
       // CRITICAL FIX: Immediate Firestore sync after local save
       if (!_sqliteOnlyMode) {
@@ -229,29 +233,30 @@ class UserRepositoryImpl implements UserRepository {
       await db.customStatement(
         '''
         UPDATE users SET 
-          username = ?, user_id = ?, name = ?, email = ?, contact_no = ?, 
-          permissions = ?, company_id = ?, status = ?, is_active = ?, 
-          is_synced = ?, updated_at = ?, password_hash = ?, salt = ?, 
-          iterations = ?, is_first_login = ?, profile_picture_path = ?
+          username = ?, password_hash = ?, salt = ?, iterations = ?, user_id = ?, 
+          name = ?, email = ?, contact_no = ?, role = ?, permissions = ?, 
+          company_id = ?, status = ?, is_first_login = ?, is_active = ?, 
+          profile_picture_path = ?, updated_at = ?, is_synced = ?
         WHERE id = ?
         ''',
         [
           updatedUser.username,
+          updatedUser.passwordHash,
+          updatedUser.salt,
+          updatedUser.iterations,
           updatedUser.userId,
           updatedUser.name,
           updatedUser.email,
           updatedUser.contactNo,
+          updatedUser.role, // Role derived from permissions
           updatedUser.permissions, // Already a String, no encoding needed
           updatedUser.companyId,
           updatedUser.status,
-          updatedUser.isActive ? 1 : 0,
-          updatedUser.isSynced ? 1 : 0,
-          updatedUser.updatedAt,
-          updatedUser.passwordHash,
-          updatedUser.salt,
-          updatedUser.iterations,
           updatedUser.isFirstLogin == true ? 1 : 0,
+          updatedUser.isActive ? 1 : 0,
           updatedUser.profilePicturePath,
+          updatedUser.updatedAt,
+          updatedUser.isSynced ? 1 : 0,
           updatedUser.id,
         ],
       );
@@ -326,6 +331,7 @@ class UserRepositoryImpl implements UserRepository {
         ''';
         variables = [d.Variable.withString(companyId)];
         debugPrint('UserRepository: watchUsers query for Company Admin - filtering by company: $companyId');
+      debugPrint('UserRepository: DEBUG - Executing query with company_id: $companyId');
       } else {
         // Fallback: Show all users if companyId is null or invalid (for safety)
         query = '''
@@ -346,10 +352,13 @@ class UserRepositoryImpl implements UserRepository {
           .customSelect(query, variables: variables)
           .watch()
           .map((rows) {
-            debugPrint('UserRepository: watchUsers fetched ${rows.length} rows');
+            final displayCompanyId = isSuperAdmin ? 'GLOBAL_ADMIN' : companyId;
+            debugPrint('UserRepository: watchUsers fetched ${rows.length} rows for company: $displayCompanyId');
+            int index = 0;
             return rows.map((r) {
-              debugPrint('UserRepository: mapping user data: ${r.data}');
-              return UserModel.fromMap(r.data);
+              final userData = r.data;
+              debugPrint('UserRepository: Row ${++index}: ${userData['name']} (${userData['email']}) - Company: ${userData['company_id']} - Permissions: ${userData['permissions']}');
+              return UserModel.fromMap(userData);
             }).toList();
           })
           .distinct((previous, current) {
@@ -464,7 +473,7 @@ class UserRepositoryImpl implements UserRepository {
     // Get existing user IDs for this company
     final result = await db.customSelect(
       'SELECT user_id FROM users WHERE company_id = ? AND user_id IS NOT NULL',
-      variables: [d.Variable.withString(companyId)],
+      variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
     ).get();
     
     final existingIds = result.map((r) => r.data['user_id'].toString()).toList();
@@ -496,7 +505,7 @@ class UserRepositoryImpl implements UserRepository {
     // Get users without user_id
     final result = await db.customSelect(
       'SELECT id FROM users WHERE company_id = ? AND (user_id IS NULL OR user_id = "")',
-      variables: [d.Variable.withString(companyId)],
+      variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
     ).get();
     
     for (final row in result) {
@@ -539,7 +548,7 @@ class UserRepositoryImpl implements UserRepository {
     try {
       final result = await db.customSelect(
         "SELECT COUNT(*) as cnt FROM users WHERE company_id = ? AND (status = 'active' OR status IS NULL) AND (is_active = 1 OR is_active IS NULL)",
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       return int.tryParse(result.first.data['cnt'].toString() ?? '0') ?? 0;
@@ -554,7 +563,7 @@ class UserRepositoryImpl implements UserRepository {
       // Get company's user limit
       final limitResult = await db.customSelect(
         'SELECT max_user_limit, subscription_tier FROM companies WHERE id = ? LIMIT 1',
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       if (limitResult.isEmpty) return false;
@@ -568,7 +577,7 @@ class UserRepositoryImpl implements UserRepository {
       // Get current user count
       final countResult = await db.customSelect(
         "SELECT COUNT(*) as cnt FROM users WHERE company_id = ? AND (status = 'active' OR status IS NULL) AND (is_active = 1 OR is_active IS NULL)",
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       final count = int.tryParse(countResult.first.data['cnt'].toString() ?? '0') ?? 0;
@@ -820,6 +829,21 @@ class UserRepositoryImpl implements UserRepository {
             // FIX: Safely handle boolean fields that can be int or bool from Firestore
             final isActiveRaw = data['is_active'];
             final isFirstLoginRaw = data['is_first_login'];
+            final permissionsStr = data['permissions']?.toString() ?? '{}';
+            
+            // Extract role from permissions JSON for SQLite storage
+            String role = 'agent'; // Default role
+            try {
+              if (permissionsStr.isNotEmpty) {
+                final decoded = jsonDecode(permissionsStr) as Map<String, dynamic>;
+                role = decoded['role']?.toString() ?? 'agent';
+              }
+            } catch (e) {
+              // Try to extract role from malformed JSON like {"agent":true}
+              if (permissionsStr.contains('agent')) {
+                role = 'agent';
+              }
+            }
             
             final userMap = {
               'id': doc.id,
@@ -828,7 +852,8 @@ class UserRepositoryImpl implements UserRepository {
               'name': data['name']?.toString() ?? '',
               'email': data['email']?.toString() ?? '',
               'contact_no': data['contact_no']?.toString() ?? '',
-              'permissions': data['permissions']?.toString() ?? '{}',
+              'permissions': permissionsStr,
+              'role': role, // Add extracted role
               'company_id': data['company_id']?.toString() ?? '',
               'status': data['status']?.toString() ?? 'active',
               'is_active': (isActiveRaw == 1 || isActiveRaw == true) ? 1 : 0, // Handle both int and bool
@@ -845,33 +870,34 @@ class UserRepositoryImpl implements UserRepository {
             // Insert or replace user in SQLite
             await db.customInsert(
               '''INSERT OR REPLACE INTO users (
-                id, username, user_id, name, email, contact_no, permissions,
-                company_id, status, is_active, is_synced, created_at, updated_at,
-                password_hash, salt, iterations, is_first_login, profile_picture_path
+                id, username, password_hash, salt, iterations, user_id, name, email, 
+                contact_no, role, permissions, company_id, status, is_first_login, 
+                is_active, profile_picture_path, created_at, updated_at, is_synced
               ) VALUES (
-                :id, :username, :user_id, :name, :email, :contact_no, :permissions,
-                :company_id, :status, :is_active, :is_synced, :created_at, :updated_at,
-                :password_hash, :salt, :iterations, :is_first_login, :profile_picture_path
+                :id, :username, :password_hash, :salt, :iterations, :user_id, :name, :email, 
+                :contact_no, :role, :permissions, :company_id, :status, :is_first_login, 
+                :is_active, :profile_picture_path, :created_at, :updated_at, :is_synced
               )''',
-              variables: [
+              variables: <d.Variable<Object>>[
                 d.Variable.withString(userMap['id']?.toString() ?? ''),
                 d.Variable.withString(userMap['username']?.toString() ?? ''),
+                d.Variable.withString(userMap['password_hash']?.toString() ?? ''),
+                d.Variable.withString(userMap['salt']?.toString() ?? ''),
+                d.Variable.withInt(int.tryParse(userMap['iterations']?.toString() ?? '') ?? 10000),
                 d.Variable.withString(userMap['user_id']?.toString() ?? ''),
                 d.Variable.withString(userMap['name']?.toString() ?? ''),
                 d.Variable.withString(userMap['email']?.toString() ?? ''),
                 d.Variable.withString(userMap['contact_no']?.toString() ?? ''),
+                d.Variable.withString(userMap['role']?.toString() ?? 'agent'), // Add role field
                 d.Variable.withString(userMap['permissions']?.toString() ?? '{}'),
                 d.Variable.withString(userMap['company_id']?.toString() ?? ''),
                 d.Variable.withString(userMap['status']?.toString() ?? ''),
-                d.Variable.withInt(int.tryParse(userMap['is_active']?.toString() ?? '') ?? 0),
-                d.Variable.withInt(int.tryParse(userMap['is_synced']?.toString() ?? '') ?? 1),
+                d.Variable.withInt(int.tryParse(userMap['is_first_login']?.toString() ?? '') ?? 1),
+                d.Variable.withInt(int.tryParse(userMap['is_active']?.toString() ?? '') ?? 1),
+                d.Variable.withString(userMap['profile_picture_path']?.toString() ?? ''),
                 d.Variable.withString(userMap['created_at']?.toString() ?? ''),
                 d.Variable.withString(userMap['updated_at']?.toString() ?? ''),
-                d.Variable.withString(userMap['password_hash']?.toString() ?? ''),
-                d.Variable.withString(userMap['salt']?.toString() ?? ''),
-                d.Variable.withInt(int.tryParse(userMap['iterations']?.toString() ?? '') ?? 10000),
-                d.Variable.withInt(int.tryParse(userMap['is_first_login']?.toString() ?? '') ?? 0),
-                d.Variable.withString(userMap['profile_picture_path']?.toString() ?? ''),
+                d.Variable.withInt(int.tryParse(userMap['is_synced']?.toString() ?? '') ?? 1),
               ],
             );
             
@@ -954,7 +980,7 @@ class UserRepositoryImpl implements UserRepository {
       // CRITICAL: Use customUpdate with proper stream triggering
       final result = await db.customUpdate(
         'UPDATE users SET permissions = ?, updated_at = ? WHERE id = ?',
-        variables: [
+        variables: <d.Variable<String>>[
           d.Variable.withString(finalJson),
           d.Variable.withString(now),
           d.Variable.withString(userId),
@@ -970,7 +996,7 @@ class UserRepositoryImpl implements UserRepository {
           // ✨ FIX: Query SQLite to get user email for Firestore document ID ✨
           final userQuery = await db.customSelect(
             'SELECT email FROM users WHERE id = ?',
-            variables: [d.Variable.withString(userId)],
+            variables: <d.Variable<Object>>[d.Variable.withString(userId)],
           ).get();
           
           String firestoreDocId = userId; // Fallback to userId

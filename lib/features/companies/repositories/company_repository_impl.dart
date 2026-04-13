@@ -131,7 +131,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
         FROM companies 
         WHERE id = ? AND (is_active = 1 OR is_active IS NULL)
         ''',
-        variables: [d.Variable.withString(id)],
+        variables: <d.Variable<Object>>[d.Variable.withString(id)],
       ).get();
       
       if (result.isEmpty) return null;
@@ -328,7 +328,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
       // Get company's user limit
       final limitResult = await db.customSelect(
         'SELECT max_user_limit, subscription_tier FROM companies WHERE id = ? LIMIT 1',
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       if (limitResult.isEmpty) return false;
@@ -342,7 +342,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
       // Get current user count
       final countResult = await db.customSelect(
         "SELECT COUNT(*) as cnt FROM users WHERE company_id = ? AND (status = 'active' OR status IS NULL) AND (is_active = 1 OR is_active IS NULL)",
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       final count = int.tryParse(countResult.first.data['cnt'].toString() ?? '0') ?? 0;
@@ -358,7 +358,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
     try {
       final result = await db.customSelect(
         "SELECT COUNT(*) as cnt FROM users WHERE company_id = ? AND (status = 'active' OR status IS NULL) AND (is_active = 1 OR is_active IS NULL)",
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       return int.tryParse(result.first.data['cnt'].toString() ?? '0') ?? 0;
@@ -372,7 +372,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
     try {
       final result = await db.customSelect(
         'SELECT max_user_limit, subscription_tier FROM companies WHERE id = ? LIMIT 1',
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       if (result.isEmpty) return 5;
@@ -409,7 +409,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
     try {
       final result = await db.customSelect(
         'SELECT subscription_tier FROM companies WHERE id = ? LIMIT 1',
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       return result.isNotEmpty ? result.first.data['subscription_tier']?.toString() : null;
@@ -468,7 +468,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
         AND (LOWER(name) LIKE LOWER(?) OR LOWER(address) LIKE LOWER(?) OR LOWER(contact) LIKE LOWER(?))
         ORDER BY updated_at DESC
         ''',
-        variables: [
+        variables: <d.Variable<Object>>[
           d.Variable.withString('%$query%'),
           d.Variable.withString('%$query%'),
           d.Variable.withString('%$query%'),
@@ -563,7 +563,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
                 :id, :name, :status, :address, :contact, :email, :description, :logo_url,
                 :is_active, :is_synced, :created_at, :updated_at, :created_by
               )''',
-              variables: [
+              variables: <d.Variable<Object>>[
                 d.Variable.withString(companyMap['id']),
                 d.Variable.withString(companyMap['name']),
                 d.Variable.withString(companyMap['status']),
@@ -652,7 +652,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
         WHERE id = ? AND (is_active = 1 OR is_active IS NULL)
         LIMIT 1
         ''',
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       if (companyResult.isEmpty) return {};
@@ -670,7 +670,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
         FROM users 
         WHERE company_id = ? AND (is_active = 1 OR is_active IS NULL)
         ''',
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       final userData = userResult.isNotEmpty ? userResult.first.data : {};
@@ -710,7 +710,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
     try {
       final result = await db.customSelect(
         'SELECT is_active, status FROM companies WHERE id = ? LIMIT 1',
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).get();
       
       if (result.isEmpty) return false;

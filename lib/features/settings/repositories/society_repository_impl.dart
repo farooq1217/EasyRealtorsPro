@@ -87,7 +87,7 @@ class SocietyRepositoryImpl implements SocietyRepository {
     try {
       final result = await db.customSelect(
         'SELECT id, society_id, name FROM blocks WHERE society_id = ? AND is_active = 1 ORDER BY name',
-        variables: [d.Variable.withString(societyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(societyId)],
       ).get();
       
       debugPrint('SocietyRepositoryImpl: Query returned ${result.length} raw results');

@@ -250,7 +250,7 @@ class ReportRepositoryImpl implements ReportRepository {
     try {
       final result = await db.customSelect(
         'SELECT * FROM working_progress WHERE id = ?',
-        variables: [d.Variable.withString(entryId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(entryId)],
       ).getSingleOrNull();
       
       if (result != null) {
@@ -682,7 +682,7 @@ class ReportRepositoryImpl implements ReportRepository {
       
       final result = await db.customSelect(
         'SELECT * FROM companies WHERE id = ?',
-        variables: [d.Variable.withString(companyId)],
+        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
       ).getSingleOrNull();
       
       if (result != null) {

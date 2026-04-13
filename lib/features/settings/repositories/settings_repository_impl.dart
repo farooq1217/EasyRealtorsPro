@@ -329,7 +329,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
         if (emailKey != null && emailKey.isNotEmpty) {
           final dbResult = await db.customSelect(
         'SELECT id, username, email, password_hash, name, contact_no, permissions, company_id, status, is_active, is_first_login, user_id, created_at FROM users WHERE email = ? OR username = ?',
-        variables: [
+        variables: <d.Variable<Object>>[
           d.Variable.withString(emailKey),
           d.Variable.withString(emailKey),
         ],
@@ -398,7 +398,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
 
       final existing = await db.customSelect(
         'SELECT id FROM users WHERE id = ? OR email = ? OR username = ?',
-        variables: [
+        variables: <d.Variable<Object>>[
           d.Variable.withString(userId),
           d.Variable.withString(emailKey),
           d.Variable.withString(emailKey),

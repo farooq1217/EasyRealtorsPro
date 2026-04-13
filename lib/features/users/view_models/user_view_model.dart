@@ -738,7 +738,15 @@ class UserViewModel extends ChangeNotifier {
     _passwordController.clear();
     _confirmPasswordController.clear();
     _userIdController.clear();
-    _selectedCompanyId = null;
+    
+    // CRITICAL FIX: Auto-set company ID for Company Admins creating new users
+    final isSuperAdmin = local.RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+    if (isSuperAdmin) {
+      _selectedCompanyId = null; // Super Admins can choose any company
+    } else {
+      _selectedCompanyId = local.RoleUtils.getUserCompanyId(_currentUser); // Company Admins default to their own company
+    }
+    
     _selectedStatus = 'active';
     _selectedRole = null;
     _permissions = {};
@@ -863,18 +871,33 @@ class UserViewModel extends ChangeNotifier {
         }
       }
 
-      // Set permissions based on selected role
+      // Set permissions based on selected role using correct RBAC JSON structure
       Map<String, dynamic> newPermissions = {};
       if (_selectedRole != null) {
         switch (_selectedRole!.toLowerCase()) {
           case 'super_admin':
-            newPermissions['super_admin'] = true;
+            newPermissions = {
+              'role': 'super_admin',
+              'permission': 'full_access',
+              'canDelete': true,
+              'permissionsMap': {},
+            };
             break;
           case 'company_admin':
-            newPermissions['company_admin'] = true;
+            newPermissions = {
+              'role': 'company_admin',
+              'permission': 'full_access',
+              'canDelete': true,
+              'permissionsMap': {},
+            };
             break;
           case 'agent':
-            newPermissions['agent'] = true;
+            newPermissions = {
+              'role': 'agent',
+              'permission': 'custom',
+              'canDelete': false,
+              'permissionsMap': {},
+            };
             break;
         }
       }
@@ -1062,6 +1085,8 @@ class UserViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true; // CRITICAL: Set disposal flag BEFORE cleanup
+    _mounted = false;
     _usersSubscription?.cancel();
     _firestoreUsersSubscription?.cancel(); // CRITICAL FIX: Cleanup Firestore listener
     debugPrint('UserViewModel: Disposed - all subscriptions cancelled');

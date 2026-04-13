@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:drift/drift.dart' as d;
 import 'package:shared/shared.dart' show AppDatabase;
 import 'core/database/db_executor.dart';
 import 'core/services/firebase_options.dart';
@@ -38,7 +39,7 @@ void main() async {
         
         // Check table schema directly to detect all missing columns
         try {
-          final tableInfo = await db.customSelect('PRAGMA table_info(trading_entries)').get();
+          final tableInfo = await db.customSelect('PRAGMA table_info(trading_entries)', variables: <d.Variable<Object>>[]).get();
           final columns = tableInfo.map((row) => row.data['name'] as String).toSet();
           
           print('[MAIN] Current trading_entries columns: ${columns.toList()}');
