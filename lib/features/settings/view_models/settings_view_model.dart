@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/settings_repository_impl.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/windows_platform_fix.dart'; // ✨ CRITICAL FIX: Windows platform stability
 
 class SettingsViewModel extends ChangeNotifier {
   final SettingsRepository _repository;
@@ -35,28 +36,45 @@ class SettingsViewModel extends ChangeNotifier {
     if (_loading) {
       debugPrint('SettingsViewModel: Forcefully setting loading to false');
       _loading = false;
+      safeNotifyListeners();
+    }
+  }
+  
+  // ✨ CRITICAL FIX: Safe notifyListeners for Windows compatibility
+  void safeNotifyListeners() {
+    if (WindowsPlatformFix.isWindows) {
+      // On Windows, ensure notifyListeners is called safely
+      try {
+        notifyListeners();
+      } catch (e) {
+        debugPrint('SettingsViewModel: notifyListeners error on Windows: $e');
+        WindowsPlatformFix.handleConnectionLossError(e, null);
+      }
+    } else {
       notifyListeners();
     }
   }
 
   // Initialize
   Future<void> initialize() async {
+    // ✨ CRITICAL FIX: Initialize Windows platform fixes (only once)
+    WindowsPlatformFix.initialize();
     debugPrint('SettingsViewModel: Starting initialization');
     
     // Set loading to true initially
     _loading = true;
-    notifyListeners();
+    safeNotifyListeners();
     
     try {
       debugPrint('SettingsViewModel: Loading current user and societies in parallel');
-      // Run operations in parallel with timeout protection
+      // ✨ PERFORMANCE FIX: Run operations in parallel with shorter timeouts
       await Future.wait([
-        _loadCurrentUser().timeout(const Duration(seconds: 5), onTimeout: () {
+        _loadCurrentUser().timeout(const Duration(seconds: 3), onTimeout: () {
           debugPrint('SettingsViewModel: Current user loading timed out');
           // Set default user to prevent complete failure
           _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com'};
         }),
-        _loadSocieties().timeout(const Duration(seconds: 5), onTimeout: () {
+        _loadSocieties().timeout(const Duration(seconds: 3), onTimeout: () {
           debugPrint('SettingsViewModel: Societies loading timed out');
           _societies = [];
         }),
@@ -66,7 +84,7 @@ class SettingsViewModel extends ChangeNotifier {
       
       // Load blocks only after societies are loaded and if a society is selected
       if (_selectedSocietyId != null) {
-        await _loadBlocksForSociety(_selectedSocietyId!).timeout(const Duration(seconds: 5), onTimeout: () {
+        await _loadBlocksForSociety(_selectedSocietyId!).timeout(const Duration(seconds: 2), onTimeout: () {
           debugPrint('SettingsViewModel: Blocks loading timed out');
           _blocks = [];
         });
@@ -80,7 +98,7 @@ class SettingsViewModel extends ChangeNotifier {
       // CRITICAL FIX: Always ensure loading is set to false
       _loading = false;
       debugPrint('SettingsViewModel: Loading set to false, notifying listeners');
-      notifyListeners();
+      safeNotifyListeners();
     }
   }
 
@@ -108,7 +126,7 @@ class SettingsViewModel extends ChangeNotifier {
     if (_currentUser == null) return;
 
     _savingProfile = true;
-    notifyListeners();
+    safeNotifyListeners();
 
     try {
       final emailKey = (_currentUser!['email'] ?? _currentUser!['username'] ?? '').toString().toLowerCase();
@@ -151,11 +169,11 @@ class SettingsViewModel extends ChangeNotifier {
       AuthService.currentUser = _currentUser;
 
       _savingProfile = false;
-      notifyListeners();
+      safeNotifyListeners();
     } catch (e) {
       debugPrint('Error updating profile: $e');
       _savingProfile = false;
-      notifyListeners();
+      safeNotifyListeners();
       rethrow;
     }
   }
@@ -174,7 +192,7 @@ class SettingsViewModel extends ChangeNotifier {
         AuthService.currentUser = _currentUser;
       }
       
-      notifyListeners();
+      safeNotifyListeners();
     } catch (e) {
       debugPrint('Error updating profile image: $e');
       rethrow;
@@ -247,7 +265,7 @@ class SettingsViewModel extends ChangeNotifier {
       }
       
       await _loadSocieties(); // Refresh list
-      notifyListeners();
+      safeNotifyListeners();
     } catch (e) {
       debugPrint('Error deleting society: $e');
       rethrow;
@@ -263,13 +281,13 @@ class SettingsViewModel extends ChangeNotifier {
       _blocks = [];
       
       // 3. Call notifyListeners() immediately to reset the Block dropdown state
-      notifyListeners();
+      safeNotifyListeners();
       
       // 4. If societyId is not null, trigger block loading for fresh data
       if (societyId != null) {
         _loadBlocksForSociety(societyId).then((_) {
           // Additional notification after blocks are loaded
-          notifyListeners();
+          safeNotifyListeners();
         });
       }
     }
@@ -279,7 +297,7 @@ class SettingsViewModel extends ChangeNotifier {
   Future<void> _loadBlocksForSociety(String societyId) async {
     try {
       _isLoadingBlocks = true;
-      notifyListeners();
+      safeNotifyListeners();
       
       final rawData = await _repository.getBlocksBySociety(societyId).timeout(const Duration(seconds: 3));
       debugPrint('SettingsViewModel: Repository returned ${rawData.length} raw blocks: $rawData');
@@ -298,7 +316,7 @@ class SettingsViewModel extends ChangeNotifier {
       _blocks = [];
     } finally {
       _isLoadingBlocks = false;
-      notifyListeners();
+      safeNotifyListeners();
     }
   }
 
@@ -318,7 +336,7 @@ class SettingsViewModel extends ChangeNotifier {
       debugPrint('SettingsViewModel: Type-safe blocks mapping completed, blocks count: ${_blocks.length}');
       debugPrint('SettingsViewModel: Final blocks list: $_blocks');
       
-      notifyListeners();
+      safeNotifyListeners();
     } catch (e) {
       debugPrint('Error loading blocks: $e');
     }

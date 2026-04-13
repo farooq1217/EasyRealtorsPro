@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
@@ -8,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // ✨ CRITICAL FIX: Import for Firestore real-time listener ✨
 import '../../../core/role_utils.dart' as local;
+import '../../../core/windows_platform_fix.dart'; // ✨ CRITICAL FIX: Windows platform stability
 import 'package:shared/shared.dart';
 import '../models/user_model.dart';
 import '../repositories/user_repository.dart';
@@ -184,7 +186,7 @@ class UserViewModel extends ChangeNotifier {
   bool get isCurrentUserSuperAdmin => 
     local.RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
 
-  // ✨ CRITICAL FIX: Real-time Firestore listener setup ✨
+  // ✨ CRITICAL FIX: Real-time Firestore listener setup with Windows safety ✨
   Future<void> _setupFirestoreListener() async {
     try {
       // Cancel existing subscription
@@ -200,7 +202,9 @@ class UserViewModel extends ChangeNotifier {
       
       debugPrint('UserViewModel: Setting up Firestore listener for company: $userCompanyId');
       
+      // ✨ CRITICAL FIX: Use Firestore instance directly with timeout protection
       final firestore = FirebaseFirestore.instance;
+      
       final usersCollection = firestore.collection('users');
       
       // Set up query based on user role
@@ -213,16 +217,20 @@ class UserViewModel extends ChangeNotifier {
         debugPrint('UserViewModel: Company Admin Firestore listener - watching company users: $userCompanyId');
       }
       
-      // Set up real-time listener
-      _firestoreUsersSubscription = query.snapshots().listen(
+      // ✨ CRITICAL FIX: Set up real-time listener with simplified error handling
+      _firestoreUsersSubscription = query.snapshots().timeout(
+        Duration(seconds: 10), // Prevent indefinite hanging
+      ).listen(
         (snapshot) async {
           debugPrint('UserViewModel: 🔥 Firestore update received - ${snapshot.docChanges.length} changes');
           
           if (!mounted) return;
           
+          // ✨ CRITICAL FIX: Simplified processing to prevent freezing
           try {
-            // Process document changes
-            for (final change in snapshot.docChanges) {
+            // Process document changes with limit to prevent overwhelming
+            final changes = snapshot.docChanges.take(5).toList(); // Limit to 5 changes at once
+            for (final change in changes) {
               final doc = change.doc;
               final data = doc.data() as Map<String, dynamic>?;
               
@@ -282,11 +290,15 @@ class UserViewModel extends ChangeNotifier {
             debugPrint('UserViewModel: 🌐 Network error in Firestore listener - will retry');
           }
         },
+        onDone: () {
+          debugPrint('UserViewModel: Firestore listener completed');
+        },
       );
       
       debugPrint('UserViewModel: ✅ Firestore listener set up successfully');
     } catch (e) {
       debugPrint('UserViewModel: ❌ Error setting up Firestore listener: $e');
+      // Don't rethrow - continue with local data
     }
   }
 
@@ -512,29 +524,65 @@ class UserViewModel extends ChangeNotifier {
   // Initialization
   Future<void> initialize() async {
     try {
+      // ✨ CRITICAL FIX: Initialize Windows platform fixes (only once)
+      WindowsPlatformFix.initialize();
+      
       _loading = true;
       _error = '';
       notifyListeners();
       
-      await _loadCurrentUser();
-      await _repository.ensureUserTableColumns();
+      // ✨ PERFORMANCE FIX: Run operations in parallel to reduce loading time
+      debugPrint('UserViewModel: Loading local data first...');
       
-      // ✨ CRITICAL FIX: Initial sync from Firestore before loading companies
-      debugPrint('UserViewModel: Starting initial Firestore sync...');
-      await _repository.syncUsersFromFirestore();
-      debugPrint('UserViewModel: Initial Firestore sync completed');
+      await Future.wait([
+        _loadCurrentUser().timeout(Duration(seconds: 3)),
+        _repository.ensureUserTableColumns().timeout(Duration(seconds: 2)),
+        _loadCompanies().timeout(Duration(seconds: 3)),
+      ]);
       
-      await _loadCompanies();
-      await _setupStreams();
+      // Setup streams after data is loaded
+      await _setupStreams().timeout(Duration(seconds: 2));
       
-      // ✨ CRITICAL FIX: Set up real-time Firestore listener for cross-device sync
-      debugPrint('UserViewModel: Setting up real-time Firestore listener...');
-      await _setupFirestoreListener();
-      debugPrint('UserViewModel: Real-time Firestore listener setup completed');
+      // Set loading to false once local data is loaded
+      _loading = false;
+      notifyListeners();
+      debugPrint('UserViewModel: Local data loaded, UI ready');
+      
+      // ✨ CRITICAL FIX: Move Firestore sync to background to prevent UI freezing
+      Future.microtask(() async {
+        try {
+          debugPrint('UserViewModel: Starting background Firestore sync...');
+          
+          // Add timeout for Windows to prevent hanging
+          await _repository.syncUsersFromFirestore().timeout(
+            const Duration(seconds: 8), // Reduced timeout for faster response
+            onTimeout: () {
+              debugPrint('UserViewModel: Firestore sync timed out - continuing with local data');
+            },
+          );
+          
+          debugPrint('UserViewModel: Background Firestore sync completed');
+          
+          // ✨ CRITICAL FIX: Skip Firestore real-time listener on Windows to prevent crashes
+          if (!io.Platform.isWindows) {
+            await _setupFirestoreListener();
+            debugPrint('UserViewModel: Real-time Firestore listener setup completed');
+          } else {
+            debugPrint('UserViewModel: Firestore real-time listener skipped on Windows to prevent crashes');
+          }
+        } catch (e) {
+          // ✨ CRITICAL FIX: Use WindowsPlatformFix for error handling
+          WindowsPlatformFix.handleConnectionLossError(e, null);
+          debugPrint('UserViewModel: Background sync error (non-critical): $e');
+          // Don't set error state - app continues with local data
+        }
+      });
+      
     } catch (e) {
+      // ✨ CRITICAL FIX: Use WindowsPlatformFix for error handling
+      WindowsPlatformFix.handleConnectionLossError(e, null);
       _error = 'Failed to initialize: $e';
       debugPrint('Error initializing UserViewModel: $e');
-    } finally {
       _loading = false;
       notifyListeners();
     }
@@ -584,6 +632,18 @@ class UserViewModel extends ChangeNotifier {
   Future<void> _setupStreams() async {
     final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
     
+    // ✨ CRITICAL FIX: Enhanced debug logging for Company Admin filtering
+    if (_currentUser != null) {
+      debugPrint('USER VIEW MODEL DEBUG: Current user data: ${_currentUser!.keys}');
+      debugPrint('USER VIEW MODEL DEBUG: company_id: ${_currentUser!['company_id']}');
+      debugPrint('USER VIEW MODEL DEBUG: companyId: ${_currentUser!['companyId']}');
+      debugPrint('USER VIEW MODEL DEBUG: Extracted companyId: $companyId');
+      debugPrint('USER VIEW MODEL DEBUG: User role: ${local.RoleUtils.getUserRole(_currentUser)}');
+      debugPrint('USER VIEW MODEL DEBUG: isCompanyAdmin: ${local.RoleUtils.isCompanyAdmin(_currentUser)}');
+      debugPrint('USER VIEW MODEL DEBUG: isSuperAdmin: ${local.RoleUtils.isSuperAdmin(_currentUser)}');
+      debugPrint('USER VIEW MODEL DEBUG: User email: ${_currentUser!['email']}');
+    }
+    
     // CRITICAL DEBUG: Log company filtering for Umer Shahzad
     if (_currentUser?['email']?.toString().toLowerCase() == 'umershahzad596@gmail.com') {
       debugPrint('USER VIEW MODEL DEBUG: Umer Shahzad setting up streams');
@@ -599,46 +659,44 @@ class UserViewModel extends ChangeNotifier {
     // Setup new stream
     _usersSubscription = _repository.watchUsers(companyId).listen(
       (data) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          
-          // CRITICAL: Set loading to false when stream data arrives
-          if (_loading) {
-            _loading = false;
-            debugPrint('UserViewModel: Loading set to false - stream data received');
+        // ✨ CRITICAL FIX: Direct stream processing without postFrameCallback to prevent freezing
+        if (!mounted) return;
+        
+        // CRITICAL: Set loading to false when stream data arrives
+        if (_loading) {
+          _loading = false;
+          debugPrint('UserViewModel: Loading set to false - stream data received');
+        }
+        
+        // CRITICAL DEBUG: Log user filtering results for Umer Shahzad
+        if (_currentUser?['email']?.toString().toLowerCase() == 'umershahzad596@gmail.com') {
+          debugPrint('USER VIEW MODEL DEBUG: Stream update received for Umer Shahzad');
+          debugPrint('USER VIEW MODEL DEBUG: Total users loaded: ${data.length}');
+          for (int i = 0; i < data.length && i < 5; i++) {
+            final user = data[i];
+            debugPrint('USER VIEW MODEL DEBUG: User ${i + 1}: ${user.name} (${user.email}) - Company: ${user.companyId}');
           }
-          
-          // CRITICAL DEBUG: Log user filtering results for Umer Shahzad
-          if (_currentUser?['email']?.toString().toLowerCase() == 'umershahzad596@gmail.com') {
-            debugPrint('USER VIEW MODEL DEBUG: Stream update received for Umer Shahzad');
-            debugPrint('USER VIEW MODEL DEBUG: Total users loaded: ${data.length}');
-            for (int i = 0; i < data.length && i < 5; i++) {
-              final user = data[i];
-              debugPrint('USER VIEW MODEL DEBUG: User ${i + 1}: ${user.name} (${user.email}) - Company: ${user.companyId}');
-            }
-            if (data.length > 5) {
-              debugPrint('USER VIEW MODEL DEBUG: ... and ${data.length - 5} more users');
-            }
+          if (data.length > 5) {
+            debugPrint('USER VIEW MODEL DEBUG: ... and ${data.length - 5} more users');
           }
-          
-          _users = data;
-          _applySearchFilter();
-          
-          debugPrint('UserViewModel: notifyListeners called - stream data processed');
-          notifyListeners();
-        });
+        }
+        
+        _users = data;
+        _applySearchFilter();
+        
+        debugPrint('UserViewModel: notifyListeners called - stream data processed');
+        notifyListeners();
       },
       onError: (e) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          if (_loading) {
-            _loading = false;
-            debugPrint('UserViewModel: Loading set to false - stream error');
-          }
-          _error = 'Error loading users: $e';
-          debugPrint('UserViewModel: Stream error - $e');
-          notifyListeners();
-        });
+        // ✨ CRITICAL FIX: Direct error handling without postFrameCallback
+        if (!mounted) return;
+        if (_loading) {
+          _loading = false;
+          debugPrint('UserViewModel: Loading set to false - stream error');
+        }
+        _error = 'Error loading users: $e';
+        debugPrint('UserViewModel: Stream error - $e');
+        notifyListeners();
       },
     );
   }

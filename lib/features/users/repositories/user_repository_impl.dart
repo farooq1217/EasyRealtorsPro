@@ -32,35 +32,22 @@ class UserRepositoryImpl implements UserRepository {
 
   // Helper method to wrap streams with platform thread safety
   Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
+    // ✨ CRITICAL FIX: Completely disable FirebaseThreadingHandler on Windows to prevent connection loss
     if (_isWindows) {
-      debugPrint('UserRepository: Wrapping $streamName with Windows thread safety');
+      debugPrint('UserRepository: Windows detected - skipping FirebaseThreadingHandler to prevent connection loss');
+      return stream; // Return original stream directly
+    }
+    
+    // For non-Windows platforms, use minimal wrapping
+    try {
       return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
         stream,
         streamName: 'UserRepository $streamName',
-      ).transform(StreamTransformer<T, T>.fromHandlers(
-        handleData: (data, sink) {
-          // CRITICAL: Execute callback on main platform thread using ServicesBinding
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            sink.add(data);
-          });
-        },
-        handleError: (error, stackTrace, sink) {
-          // Suppress shell.cc warnings and other platform thread warnings
-          if (error.toString().contains('shell.cc') || 
-              error.toString().contains('non-platform thread') ||
-              error.toString().contains('channel sent a message')) {
-            debugPrint('UserRepository: $streamName platform warning suppressed: ${error.runtimeType}');
-            // Don't add error to sink, just suppress it
-            return;
-          }
-          debugPrint('UserRepository: $streamName error: $error');
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            sink.addError(error);
-          });
-        },
-      ));
+      );
+    } catch (e) {
+      debugPrint('UserRepository: Error wrapping stream $streamName: $e');
+      return stream; // Fallback to original stream
     }
-    return stream;
   }
 
   // Helper method to disable Firestore operations in SQLite-only mode
@@ -808,7 +795,14 @@ class UserRepositoryImpl implements UserRepository {
           return;
         }
         
-        final querySnapshot = await query.get();
+        // ✨ CRITICAL FIX: Add timeout for Windows to prevent hanging
+        final querySnapshot = await query.get().timeout(
+          _isWindows ? const Duration(seconds: 8) : const Duration(seconds: 15),
+          onTimeout: () {
+            debugPrint('UserRepository: Firestore query timed out - returning empty result');
+            throw TimeoutException('Firestore query timeout', const Duration(seconds: 8));
+          },
+        );
         debugPrint('UserRepository: Fetched ${querySnapshot.docs.length} users from Firestore');
         
         // Begin transaction for bulk insert

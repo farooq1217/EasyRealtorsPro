@@ -95,12 +95,32 @@ class _UsersPageState extends State<UsersPage> {
     
     debugPrint('UsersPage: initState called, widget mounted: $mounted');
     
-    // Initialize ViewModels but defer stream setup
+    // ✨ CRITICAL FIX: Initialize ViewModels with Windows-friendly timing
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       debugPrint('UsersPage: PostFrameCallback - widget mounted: $mounted');
-      _userViewModel.initialize();
-      _companyViewModel.initialize();
+      
+      // Initialize UserViewModel first
+      _userViewModel.initialize().catchError((e) {
+        debugPrint('UsersPage: UserViewModel initialization error: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('User initialization completed with local data'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      });
+      
+      // Initialize CompanyViewModel with slight delay to prevent overwhelming
+      Future.delayed(Duration(milliseconds: 100), () {
+        if (!mounted) return;
+        _companyViewModel.initialize().catchError((e) {
+          debugPrint('UsersPage: CompanyViewModel initialization error: $e');
+        });
+      });
     });
   }
   

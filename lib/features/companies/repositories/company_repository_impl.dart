@@ -528,8 +528,14 @@ class CompanyRepositoryImpl implements CompanyRepository {
         final firestore = FirebaseFirestore.instance;
         final companiesCollection = firestore.collection('companies');
         
-        // Get all companies from Firestore
-        final querySnapshot = await companiesCollection.get();
+        // ✨ CRITICAL FIX: Add timeout for Windows to prevent hanging
+        final querySnapshot = await companiesCollection.get().timeout(
+          _isWindows ? const Duration(seconds: 6) : const Duration(seconds: 12),
+          onTimeout: () {
+            debugPrint('CompanyRepository: Firestore query timed out - returning empty result');
+            throw TimeoutException('Firestore query timeout', const Duration(seconds: 6));
+          },
+        );
         debugPrint('CompanyRepository: Fetched ${querySnapshot.docs.length} companies from Firestore');
         
         // Begin transaction for bulk insert

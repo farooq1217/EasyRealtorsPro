@@ -150,29 +150,52 @@ class CompanyViewModel extends ChangeNotifier {
       _error = '';
       notifyListeners();
       
-      await _loadCurrentUser().timeout(const Duration(seconds: 5), onTimeout: () {
-        debugPrint('CompanyViewModel: User loading timed out, using default');
-        _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com'};
+      // ✨ PERFORMANCE FIX: Run operations in parallel to reduce loading time
+      debugPrint('CompanyViewModel: Loading local data first...');
+      
+      await Future.wait([
+        _loadCurrentUser().timeout(const Duration(seconds: 2), onTimeout: () {
+          debugPrint('CompanyViewModel: User loading timed out, using default');
+          _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com'};
+        }),
+        _repository.ensureCompanyTableColumns().timeout(const Duration(seconds: 1), onTimeout: () {
+          debugPrint('CompanyViewModel: Table columns check timed out');
+        }),
+      ]);
+      
+      // Setup streams after data is loaded
+      await _setupStreams().timeout(const Duration(seconds: 2), onTimeout: () {
+        debugPrint('CompanyViewModel: Stream setup timed out - continuing');
       });
       
-      await _repository.ensureCompanyTableColumns().timeout(const Duration(seconds: 3), onTimeout: () {
-        debugPrint('CompanyViewModel: Table columns check timed out');
+      // Set loading to false once local data is loaded
+      _loading = false;
+      notifyListeners();
+      debugPrint('CompanyViewModel: Local data loaded, UI ready');
+      
+      // ✨ CRITICAL FIX: Move Firestore sync to background to prevent UI freezing
+      Future.microtask(() async {
+        try {
+          debugPrint('CompanyViewModel: Starting background Firestore sync...');
+          
+          // Add timeout for Windows to prevent hanging
+          await _repository.syncCompaniesFromFirestore().timeout(
+            const Duration(seconds: 6), // Reduced timeout for faster response
+            onTimeout: () {
+              debugPrint('CompanyViewModel: Firestore sync timed out - continuing with local data');
+            },
+          );
+          
+          debugPrint('CompanyViewModel: Background Firestore sync completed');
+        } catch (e) {
+          debugPrint('CompanyViewModel: Background sync error (non-critical): $e');
+          // Don't set error state - app continues with local data
+        }
       });
       
-      // CRITICAL: Sync companies from Firestore before setting up streams
-      debugPrint('CompanyViewModel: Starting Firestore sync...');
-      await _repository.syncCompaniesFromFirestore();
-      debugPrint('CompanyViewModel: Firestore sync completed');
-      
-      await _setupStreams().timeout(const Duration(seconds: 5), onTimeout: () {
-        debugPrint('CompanyViewModel: Stream setup timed out, setting loading to false');
-        _loading = false;
-        notifyListeners();
-      });
     } catch (e) {
       _error = 'Failed to initialize: $e';
       debugPrint('Error initializing CompanyViewModel: $e');
-    } finally {
       _loading = false;
       notifyListeners();
     }

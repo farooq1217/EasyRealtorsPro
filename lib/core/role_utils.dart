@@ -14,14 +14,14 @@ class RoleUtils {
   /// Check if user is an Agent
   static bool isAgent(Map<String, dynamic>? user) {
     if (user == null) return false;
-    final role = (user['role'] ?? '').toString().toLowerCase();
+    final role = getUserRole(user).toLowerCase();
     return role == 'agent';
   }
 
   /// Check if user is a Company Admin
   static bool isCompanyAdmin(Map<String, dynamic>? user) {
     if (user == null) return false;
-    final role = (user['role'] ?? '').toString().toLowerCase();
+    final role = getUserRole(user).toLowerCase();
     return role == 'company admin' || role == 'companyadmin';
   }
 
