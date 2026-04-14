@@ -45,9 +45,17 @@ class _DashboardPageState extends State<DashboardPage> {
     _dashboardViewModel = DashboardViewModel(
       userRepository: UserRepositoryImpl(widget.db),
       companyRepository: CompanyRepositoryImpl(widget.db),
-      expenditureRepository: ExpenditureRepositoryImpl(widget.db),
+      expenditureRepository: ExpenditureRepositoryImpl(
+        widget.db,
+        companyId: RoleUtils.getUserCompanyId(AuthService.currentUser),
+        isSuperAdmin: RoleUtils.isSuperAdmin(AuthService.currentUser),
+      ),
       rentalRepository: RentalRepositoryImpl(widget.db),
-      tradingRepository: TradingRepositoryImpl(widget.db),
+      tradingRepository: TradingRepositoryImpl(
+        widget.db,
+        companyId: RoleUtils.getUserCompanyId(AuthService.currentUser),
+        isSuperAdmin: RoleUtils.isSuperAdmin(AuthService.currentUser),
+      ),
       inventoryRepository: InventoryRepositoryImpl(
         widget.db,
         companyId: RoleUtils.getUserCompanyId(AuthService.currentUser),
@@ -55,6 +63,8 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       usersRepository: UserRepositoryImpl(widget.db),
       database: widget.db,
+      companyId: RoleUtils.getUserCompanyId(AuthService.currentUser),
+      isSuperAdmin: RoleUtils.isSuperAdmin(AuthService.currentUser),
     );
     
     // Initialize dashboard data

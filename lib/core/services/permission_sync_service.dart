@@ -77,12 +77,9 @@ class PermissionSyncService {
     }
   }
 
-  /// Wait for permissions to be fully loaded with timeout
-  /// Returns user data when permissions are available, or null on timeout
-  static Future<Map<String, dynamic>?> waitForPermissionsLoad(
-    String? token, {
-    Duration timeout = const Duration(seconds: 8),
-  }) async {
+  /// Wait for permissions to be loaded with timeout
+  /// OPTIMIZATION: Reduced timeout from 8 seconds to 1.5 seconds
+  static Future<Map<String, dynamic>?> waitForPermissionsToLoad(String? token, {Duration timeout = const Duration(seconds: 1, milliseconds: 500)}) async {
     if (token == null) return null;
 
     debugPrint('PermissionSyncService: Checking if permissions are already loaded...');
@@ -94,9 +91,10 @@ class PermissionSyncService {
       return currentUser;
     }
     
-    debugPrint('PermissionSyncService: Permissions not loaded, waiting...');
+    debugPrint('PermissionSyncService: Permissions not loaded, waiting with optimized timeout...');
     final stopwatch = Stopwatch()..start();
     
+    // OPTIMIZATION: Faster polling interval and shorter timeout
     while (stopwatch.elapsed < timeout) {
       final user = await AuthService.getCurrentUser(token);
       if (user != null && arePermissionsFullyLoaded(user)) {
@@ -104,7 +102,8 @@ class PermissionSyncService {
         return user;
       }
       
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Faster polling: 200ms instead of 500ms
+      await Future.delayed(const Duration(milliseconds: 200));
     }
     
     debugPrint('PermissionSyncService: Timeout waiting for permissions after ${stopwatch.elapsedMilliseconds}ms');

@@ -35,7 +35,7 @@ class UserViewModel extends ChangeNotifier {
   List<UserModel> _users = [];
   List<UserModel> _filteredUsers = [];
   UserModel? _editingUser;
-  List<Map<String, String>> _companies = [];
+  List<Map<String, String>> companies = [];
   String _searchQuery = '';
   bool _backfillingUserIds = false;
   bool _backfillUserIdsDone = false;
@@ -74,7 +74,7 @@ class UserViewModel extends ChangeNotifier {
   List<UserModel> get users => _users;
   List<UserModel> get filteredUsers => _filteredUsers;
   UserModel? get editingUser => _editingUser;
-  List<Map<String, String>> get companies => _companies;
+  List<Map<String, String>> getCompaniesData() => companies;
   String get searchQuery => _searchQuery;
   bool get backfillingUserIds => _backfillingUserIds;
   bool get backfillUserIdsDone => _backfillUserIdsDone;
@@ -537,7 +537,7 @@ class UserViewModel extends ChangeNotifier {
       await Future.wait([
         _loadCurrentUser().timeout(Duration(seconds: 3)),
         _repository.ensureUserTableColumns().timeout(Duration(seconds: 2)),
-        _loadCompanies().timeout(Duration(seconds: 3)),
+        loadCompanies().timeout(Duration(seconds: 3)),
       ]);
       
       // Setup streams after data is loaded
@@ -603,7 +603,7 @@ class UserViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadCompanies() async {
+  Future<void> loadCompanies() async {
     try {
       final isSuperAdmin = local.RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
       final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
@@ -619,10 +619,11 @@ class UserViewModel extends ChangeNotifier {
           variables: isSuperAdmin ? [] : [d.Variable.withString(companyId ?? '')],
         ).get();
         
-        _companies = result.map((r) => {
+        companies = result.map((r) => {
           'id': r.data['id'].toString(),
           'name': r.data['name'].toString(),
         }).toList();
+        notifyListeners(); // Notify UI that companies are loaded
       }
     } catch (e) {
       debugPrint('Error loading companies: $e');
@@ -834,16 +835,21 @@ class UserViewModel extends ChangeNotifier {
   }
 
   Future<bool> saveUser() async {
-    if (!canAdd && !canEdit) {
-      _error = 'Permission denied';
-      notifyListeners();
-      return false;
-    }
-
+    if (_saving) return false;
+    
     try {
       _saving = true;
       _error = '';
       notifyListeners();
+      
+      debugPrint('=== USER SAVE DEBUG ===');
+      debugPrint('Name: ${_nameController.text}');
+      debugPrint('Email: ${_emailController.text}');
+      debugPrint('Company ID: $_selectedCompanyId');
+      debugPrint('Role: $_selectedRole');
+      debugPrint('Status: $_selectedStatus');
+      debugPrint('Is Editing: ${_editingUser != null}');
+      debugPrint('========================');
 
       // Validation
       final name = _nameController.text.trim();
@@ -879,7 +885,15 @@ class UserViewModel extends ChangeNotifier {
         return false;
       }
 
-      if (_selectedCompanyId == null) {
+      // CRITICAL FIX: Enforce companyId for non-super-admins to prevent data leakage
+      final isCurrentUserSuperAdmin = local.RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
+      final currentUserCompanyId = local.RoleUtils.getUserCompanyId(_currentUser);
+      
+      if (!isCurrentUserSuperAdmin) {
+        // For non-super-admins, force companyId to their own company
+        _selectedCompanyId = currentUserCompanyId;
+        debugPrint('UserViewModel: Non-super-admin user - forcing companyId to: $_selectedCompanyId');
+      } else if (_selectedCompanyId == null) {
         _error = 'Company is required';
         _saving = false;
         notifyListeners();

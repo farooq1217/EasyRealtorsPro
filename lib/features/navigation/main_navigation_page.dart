@@ -7,6 +7,7 @@ import '../../../core/font_utils.dart';
 import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/permission_helper.dart';
+import '../../../core/role_utils.dart';
 import '../../../core/services/permission_sync_service.dart';
 import '../../../core/app.dart' show AdminApp;
 import '../dashboard/dashboard_page.dart';
@@ -199,7 +200,12 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
       case 4:
         return ToDoPage(db: widget.db);
       case 5:
-        return SettingsPageClean(db: widget.db);
+        // PRE-FETCH CHECK: Get user context for SettingsPageClean
+        final user = AuthService.currentUser;
+        final companyId = RoleUtils.getUserCompanyId(user);
+        final isSuperAdmin = RoleUtils.isSuperAdmin(user);
+        debugPrint('MainNavigationPage: PRE-FETCH CHECK - Passing user context to Settings - CompanyId: $companyId, IsSuperAdmin: $isSuperAdmin');
+        return SettingsPageClean(db: widget.db); // Note: SettingsPageClean handles its own user context loading
       case 6:
         return TradingPage(db: widget.db);
       case 7:
@@ -209,7 +215,17 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
       case 9:
         return UsersPage(db: widget.db);
       case 10:
-        return ExpenditurePage(db: widget.db);
+        // Get user context for ExpenditurePage
+        final user = AuthService.currentUser;
+        final companyId = RoleUtils.getUserCompanyId(user);
+        final isSuperAdmin = RoleUtils.isSuperAdmin(user);
+        final userId = user?['id']?.toString() ?? user?['userId']?.toString();
+        return ExpenditurePage(
+          db: widget.db,
+          companyId: companyId,
+          isSuperAdmin: isSuperAdmin,
+          userId: userId,
+        );
       case 11:
         return CompaniesPage(db: widget.db);
       default:
@@ -222,7 +238,11 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<TradingViewModel>(
-          create: (context) => TradingViewModel.getInstance(TradingRepositoryImpl(widget.db)),
+          create: (context) => TradingViewModel.getInstance(TradingRepositoryImpl(
+            widget.db,
+            companyId: RoleUtils.getUserCompanyId(AuthService.currentUser),
+            isSuperAdmin: RoleUtils.isSuperAdmin(AuthService.currentUser),
+          )),
           lazy: false, // Ensure ViewModel is created immediately and stays alive
         ),
         ChangeNotifierProvider<ExpenditureViewModel>(

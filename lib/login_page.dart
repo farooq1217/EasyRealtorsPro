@@ -115,9 +115,9 @@ class _LoginPageState extends State<LoginPage> {
                 await PermissionSyncService.refreshUserPermissions(token);
                 
                 // Wait for permissions to be fully loaded with timeout
-                final userWithPermissions = await PermissionSyncService.waitForPermissionsLoad(
+                final userWithPermissions = await PermissionSyncService.waitForPermissionsToLoad(
                   token,
-                  timeout: const Duration(seconds: 8),
+                  timeout: const Duration(seconds: 2), // OPTIMIZATION: Reduced timeout
                 );
                 
                 if (userWithPermissions != null) {

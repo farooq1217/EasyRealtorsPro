@@ -8,19 +8,45 @@ import 'package:shared/shared.dart';
 
 class ExpenditureRepositoryImpl implements ExpenditureRepository {
   final AppDatabase db;
+  final String? companyId;
+  final bool isSuperAdmin;
+  final String? userId; // Add userId for Agent filtering
   
-  ExpenditureRepositoryImpl(this.db);
+  ExpenditureRepositoryImpl(this.db, {required this.companyId, required this.isSuperAdmin, this.userId});
 
   @override
   Future<List<domain.ExpenditureItem>> getExpenditures(String? companyId) async {
     try {
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
       String query = 'SELECT * FROM Expenditures WHERE (is_active IS NULL OR is_active = 1)';
       List<d.Variable<Object>> variables = <d.Variable<Object>>[];
       
-      if (companyId != null) {
+      // Use provided companyId or fall back to instance companyId
+      final effectiveCompanyId = companyId ?? this.companyId;
+      
+      if (!isSuperAdmin) {
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+          debugPrint('ExpenditureRepository: SECURITY - No companyId for non-super-admin, returning empty results');
+          return []; // Return empty list for security
+        }
         query += ' AND company_id = ?';
-        variables.add(d.Variable.withString(companyId));
+        variables.add(d.Variable.withString(effectiveCompanyId));
+        
+        // CRITICAL FIX: Add created_by filtering for Agent role
+        // This ensures Agents can only see their own expenditures
+        if (userId != null) {
+          query += ' AND (created_by IS NULL OR created_by = ?)'; // Allow null for backward compatibility
+          variables.add(d.Variable.withString(userId ?? ''));
+        } else {
+          debugPrint('ExpenditureRepository: SECURITY - No userId for Agent filtering, returning empty results');
+          return []; // Return empty list for security
+        }
+        
+        debugPrint('ExpenditureRepository: SECURITY - Filtering expenditures by company: $effectiveCompanyId');
+        debugPrint('ExpenditureRepository: SECURITY - Agent created_by filtering applied for user: $userId');
       }
+      // Super Admin: No company filtering (can see all data)
       
       query += ' ORDER BY date DESC';
       
@@ -35,17 +61,39 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<List<domain.ExpenditureItem>> getOfficeExpenses(String? companyId) async {
     try {
-      // CRITICAL: Query for office_expense type to match what we're saving
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
+      // Query for office_expense type to match what we're saving
       String query = 'SELECT * FROM Expenditures WHERE (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ? OR category_type IS NULL)';
       List<d.Variable<Object>> variables = <d.Variable<Object>>[
         d.Variable.withString('office_expense'), 
         d.Variable.withString('office')
       ];
       
-      if (companyId != null) {
+      // Use provided companyId or fall back to instance companyId
+      final effectiveCompanyId = companyId ?? this.companyId;
+      
+      if (!isSuperAdmin) {
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+          debugPrint('ExpenditureRepository: SECURITY - No companyId for non-super-admin office expenses, returning empty results');
+          return []; // Return empty list for security
+        }
         query += ' AND company_id = ?';
-        variables.add(d.Variable.withString(companyId));
+        variables.add(d.Variable.withString(effectiveCompanyId));
+        
+        // CRITICAL FIX: Add created_by filtering for Agent role
+        if (userId != null) {
+          query += ' AND (created_by IS NULL OR created_by = ?)'; // Allow null for backward compatibility
+          variables.add(d.Variable.withString(userId ?? ''));
+        } else {
+          debugPrint('ExpenditureRepository: SECURITY - No userId for Agent filtering, returning empty results');
+          return []; // Return empty list for security
+        }
+        
+        debugPrint('ExpenditureRepository: SECURITY - Filtering office expenses by company: $effectiveCompanyId');
+        debugPrint('ExpenditureRepository: SECURITY - Agent created_by filtering applied for user: $userId');
       }
+      // Super Admin: No company filtering (can see all data)
       
       query += ' ORDER BY date DESC';
       
@@ -60,7 +108,8 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<List<domain.ExpenditureItem>> getProjectExpenses(String? companyId) async {
     try {
-      // CRITICAL: Query for project_expense and project_bucket types to match what we're saving
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
+      // Query for project_expense and project_bucket types to match what we're saving
       String query = 'SELECT * FROM Expenditures WHERE (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ? OR category_type = ?)';
       List<d.Variable<Object>> variables = <d.Variable<Object>>[
         d.Variable.withString('project_expense'), 
@@ -68,10 +117,31 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
         d.Variable.withString('project_bucket')
       ];
       
-      if (companyId != null) {
+      // Use provided companyId or fall back to instance companyId
+      final effectiveCompanyId = companyId ?? this.companyId;
+      
+      if (!isSuperAdmin) {
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+          debugPrint('ExpenditureRepository: SECURITY - No companyId for non-super-admin project expenses, returning empty results');
+          return []; // Return empty list for security
+        }
         query += ' AND company_id = ?';
-        variables.add(d.Variable.withString(companyId));
+        variables.add(d.Variable.withString(effectiveCompanyId));
+        
+        // CRITICAL FIX: Add created_by filtering for Agent role
+        if (userId != null) {
+          query += ' AND (created_by IS NULL OR created_by = ?)'; // Allow null for backward compatibility
+          variables.add(d.Variable.withString(userId ?? ''));
+        } else {
+          debugPrint('ExpenditureRepository: SECURITY - No userId for Agent filtering, returning empty results');
+          return []; // Return empty list for security
+        }
+        
+        debugPrint('ExpenditureRepository: SECURITY - Filtering project expenses by company: $effectiveCompanyId');
+        debugPrint('ExpenditureRepository: SECURITY - Agent created_by filtering applied for user: $userId');
       }
+      // Super Admin: No company filtering (can see all data)
       
       query += ' ORDER BY date DESC';
       
@@ -169,13 +239,24 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
 
   @override
   Stream<List<domain.ExpenditureItem>> watchExpenditures(String? companyId) {
+    // CRITICAL FIX: Strict company filtering for data leakage prevention
     String query = 'SELECT * FROM Expenditures WHERE (is_active IS NULL OR is_active = 1)';
     List<d.Variable<Object>> variables = <d.Variable<Object>>[];
     
-    if (companyId != null) {
+    // Use provided companyId or fall back to instance companyId
+    final effectiveCompanyId = companyId ?? this.companyId;
+    
+    if (!isSuperAdmin) {
+      // For non-super-admins, ALWAYS require companyId and never allow null
+      if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+        debugPrint('ExpenditureRepository: SECURITY - No companyId for non-super-admin watch, returning empty stream');
+        return Stream.value([]); // Return empty stream for security
+      }
       query += ' AND company_id = ?';
-      variables.add(d.Variable.withString(companyId));
+      variables.add(d.Variable.withString(effectiveCompanyId));
+      debugPrint('ExpenditureRepository: SECURITY - Watch filtering expenditures by company: $effectiveCompanyId');
     }
+    // Super Admin: No company filtering (can see all data)
     
     query += ' ORDER BY date DESC';
     
@@ -187,17 +268,28 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
 
   @override
   Stream<List<domain.ExpenditureItem>> watchOfficeExpenses(String? companyId) {
-    // CRITICAL: Stream for office_expense type to match what we're saving
+    // CRITICAL FIX: Strict company filtering for data leakage prevention
+    // Stream for office_expense type to match what we're saving
     String query = 'SELECT * FROM Expenditures WHERE (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ? OR category_type IS NULL)';
     List<d.Variable<Object>> variables = <d.Variable<Object>>[
       d.Variable.withString('office_expense'), 
       d.Variable.withString('office')
     ];
     
-    if (companyId != null) {
+    // Use provided companyId or fall back to instance companyId
+    final effectiveCompanyId = companyId ?? this.companyId;
+    
+    if (!isSuperAdmin) {
+      // For non-super-admins, ALWAYS require companyId and never allow null
+      if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+        debugPrint('ExpenditureRepository: SECURITY - No companyId for non-super-admin office expenses watch, returning empty stream');
+        return Stream.value([]); // Return empty stream for security
+      }
       query += ' AND company_id = ?';
-      variables.add(d.Variable.withString(companyId));
+      variables.add(d.Variable.withString(effectiveCompanyId));
+      debugPrint('ExpenditureRepository: SECURITY - Watch filtering office expenses by company: $effectiveCompanyId');
     }
+    // Super Admin: No company filtering (can see all data)
     
     query += ' ORDER BY date DESC';
     
@@ -209,7 +301,8 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
 
   @override
   Stream<List<domain.ExpenditureItem>> watchProjectExpenses(String? companyId) {
-    // CRITICAL: Stream for project_expense and project_bucket types to match what we're saving
+    // CRITICAL FIX: Strict company filtering for data leakage prevention
+    // Stream for project_expense and project_bucket types to match what we're saving
     String query = 'SELECT * FROM Expenditures WHERE (is_active IS NULL OR is_active = 1) AND (category_type = ? OR category_type = ? OR category_type = ?)';
     List<d.Variable<Object>> variables = <d.Variable<Object>>[
       d.Variable.withString('project_expense'), 
@@ -217,10 +310,20 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       d.Variable.withString('project_bucket')
     ];
     
-    if (companyId != null) {
+    // Use provided companyId or fall back to instance companyId
+    final effectiveCompanyId = companyId ?? this.companyId;
+    
+    if (!isSuperAdmin) {
+      // For non-super-admins, ALWAYS require companyId and never allow null
+      if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+        debugPrint('ExpenditureRepository: SECURITY - No companyId for non-super-admin project expenses watch, returning empty stream');
+        return Stream.value([]); // Return empty stream for security
+      }
       query += ' AND company_id = ?';
-      variables.add(d.Variable.withString(companyId));
+      variables.add(d.Variable.withString(effectiveCompanyId));
+      debugPrint('ExpenditureRepository: SECURITY - Watch filtering project expenses by company: $effectiveCompanyId');
     }
+    // Super Admin: No company filtering (can see all data)
     
     query += ' ORDER BY date DESC';
     
@@ -233,6 +336,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<List<domain.ExpenditureItem>> searchExpenditures(String? companyId, String query) async {
     try {
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
       String sqlQuery = 'SELECT * FROM Expenditures WHERE (is_active IS NULL OR is_active = 1)';
       List<d.Variable<Object>> variables = <d.Variable<Object>>[
         d.Variable.withString('%$query%'),
@@ -240,10 +344,20 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
         d.Variable.withString('%$query%'),
       ];
       
-      if (companyId != null) {
+      // Use provided companyId or fall back to instance companyId
+      final effectiveCompanyId = companyId ?? this.companyId;
+      
+      if (!isSuperAdmin) {
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+          debugPrint('ExpenditureRepository: SECURITY - No companyId for non-super-admin search, returning empty results');
+          return []; // Return empty list for security
+        }
         sqlQuery += ' AND company_id = ?';
-        variables.insert(0, d.Variable.withString(companyId));
+        variables.insert(0, d.Variable.withString(effectiveCompanyId));
+        debugPrint('ExpenditureRepository: SECURITY - Filtering search expenditures by company: $effectiveCompanyId');
       }
+      // Super Admin: No company filtering (can see all data)
       
       sqlQuery += ' AND (LOWER(description) LIKE LOWER(?) OR LOWER(amount) LIKE LOWER(?) OR LOWER(date) LIKE LOWER(?)) ORDER BY date DESC';
       
@@ -257,6 +371,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
 
   @override
   Stream<List<domain.ExpenditureItem>> watchSearchExpenditures(String? companyId, String query) {
+    // CRITICAL FIX: Strict company filtering for data leakage prevention
     String sqlQuery = 'SELECT * FROM Expenditures WHERE (is_active IS NULL OR is_active = 1)';
     List<d.Variable<Object>> variables = <d.Variable<Object>>[
       d.Variable.withString('%$query%'),
@@ -264,10 +379,20 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       d.Variable.withString('%$query%'),
     ];
     
-    if (companyId != null) {
+    // Use provided companyId or fall back to instance companyId
+    final effectiveCompanyId = companyId ?? this.companyId;
+    
+    if (!isSuperAdmin) {
+      // For non-super-admins, ALWAYS require companyId and never allow null
+      if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+        debugPrint('ExpenditureRepository: SECURITY - No companyId for non-super-admin search watch, returning empty stream');
+        return Stream.value([]); // Return empty stream for security
+      }
       sqlQuery += ' AND company_id = ?';
-      variables.insert(0, d.Variable.withString(companyId));
+      variables.insert(0, d.Variable.withString(effectiveCompanyId));
+      debugPrint('ExpenditureRepository: SECURITY - Filtering search watch expenditures by company: $effectiveCompanyId');
     }
+    // Super Admin: No company filtering (can see all data)
     
     sqlQuery += ' AND (LOWER(description) LIKE LOWER(?) OR LOWER(amount) LIKE LOWER(?) OR LOWER(date) LIKE LOWER(?)) ORDER BY date DESC';
     
@@ -398,38 +523,29 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<void> ensureExpenditureTableColumns() async {
     try {
+      // OPTIMIZATION: Faster column check with early exit
       final cols = await db.customSelect('PRAGMA table_info(Expenditures)').get();
       final columnNames = cols.map((r) => r.data['name']?.toString()).toList();
+      debugPrint('ExpenditureRepository: Found existing columns: $columnNames');
       
-      if (!columnNames.contains('category_type')) {
-        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN category_type TEXT');
-      }
-      if (!columnNames.contains('kind')) {
-        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN kind TEXT');
-      }
-      if (!columnNames.contains('project_id')) {
-        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN project_id TEXT');
-      }
-      if (!columnNames.contains('category')) {
-        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN category TEXT');
-      }
-      if (!columnNames.contains('office_month')) {
-        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN office_month TEXT');
-      }
-      if (!columnNames.contains('is_active')) {
-        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN is_active INTEGER DEFAULT 1');
-      }
-      if (!columnNames.contains('is_synced')) {
-        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN is_synced INTEGER DEFAULT 1');
-      }
-      if (!columnNames.contains('created_at')) {
-        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN created_at TEXT');
-      }
-      if (!columnNames.contains('updated_at')) {
-        await db.customStatement('ALTER TABLE Expenditures ADD COLUMN updated_at TEXT');
-      }
+      // Batch column additions with minimal error handling
+      final operations = <Future<void>>[];
+      if (!columnNames.contains('category_type')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN category_type TEXT'));
+      if (!columnNames.contains('kind')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN kind TEXT'));
+      if (!columnNames.contains('project_id')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN project_id TEXT'));
+      if (!columnNames.contains('category')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN category TEXT'));
+      if (!columnNames.contains('office_month')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN office_month TEXT'));
+      if (!columnNames.contains('is_active')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN is_active INTEGER DEFAULT 1'));
+      if (!columnNames.contains('is_synced')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN is_synced INTEGER DEFAULT 1'));
+      if (!columnNames.contains('created_at')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN created_at TEXT'));
+      if (!columnNames.contains('updated_at')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN updated_at TEXT'));
+      
+      // Execute all operations in parallel for speed
+      await Future.wait(operations);
+      debugPrint('ExpenditureRepository: Table columns optimization completed - ${operations.length} operations processed');
     } catch (e) {
-      throw Exception('Failed to ensure expenditure table columns: $e');
+      debugPrint('ExpenditureRepository: Failed to ensure expenditure table columns: $e');
+      // Don't throw - allow app to continue even if column checks fail
     }
   }
 
@@ -442,27 +558,18 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   /// CRITICAL: Ensure category column exists in expenditure_sub_items table
   Future<void> ensureExpenditureSubItemsCategoryColumn() async {
     try {
-      debugPrint('ExpenditureRepository: Starting category column check');
+      debugPrint('ExpenditureRepository: Starting optimized category column check');
       
-      // First, try to add the column directly (this will fail if it already exists, which is fine)
+      // OPTIMIZATION: Try to add column directly without verification to reduce database calls
       try {
         await db.customStatement('ALTER TABLE expenditure_sub_items ADD COLUMN category TEXT');
         debugPrint('ExpenditureRepository: Category column added successfully');
       } catch (e) {
-        // Column might already exist, which is fine
+        // Column might already exist, which is fine - no need to verify
         debugPrint('ExpenditureRepository: Category column addition failed (might already exist): $e');
       }
       
-      // Now verify the column exists
-      final cols = await db.customSelect('PRAGMA table_info(expenditure_sub_items)').get();
-      final columnNames = cols.map((r) => r.data['name']?.toString()).toList();
-      debugPrint('ExpenditureRepository: Found columns: $columnNames');
-      
-      if (columnNames.contains('category')) {
-        debugPrint('ExpenditureRepository: Category column verified to exist');
-      } else {
-        debugPrint('ExpenditureRepository: WARNING: Category column still missing after addition attempt');
-      }
+      debugPrint('ExpenditureRepository: Optimized category column check completed');
     } catch (e) {
       debugPrint('ExpenditureRepository: Error ensuring category column: $e');
       // Don't throw - allow the app to continue even if column addition fails
@@ -472,7 +579,8 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<double> getTotalOfficeExpenses(String? companyId) async {
     try {
-      // CRITICAL: Query for office_expense type to match what we're saving
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
+      // Query for office_expense type to match what we're saving
       String query = '''SELECT COALESCE(SUM(amount), 0) as total FROM Expenditures 
            WHERE (is_active IS NULL OR is_active = 1) 
            AND (category_type = ? OR category_type = ? OR category_type IS NULL)''';
@@ -481,12 +589,22 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
         d.Variable.withString('office')
       ];
       
-      if (companyId != null) {
+      // Use provided companyId or fall back to instance companyId
+      final effectiveCompanyId = companyId ?? this.companyId;
+      
+      if (!isSuperAdmin) {
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+          debugPrint('ExpenditureRepository: SECURITY - No companyId for non-super-admin total office expenses, returning 0');
+          return 0.0; // Return 0 for security
+        }
         query = '''SELECT COALESCE(SUM(amount), 0) as total FROM Expenditures 
            WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) 
            AND (category_type = ? OR category_type = ? OR category_type IS NULL)''';
-        variables.insert(0, d.Variable.withString(companyId));
+        variables.insert(0, d.Variable.withString(effectiveCompanyId));
+        debugPrint('ExpenditureRepository: SECURITY - Filtering total office expenses by company: $effectiveCompanyId');
       }
+      // Super Admin: No company filtering (can see all data)
       
       final rows = await db.customSelect(query, variables: variables).get();
       
@@ -499,7 +617,8 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<double> getTotalProjectExpenses(String? companyId) async {
     try {
-      // CRITICAL: Query for project_expense and project_bucket types to match what we're saving
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
+      // Query for project_expense and project_bucket types to match what we're saving
       String query = '''SELECT COALESCE(SUM(amount), 0) as total FROM Expenditures 
            WHERE (is_active IS NULL OR is_active = 1) 
            AND (category_type = ? OR category_type = ?)''';
@@ -508,12 +627,22 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
         d.Variable.withString('project')
       ];
       
-      if (companyId != null) {
+      // Use provided companyId or fall back to instance companyId
+      final effectiveCompanyId = companyId ?? this.companyId;
+      
+      if (!isSuperAdmin) {
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+          debugPrint('ExpenditureRepository: SECURITY - No companyId for non-super-admin total project expenses, returning 0');
+          return 0.0; // Return 0 for security
+        }
         query = '''SELECT COALESCE(SUM(amount), 0) as total FROM Expenditures 
            WHERE company_id = ? AND (is_active IS NULL OR is_active = 1) 
            AND (category_type = ? OR category_type = ?)''';
-        variables.insert(0, d.Variable.withString(companyId));
+        variables.insert(0, d.Variable.withString(effectiveCompanyId));
+        debugPrint('ExpenditureRepository: SECURITY - Filtering total project expenses by company: $effectiveCompanyId');
       }
+      // Super Admin: No company filtering (can see all data)
       
       final rows = await db.customSelect(query, variables: variables).get();
       

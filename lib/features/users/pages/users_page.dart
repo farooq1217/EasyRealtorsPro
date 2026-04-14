@@ -752,6 +752,7 @@ class _UsersPageState extends State<UsersPage> {
     // CRITICAL: Auto-generate User ID when opening the dialog
     _generateUserIdForNewUser(viewModel);
     
+    // Show dialog with loading state
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -762,10 +763,113 @@ class _UsersPageState extends State<UsersPage> {
             maxWidth: MediaQuery.of(dialogContext).size.width * 0.8,
             maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
           ),
-          child: _buildAddUserDialogContent(dialogContext, viewModel),
+          child: FutureBuilder<bool>(
+            future: _loadCompaniesForDialog(viewModel),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return _buildLoadingDialogContent();
+              } else if (snapshot.hasData && snapshot.data!) {
+                return _buildAddUserDialogContent(dialogContext, viewModel);
+              } else {
+                return _buildErrorDialogContent();
+              }
+            },
+          ),
         ),
       ),
     );
+  }
+  
+  // Load companies for dialog with proper error handling
+  Future<bool> _loadCompaniesForDialog(UserViewModel viewModel) async {
+    try {
+      // Copy companies from CompanyViewModel to UserViewModel
+      await _copyCompaniesToUserViewModel(viewModel);
+      return true;
+    } catch (e) {
+      debugPrint('UsersPage: Error loading companies for dialog: $e');
+      return false;
+    }
+  }
+  
+  // Build loading dialog content
+  Widget _buildLoadingDialogContent() {
+    return Container(
+      padding: const EdgeInsets.all(40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Loading companies...',
+            style: AppFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey.shade700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Build error dialog content
+  Widget _buildErrorDialogContent() {
+    return Container(
+      padding: const EdgeInsets.all(40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.error_outline,
+            color: Colors.red.shade400,
+            size: 64,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Failed to load companies',
+            style: AppFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: Colors.red.shade700,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade600,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(
+              'Close',
+              style: AppFonts.poppins(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  
+  // Helper method to copy companies from CompanyViewModel to UserViewModel
+  Future<void> _copyCompaniesToUserViewModel(UserViewModel viewModel) async {
+    final companies = _companyViewModel.companies.map((company) => {
+      'id': company.id,
+      'name': company.name,
+    }).toList();
+    
+    // Update UserViewModel's companies list
+    viewModel.companies = companies;
+    viewModel.notifyListeners();
+    
+    debugPrint('UsersPage: Copied ${companies.length} companies to UserViewModel');
   }
 
   // Helper method to generate User ID for new users
@@ -1192,7 +1296,7 @@ class _UsersPageState extends State<UsersPage> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: viewModel.selectedCompanyId,
+          value: viewModel.companies.isEmpty ? null : viewModel.selectedCompanyId,
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -1203,12 +1307,35 @@ class _UsersPageState extends State<UsersPage> {
               borderSide: const BorderSide(color: Color(0xFFFF6B35)),
             ),
             labelText: 'Company',
-            hintText: 'Select Company',
+            hintText: viewModel.companies.isEmpty ? 'Loading companies...' : 'Select Company',
+            prefixIcon: viewModel.companies.isEmpty 
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+                      ),
+                    ),
+                  )
+                : null,
           ),
-          items: _buildCompanyDropdownItems(viewModel.companies, viewModel.isCurrentUserSuperAdmin),
-          onChanged: (value) {
-            viewModel.selectedCompanyId = value;
-          },
+          items: viewModel.companies.isEmpty 
+              ? [] 
+              : _buildCompanyDropdownItems(viewModel.companies, viewModel.isCurrentUserSuperAdmin),
+          onChanged: viewModel.companies.isEmpty 
+              ? null 
+              : (value) {
+                  viewModel.selectedCompanyId = value;
+                },
+          isExpanded: true,
+          menuMaxHeight: 300,
+          dropdownColor: Colors.white,
+          icon: viewModel.companies.isEmpty 
+              ? const SizedBox.shrink()
+              : Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
         ),
         const SizedBox(height: 16),
 

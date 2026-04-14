@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../core/font_utils.dart';
 import 'package:flutter/services.dart';
@@ -13,10 +14,24 @@ import '../../../core/shared_utils.dart' show TopRightSearch;
 import '../../../shimmer_widgets.dart';
 import '../../../widgets/primary_gradient_button.dart';
 import '../view_models/expenditure_view_model.dart';
+import '../helpers/grouped_expense_logic.dart';
+import '../widgets/category_detail_sheet.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/services/app_storage.dart';
 
 class ExpenditurePage extends StatefulWidget {
   final AppDatabase db;
-  const ExpenditurePage({super.key, required this.db});
+  final String? companyId;
+  final bool? isSuperAdmin;
+  final String? userId;
+  
+  const ExpenditurePage({
+    super.key, 
+    required this.db,
+    this.companyId,
+    this.isSuperAdmin,
+    this.userId,
+  });
 
   @override
   State<ExpenditurePage> createState() => _ExpenditurePageState();
@@ -24,7 +39,8 @@ class ExpenditurePage extends StatefulWidget {
 
 class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  late ExpenditureViewModel _viewModel;
+  ExpenditureViewModel? _viewModel; // Make nullable to prevent LateInitializationError
+  bool _initialized = false; // Track initialization state
   
   // Function to update dialog state
   void setDialogState(VoidCallback fn) {
@@ -51,27 +67,44 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _viewModel = ExpenditureViewModel(widget.db);
+    
+    // PRE-FETCH CHECK: Initialize ViewModel immediately to prevent hanging
+    // This ensures the ViewModel is ready before the navigation animation completes
+    _initializeViewModel();
+  }
+  
+  // Separate method for ViewModel initialization
+  Future<void> _initializeViewModel() async {
+    debugPrint('ExpenditurePage: PRE-FETCH CHECK - Initializing with passed parameters - CompanyId: ${widget.companyId}, IsSuperAdmin: ${widget.isSuperAdmin}, UserId: ${widget.userId}');
+    
+    // Initialize ViewModel with passed security parameters
+    _viewModel = ExpenditureViewModel(widget.db, 
+        companyId: widget.companyId, 
+        isSuperAdmin: widget.isSuperAdmin ?? false,
+        userId: widget.userId);
     
     // Initialize ViewModel
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _viewModel.initialize();
-    });
+    await _viewModel?.initialize();
     
-    // Listen to tab changes
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        _viewModel.setCurrentTab(
-          _tabController.index == 0 ? ExpenditureTab.office : ExpenditureTab.project
-        );
-      }
-    });
+    // Set up tab listener after ViewModel is initialized
+    if (mounted) {
+      _tabController.addListener(() {
+        if (!_tabController.indexIsChanging && _viewModel != null) {
+          _viewModel!.setCurrentTab(
+            _tabController.index == 0 ? ExpenditureTab.office : ExpenditureTab.project
+          );
+        }
+      });
+      
+      _initialized = true;
+      setState(() {}); // Trigger rebuild with initialized ViewModel
+    }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _viewModel.dispose();
+    _viewModel?.dispose();
     _amountController.dispose();
     _categoryController.dispose();
     _projectNameController.dispose(); // Dispose project name controller
@@ -87,8 +120,23 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    // AVOID LAZY INITIALIZER ERRORS: Create ViewModel in build method if not yet initialized
+    final viewModel = _viewModel ?? ExpenditureViewModel(
+      widget.db,
+      companyId: widget.companyId,
+      isSuperAdmin: widget.isSuperAdmin ?? false,
+      userId: widget.userId,
+    );
+    
+    // Initialize ViewModel if not yet done (fallback for edge cases)
+    if (!_initialized && _viewModel == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _initializeViewModel();
+      });
+    }
+    
     return ChangeNotifierProvider<ExpenditureViewModel>.value(
-      value: _viewModel,
+      value: viewModel,
       child: Consumer<ExpenditureViewModel>(
         builder: (context, viewModel, child) {
           if (viewModel.loading) {
@@ -397,7 +445,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                             // Show Grand Total for Projects, Regular Amount for Office
                             type == "Project" 
                               ? FutureBuilder<double>(
-                                  future: _viewModel.getProjectGrandTotal(item.id),
+                                  future: _viewModel?.getProjectGrandTotal(item.id) ?? Future.value(0.0),
                                   builder: (context, snapshot) {
                                     if (snapshot.hasData) {
                                       return Text(
@@ -483,7 +531,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
         builder: (context) => ExpenditureDetailsPage(
           db: widget.db,
           expense: expense,
-          viewModel: _viewModel,
+          viewModel: _viewModel ?? ExpenditureViewModel(widget.db),
         ),
       ),
     );
@@ -1261,7 +1309,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     );
 
     if (confirm == true) {
-      await _viewModel.deleteExpense(expense.id);
+      await _viewModel?.deleteExpense(expense.id);
     }
   }
 
@@ -1557,152 +1605,9 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                         const SizedBox(height: 16),
                       ],
                        
-                      // Sub-Items ListView - REACTIVE PART
+                      // Grouped Category Cards - REACTIVE PART
                       Expanded(
-                        child: viewModel.subItems.isEmpty
-                                    ? Center(
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(
-                                              Icons.receipt_long,
-                                              size: 64,
-                                              color: Colors.grey.shade400,
-                                            ),
-                                            const SizedBox(height: 16),
-                                            Text(
-                                              'No Sub-Items Found',
-                                              style: AppFonts.poppins(
-                                                fontSize: 16,
-                                                color: Colors.grey.shade600,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                            if (viewModel.canAdd)
-                                              Text(
-                                                'Tap + to add breakdown items',
-                                                style: AppFonts.poppins(
-                                                  fontSize: 14,
-                                                  color: Colors.grey.shade500,
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      )
-                                    : ListView.builder(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                        itemCount: viewModel.subItems.length,
-                                        itemBuilder: (context, i) {
-                                          final item = viewModel.subItems[i];
-                                           
-                                          // Add long press for delete functionality
-                                          return InkWell(
-                                            onLongPress: () => _handleDeleteSubItem(context, viewModel, item),
-                                            child: Card(
-                                              margin: const EdgeInsets.only(bottom: 8),
-                                              elevation: 2,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                              ),
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(16),
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    // Category Badge
-                                                    Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                      decoration: BoxDecoration(
-                                                        color: _getCategoryColor(item.category ?? 'Uncategorized').withOpacity(0.1),
-                                                        borderRadius: BorderRadius.circular(16),
-                                                        border: Border.all(
-                                                          color: _getCategoryColor(item.category ?? 'Uncategorized').withOpacity(0.3),
-                                                          width: 1,
-                                                        ),
-                                                      ),
-                                                      child: Row(
-                                                        mainAxisSize: MainAxisSize.min,
-                                                        children: [
-                                                          Container(
-                                                            width: 6,
-                                                            height: 6,
-                                                            decoration: BoxDecoration(
-                                                              color: _getCategoryColor(item.category ?? 'Uncategorized'),
-                                                              shape: BoxShape.circle,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(width: 6),
-                                                          Text(
-                                                            item.category?.isNotEmpty == true ? item.category! : 'Uncategorized',
-                                                            style: AppFonts.poppins(
-                                                              fontSize: 12,
-                                                              fontWeight: FontWeight.w600,
-                                                              color: _getCategoryColor(item.category ?? 'Uncategorized'),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 12),
-                                                    
-                                                    // Main Content Row
-                                                    Row(
-                                                      children: [
-                                                        // Number indicator
-                                                        Container(
-                                                          width: 36,
-                                                          height: 36,
-                                                          decoration: BoxDecoration(
-                                                            color: Colors.grey.shade100,
-                                                            borderRadius: BorderRadius.circular(8),
-                                                          ),
-                                                          child: Center(
-                                                            child: Text(
-                                                              "${i + 1}",
-                                                              style: AppFonts.poppins(
-                                                                color: Colors.grey.shade700,
-                                                                fontWeight: FontWeight.bold,
-                                                                fontSize: 14,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        const SizedBox(width: 12),
-                                                         
-                                                        // Description and Amount
-                                                        Expanded(
-                                                          child: Column(
-                                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                                            children: [
-                                                              Text(
-                                                                item.description,
-                                                                style: AppFonts.poppins(
-                                                                  fontWeight: FontWeight.w600,
-                                                                  fontSize: 14,
-                                                                  color: Colors.black87,
-                                                                ),
-                                                              ),
-                                                              const SizedBox(height: 4),
-                                                              Text(
-                                                                f.format(item.amount),
-                                                                style: AppFonts.poppins(
-                                                                  fontWeight: FontWeight.bold,
-                                                                  fontSize: 16,
-                                                                  color: Colors.red.shade600,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
+                        child: _buildGroupedCategoryView(viewModel.subItems),
                       ),
                     ],
                   ),
@@ -2179,5 +2084,245 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
       keyValues: keyValues,
       gridRows: gridRows.cast<Map<String, String>>(),
     );
+  }
+  
+  // Build Grouped Category View with Drill-down Functionality
+  Widget _buildGroupedCategoryView(List<domain.ExpenditureSubItem> subItems) {
+    if (subItems.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.receipt_long,
+              size: 64,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No Sub-Items Found',
+              style: AppFonts.poppins(
+                fontSize: 16,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (widget.viewModel.canAdd)
+              Text(
+                'Tap + to add breakdown items',
+                style: AppFonts.poppins(
+                  fontSize: 14,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+    
+    // Get grouped expense data
+    final groupedData = GroupedExpenseLogic.getGroupedExpenseData(subItems);
+    
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      itemCount: groupedData.sortedCategories.length,
+      itemBuilder: (context, index) {
+        final category = groupedData.sortedCategories[index];
+        final categoryTotal = groupedData.categoryTotals[category] ?? 0.0;
+        final categoryExpenses = groupedData.groupedExpenses[category] ?? [];
+        final categoryColor = _getCategoryColor(category);
+        
+        return InkWell(
+          onTap: () => showCategoryDetailSheet(
+            context: context,
+            categoryName: category,
+            expenses: categoryExpenses,
+            categoryTotal: categoryTotal,
+            onDeleteItem: widget.viewModel.canAdd 
+                ? (expense) => _handleDeleteSubItem(context, widget.viewModel, expense)
+                : null,
+          ),
+          child: Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            elevation: 3,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  colors: [
+                    categoryColor.withOpacity(0.05),
+                    categoryColor.withOpacity(0.02),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Category Header
+                    Row(
+                      children: [
+                        // Category Icon
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                categoryColor.withOpacity(0.2),
+                                categoryColor.withOpacity(0.1),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            _getCategoryIcon(category),
+                            color: categoryColor,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        
+                        // Category Name and Item Count
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                category,
+                                style: AppFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${categoryExpenses.length} item${categoryExpenses.length == 1 ? '' : 's'}',
+                                style: AppFonts.poppins(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        
+                        // Amount
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              f.format(categoryTotal),
+                              style: AppFonts.poppins(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: categoryColor,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              color: categoryColor.withOpacity(0.6),
+                              size: 16,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    
+                    // Preview Items (show first 2 items if more than 2)
+                    if (categoryExpenses.length > 2) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        height: 1,
+                        color: Colors.grey.shade200,
+                      ),
+                      const SizedBox(height: 12),
+                      ...categoryExpenses.take(2).map((expense) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: categoryColor.withOpacity(0.4),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                expense.description,
+                                style: AppFonts.poppins(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade700,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              f.format(expense.amount),
+                              style: AppFonts.poppins(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Row(
+                          children: [
+                            const SizedBox(width: 18),
+                            Text(
+                              '+${categoryExpenses.length - 2} more items',
+                              style: AppFonts.poppins(
+                                fontSize: 12,
+                                color: categoryColor,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+  
+  // Get category icon for better visual representation
+  IconData _getCategoryIcon(String category) {
+    final categoryIcons = {
+      'Civil work material': Icons.construction,
+      'Sanitary material': Icons.bathtub,
+      'Electric material': Icons.electrical_services,
+      'Steel work material': Icons.hardware,
+      'Wood work material': Icons.carpenter,
+      'Labor': Icons.people,
+      'Transport': Icons.local_shipping,
+      'Utility bill': Icons.receipt_long,
+      'Rental tools': Icons.build,
+      'Other': Icons.category,
+      'Uncategorized': Icons.help_outline,
+    };
+    
+    return categoryIcons[category] ?? Icons.category;
   }
 }

@@ -95,6 +95,8 @@ class DashboardViewModel extends ChangeNotifier {
     required InventoryRepository inventoryRepository,
     required user_repo.UserRepository usersRepository,
     required AppDatabase database,
+    required String? companyId,
+    required bool? isSuperAdmin,
   })  : _userRepository = userRepository,
         _companyRepository = companyRepository,
         _expenditureRepository = expenditureRepository,

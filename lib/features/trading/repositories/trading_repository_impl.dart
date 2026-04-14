@@ -26,13 +26,17 @@ class TradingRepositoryImpl implements TradingRepository {
   final SyncDatabaseHelper _syncHelper = SyncDatabaseHelper();
   final FirestoreSyncService _firestoreSync = FirestoreSyncService();
   
+  // User context for RBAC
+  final String? companyId;
+  final bool isSuperAdmin;
+  
   // SQLite-only flag - disables all Firestore operations
   static const bool _sqliteOnlyMode = true;
 
   // Platform detection for thread safety
   static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
 
-  TradingRepositoryImpl(this.db);
+  TradingRepositoryImpl(this.db, {required this.companyId, required this.isSuperAdmin});
 
   // Helper method to wrap streams with platform thread safety
   Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
@@ -67,14 +71,28 @@ class TradingRepositoryImpl implements TradingRepository {
   @override
   Future<List<TradingEntry>> getAllEntries({String? companyId}) async {
     try {
-      final whereClause = companyId != null ? 'AND company_id = ?' : '';
-      final vars = companyId != null ? [d.Variable.withString(companyId)] : [];
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
+      String whereClause = '';
+      List<d.Variable<Object>> vars = [];
+      
+      if (!isSuperAdmin) {
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        final effectiveCompanyId = companyId ?? this.companyId;
+        if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+          debugPrint('TradingRepository: SECURITY - No companyId for non-super-admin, returning empty results');
+          return []; // Return empty list for security
+        }
+        whereClause = 'AND company_id = ?';
+        vars = [d.Variable.withString(effectiveCompanyId)];
+        debugPrint('TradingRepository: SECURITY - Filtering entries by company: $effectiveCompanyId');
+      }
+      // Super Admin: No company filtering (can see all data)
       
       final results = await db.customSelect('''
         SELECT * FROM trading_entries 
         WHERE is_active = 1 $whereClause
         ORDER BY date DESC
-      ''', variables: <d.Variable<Object>>[...vars.map((v) => d.Variable.withString(v.value ?? ''))]).get();
+      ''', variables: vars).get();
       
       return results.map((row) => _mapRowToTradingEntry(row.data)).toList();
     } catch (e) {
@@ -86,17 +104,32 @@ class TradingRepositoryImpl implements TradingRepository {
   @override
   Future<List<TradingEntry>> getEntriesByType(String entryType, {String? companyId}) async {
     try {
-      final whereClause = companyId != null ? 'AND company_id = ?' : '';
-      final vars = [
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
+      String whereClause = '';
+      final vars = <d.Variable<Object>>[
         d.Variable.withString(entryType),
-        if (companyId != null) d.Variable.withString(companyId),
       ];
+      
+      // Use provided companyId or fall back to instance companyId
+      final effectiveCompanyId = companyId ?? this.companyId;
+      
+      if (!isSuperAdmin) {
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+          debugPrint('TradingRepository: SECURITY - No companyId for non-super-admin entries by type, returning empty results');
+          return []; // Return empty list for security
+        }
+        whereClause = 'AND company_id = ?';
+        vars.add(d.Variable.withString(effectiveCompanyId));
+        debugPrint('TradingRepository: SECURITY - Filtering entries by type and company: $effectiveCompanyId');
+      }
+      // Super Admin: No company filtering (can see all data)
       
       final results = await db.customSelect('''
         SELECT * FROM trading_entries 
         WHERE is_active = 1 AND entry_type = ? $whereClause
         ORDER BY date DESC
-      ''', variables: <d.Variable<Object>>[...vars]).get();
+      ''', variables: vars).get();
       
       return results.map((row) => _mapRowToTradingEntry(row.data)).toList();
     } catch (e) {
@@ -108,10 +141,27 @@ class TradingRepositoryImpl implements TradingRepository {
   @override
   Future<TradingEntry?> getEntryById(String id) async {
     try {
+      // CRITICAL FIX: Add company filtering for getEntryById
+      String whereClause = 'AND is_active = 1 AND id = ?';
+      final vars = <d.Variable<Object>>[d.Variable.withString(id)];
+      
+      if (!isSuperAdmin) {
+        // For non-super-admins, add company filtering
+        final effectiveCompanyId = this.companyId;
+        if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+          debugPrint('TradingRepository: SECURITY - No companyId for non-super-admin getEntryById, returning null');
+          return null; // Return null for security
+        }
+        whereClause = 'AND company_id = ? AND is_active = 1 AND id = ?';
+        vars.insert(0, d.Variable.withString(effectiveCompanyId));
+        debugPrint('TradingRepository: SECURITY - Filtering entry by ID and company: $effectiveCompanyId');
+      }
+      // Super Admin: No company filtering (can see all data)
+      
       final results = await db.customSelect('''
         SELECT * FROM trading_entries 
-        WHERE is_active = 1 AND id = ?
-      ''', variables: <d.Variable<Object>>[d.Variable.withString(id)]).get();
+        WHERE $whereClause
+      ''', variables: vars).get();
       
       if (results.isEmpty) return null;
       return _mapRowToTradingEntry(results.first.data);
@@ -123,14 +173,28 @@ class TradingRepositoryImpl implements TradingRepository {
 
   @override
   Stream<List<TradingEntry>> watchEntries({String? companyId}) {
-    final whereClause = companyId != null ? 'AND company_id = ?' : '';
-    final vars = companyId != null ? [d.Variable.withString(companyId)] : [];
+    // CRITICAL FIX: Strict company filtering for data leakage prevention
+    String whereClause = '';
+    List<d.Variable<Object>> vars = [];
+    
+    if (!isSuperAdmin) {
+      // For non-super-admins, ALWAYS require companyId and never allow null
+      final effectiveCompanyId = companyId ?? this.companyId;
+      if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+        debugPrint('TradingRepository: SECURITY - No companyId for non-super-admin watch, returning empty stream');
+        return Stream.value([]); // Return empty stream for security
+      }
+      whereClause = 'AND company_id = ?';
+      vars = [d.Variable.withString(effectiveCompanyId)];
+      debugPrint('TradingRepository: SECURITY - Watch filtering entries by company: $effectiveCompanyId');
+    }
+    // Super Admin: No company filtering (can see all data)
     
     final stream = db.customSelect('''
       SELECT * FROM trading_entries 
       WHERE is_active = 1 $whereClause
       ORDER BY date DESC
-    ''', variables: <d.Variable<Object>>[...vars.map((v) => d.Variable.withString(v.value ?? ''))]).watch().map((rows) => 
+    ''', variables: vars).watch().map((rows) => 
       rows.map((row) => _mapRowToTradingEntry(row.data)).toList()
     );
     
@@ -140,17 +204,32 @@ class TradingRepositoryImpl implements TradingRepository {
 
   @override
   Stream<List<TradingEntry>> watchEntriesByType(String entryType, {String? companyId}) {
-    final whereClause = companyId != null ? 'AND company_id = ?' : '';
-    final vars = [
+    // CRITICAL FIX: Strict company filtering for data leakage prevention
+    String whereClause = '';
+    final vars = <d.Variable<Object>>[
       d.Variable.withString(entryType),
-      if (companyId != null) d.Variable.withString(companyId),
     ];
+    
+    // Use provided companyId or fall back to instance companyId
+    final effectiveCompanyId = companyId ?? this.companyId;
+    
+    if (!isSuperAdmin) {
+      // For non-super-admins, ALWAYS require companyId and never allow null
+      if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+        debugPrint('TradingRepository: SECURITY - No companyId for non-super-admin watch by type, returning empty stream');
+        return Stream.value([]); // Return empty stream for security
+      }
+      whereClause = 'AND company_id = ?';
+      vars.add(d.Variable.withString(effectiveCompanyId));
+      debugPrint('TradingRepository: SECURITY - Watch filtering entries by type and company: $effectiveCompanyId');
+    }
+    // Super Admin: No company filtering (can see all data)
     
     final stream = db.customSelect('''
       SELECT * FROM trading_entries 
       WHERE is_active = 1 AND entry_type = ? $whereClause
       ORDER BY date DESC
-    ''', variables: <d.Variable<Object>>[...vars.map((v) => d.Variable.withString(v.value ?? ''))]).watch().map((rows) => 
+    ''', variables: vars).watch().map((rows) => 
       rows.map((row) => _mapRowToTradingEntry(row.data)).toList()
     );
     
@@ -160,10 +239,27 @@ class TradingRepositoryImpl implements TradingRepository {
 
   @override
   Stream<TradingEntry?> watchEntryById(String id) {
+    // CRITICAL FIX: Add company filtering for watchEntryById
+    String whereClause = 'AND is_active = 1 AND id = ?';
+    final vars = <d.Variable<Object>>[d.Variable.withString(id)];
+    
+    if (!isSuperAdmin) {
+      // For non-super-admins, add company filtering
+      final effectiveCompanyId = this.companyId;
+      if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+        debugPrint('TradingRepository: SECURITY - No companyId for non-super-admin watchEntryById, returning empty stream');
+        return Stream.value(null); // Return empty stream for security
+      }
+      whereClause = 'AND company_id = ? AND is_active = 1 AND id = ?';
+      vars.insert(0, d.Variable.withString(effectiveCompanyId));
+      debugPrint('TradingRepository: SECURITY - Watch filtering entry by ID and company: $effectiveCompanyId');
+    }
+    // Super Admin: No company filtering (can see all data)
+    
     return db.customSelect('''
       SELECT * FROM trading_entries 
-      WHERE is_active = 1 AND id = ?
-    ''', variables: <d.Variable<Object>>[d.Variable.withString(id)]).watch().map((rows) {
+      WHERE $whereClause
+    ''', variables: vars).watch().map((rows) {
       if (rows.isEmpty) return null;
       return _mapRowToTradingEntry(rows.first.data);
     });
@@ -172,14 +268,29 @@ class TradingRepositoryImpl implements TradingRepository {
   @override
   Future<List<TradingEntry>> searchEntries(String query, {String? companyId}) async {
     try {
-      final whereClause = companyId != null ? 'AND company_id = ?' : '';
-      final vars = [
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
+      String whereClause = '';
+      final vars = <d.Variable<Object>>[
         d.Variable.withString('%$query%'),
         d.Variable.withString('%$query%'),
         d.Variable.withString('%$query%'),
         d.Variable.withString('%$query%'),
-        if (companyId != null) d.Variable.withString(companyId),
       ];
+      
+      // Use provided companyId or fall back to instance companyId
+      final effectiveCompanyId = companyId ?? this.companyId;
+      
+      if (!isSuperAdmin) {
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+          debugPrint('TradingRepository: SECURITY - No companyId for non-super-admin search, returning empty results');
+          return []; // Return empty list for security
+        }
+        whereClause = 'AND company_id = ?';
+        vars.add(d.Variable.withString(effectiveCompanyId));
+        debugPrint('TradingRepository: SECURITY - Filtering search entries by company: $effectiveCompanyId');
+      }
+      // Super Admin: No company filtering (can see all data)
       
       final results = await db.customSelect('''
         SELECT * FROM trading_entries 
@@ -190,7 +301,7 @@ class TradingRepositoryImpl implements TradingRepository {
           comments LIKE ?
         ) $whereClause
         ORDER BY date DESC
-      ''', variables: <d.Variable<String>>[...vars.map((v) => d.Variable.withString(v.value ?? ''))]).get();
+      ''', variables: vars).get();
       
       return results.map((row) => _mapRowToTradingEntry(row.data)).toList();
     } catch (e) {
@@ -201,14 +312,29 @@ class TradingRepositoryImpl implements TradingRepository {
 
   @override
   Stream<List<TradingEntry>> watchSearchEntries(String query, {String? companyId}) {
-    final whereClause = companyId != null ? 'AND company_id = ?' : '';
-    final vars = [
+    // CRITICAL FIX: Strict company filtering for data leakage prevention
+    String whereClause = '';
+    final vars = <d.Variable<Object>>[
       d.Variable.withString('%$query%'),
       d.Variable.withString('%$query%'),
       d.Variable.withString('%$query%'),
       d.Variable.withString('%$query%'),
-      if (companyId != null) d.Variable.withString(companyId),
     ];
+    
+    // Use provided companyId or fall back to instance companyId
+    final effectiveCompanyId = companyId ?? this.companyId;
+    
+    if (!isSuperAdmin) {
+      // For non-super-admins, ALWAYS require companyId and never allow null
+      if (effectiveCompanyId == null || effectiveCompanyId.isEmpty) {
+        debugPrint('TradingRepository: SECURITY - No companyId for non-super-admin watch search, returning empty stream');
+        return Stream.value([]); // Return empty stream for security
+      }
+      whereClause = 'AND company_id = ?';
+      vars.add(d.Variable.withString(effectiveCompanyId));
+      debugPrint('TradingRepository: SECURITY - Filtering watch search entries by company: $effectiveCompanyId');
+    }
+    // Super Admin: No company filtering (can see all data)
     
     return db.customSelect('''
       SELECT * FROM trading_entries 
@@ -219,7 +345,7 @@ class TradingRepositoryImpl implements TradingRepository {
         comments LIKE ?
       ) $whereClause
       ORDER BY date DESC
-    ''', variables: <d.Variable<String>>[...vars.map((v) => d.Variable.withString(v.value ?? ''))]).watch().map((rows) => 
+    ''', variables: vars).watch().map((rows) => 
       rows.map((row) => _mapRowToTradingEntry(row.data)).toList()
     );
   }

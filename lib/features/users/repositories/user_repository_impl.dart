@@ -72,7 +72,7 @@ class UserRepositoryImpl implements UserRepository {
   Future<List<UserModel>> getUsers(String? companyId) async {
     try {
       String query;
-      List<d.Variable> variables = [];
+      List<d.Variable<Object>> variables = [];
       
       // CRITICAL FIX: Company Admin should only see users from their own company
       if (companyId != null && companyId.isNotEmpty) {
@@ -84,7 +84,7 @@ class UserRepositoryImpl implements UserRepository {
           FROM users 
           WHERE company_id = ? 
           AND (is_active = 1 OR is_active IS NULL) 
-          AND (status IS NULL OR status != 'deleted')
+          AND (status IS NULL OR status NOT IN ('deleted', 'archived'))
           ORDER BY updated_at DESC
         ''';
         variables = [d.Variable.withString(companyId)];
@@ -97,13 +97,13 @@ class UserRepositoryImpl implements UserRepository {
                  password_hash, salt, iterations, is_first_login, profile_picture_path
           FROM users 
           WHERE (is_active = 1 OR is_active IS NULL) 
-          AND (status IS NULL OR status != 'deleted')
+          AND (status IS NULL OR status NOT IN ('deleted', 'archived'))
           ORDER BY updated_at DESC
         ''';
         debugPrint('UserRepository: getUsers query for Super Admin - showing all users');
       }
       
-      final result = await db.customSelect(query, variables: variables).get();
+      final result = await db.customSelect(query, variables: <d.Variable<Object>>[...variables]).get();
       return result.map((r) => UserModel.fromMap(r.data)).toList();
     } catch (e) {
       throw Exception('Failed to fetch users: $e');
@@ -284,7 +284,7 @@ class UserRepositoryImpl implements UserRepository {
   Stream<List<UserModel>> watchUsers(String? companyId) {
     try {
       String query;
-      List<d.Variable> variables = [];
+      List<d.Variable<Object>> variables = [];
       
       // CRITICAL FIX: Enhanced Super Admin detection for GLOBAL_ADMIN support
       final isSuperAdmin = companyId == 'GLOBAL_ADMIN' || 
@@ -300,7 +300,7 @@ class UserRepositoryImpl implements UserRepository {
                  password_hash, salt, iterations, is_first_login, profile_picture_path
           FROM users 
           WHERE (is_active = 1 OR is_active IS NULL) 
-          AND (status IS NULL OR status != 'deleted')
+          AND (status IS NULL OR status NOT IN ('deleted', 'archived'))
           ORDER BY updated_at DESC
         ''';
         debugPrint('UserRepository: watchUsers query for Super Admin - showing all users (companyId: $companyId)');
@@ -313,7 +313,7 @@ class UserRepositoryImpl implements UserRepository {
           FROM users 
           WHERE company_id = ? 
           AND (is_active = 1 OR is_active IS NULL) 
-          AND (status IS NULL OR status != 'deleted')
+          AND (status IS NULL OR status NOT IN ('deleted', 'archived'))
           ORDER BY updated_at DESC
         ''';
         variables = [d.Variable.withString(companyId)];
@@ -327,7 +327,7 @@ class UserRepositoryImpl implements UserRepository {
                  password_hash, salt, iterations, is_first_login, profile_picture_path
           FROM users 
           WHERE (is_active = 1 OR is_active IS NULL) 
-          AND (status IS NULL OR status != 'deleted')
+          AND (status IS NULL OR status NOT IN ('deleted', 'archived'))
           ORDER BY updated_at DESC
         ''';
         debugPrint('UserRepository: watchUsers query fallback - showing all users (companyId: $companyId)');
@@ -336,7 +336,7 @@ class UserRepositoryImpl implements UserRepository {
       debugPrint('UserRepository: watchUsers query: $query');
       
       final stream = db
-          .customSelect(query, variables: variables)
+          .customSelect(query, variables: <d.Variable<Object>>[...variables])
           .watch()
           .map((rows) {
             final displayCompanyId = isSuperAdmin ? 'GLOBAL_ADMIN' : companyId;
@@ -510,7 +510,7 @@ class UserRepositoryImpl implements UserRepository {
   @override
   Future<bool> isUserIdUnique(String companyId, String userId, {String? excludeUserId}) async {
     String query = 'SELECT COUNT(*) as c FROM users WHERE company_id = ? AND user_id = ?';
-    List<d.Variable> variables = [
+    List<d.Variable<Object>> variables = [
       d.Variable.withString(companyId),
       d.Variable.withString(userId),
     ];
@@ -520,7 +520,7 @@ class UserRepositoryImpl implements UserRepository {
       variables.add(d.Variable.withString(excludeUserId));
     }
     
-    final result = await db.customSelect(query, variables: variables).get();
+    final result = await db.customSelect(query, variables: <d.Variable<Object>>[...variables]).get();
     final count = int.tryParse(result.first.data['c'].toString() ?? '0') ?? 0;
     return count == 0;
   }
@@ -629,7 +629,7 @@ class UserRepositoryImpl implements UserRepository {
       final effectiveCompanyId = isSuperAdmin ? null : companyId;
       
       String sqlQuery;
-      List<d.Variable> variables = [];
+      List<d.Variable<Object>> variables = [];
       
       if (isSuperAdmin) {
         sqlQuery = '''
@@ -664,7 +664,7 @@ class UserRepositoryImpl implements UserRepository {
         ];
       }
       
-      final result = await db.customSelect(sqlQuery, variables: variables).get();
+      final result = await db.customSelect(sqlQuery, variables: <d.Variable<Object>>[...variables]).get();
       return result.map((r) => UserModel.fromMap(r.data)).toList();
     } catch (e) {
       throw Exception('Failed to search users: $e');
@@ -974,7 +974,7 @@ class UserRepositoryImpl implements UserRepository {
       // CRITICAL: Use customUpdate with proper stream triggering
       final result = await db.customUpdate(
         'UPDATE users SET permissions = ?, updated_at = ? WHERE id = ?',
-        variables: <d.Variable<String>>[
+        variables: <d.Variable<Object>>[
           d.Variable.withString(finalJson),
           d.Variable.withString(now),
           d.Variable.withString(userId),
@@ -1042,12 +1042,61 @@ class UserRepositoryImpl implements UserRepository {
   @override
   Future<void> archiveUser(String userId) async {
     try {
-      await db.customStatement(
-        'UPDATE users SET status = ?, is_active = 0, updated_at = ? WHERE id = ?',
-        ['archived', DateTime.now().toIso8601String(), userId],
+      final now = DateTime.now().toIso8601String();
+      
+      // CRITICAL FIX: Use customUpdate to trigger stream updates
+      final result = await db.customUpdate(
+        'UPDATE users SET status = ?, is_active = 0, updated_at = ?, is_synced = 0 WHERE id = ?',
+        variables: <d.Variable<Object>>[
+          d.Variable.withString('archived'),
+          d.Variable.withString(now),
+          d.Variable.withString(userId),
+        ],
+        updates: {db.users}, // CRITICAL: This tells Drift to trigger the watch() stream!
       );
       
-      debugPrint('UserRepository: User archived: $userId');
+      debugPrint('UserRepository: User archived locally: $userId (affected rows: $result)');
+      
+      // CRITICAL FIX: Sync to Firestore immediately
+      if (!_sqliteOnlyMode) {
+        try {
+          // Get user email for Firestore document ID
+          final userQuery = await db.customSelect(
+            'SELECT email, company_id FROM users WHERE id = ?',
+            variables: <d.Variable<Object>>[d.Variable.withString(userId)],
+          ).get();
+          
+          if (userQuery.isNotEmpty) {
+            final userEmail = userQuery.first.data['email'] as String?;
+            final companyId = userQuery.first.data['company_id'] as String?;
+            
+            if (userEmail != null && userEmail.isNotEmpty) {
+              final firestoreDocId = userEmail.toLowerCase().trim();
+              
+              // Update in Firestore
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(firestoreDocId)
+                  .set({
+                    'status': 'archived',
+                    'is_active': 0,
+                    'updated_at': now,
+                    'company_id': companyId ?? '',
+                  }, SetOptions(merge: true));
+                  
+              debugPrint('UserRepository: User archived in Firestore: $userId (doc: $firestoreDocId)');
+              
+              // Mark as synced in local SQLite
+              await markUserAsSynced(userId);
+            }
+          }
+        } catch (firestoreError) {
+          debugPrint('UserRepository: Firestore sync failed for archived user $userId: $firestoreError');
+          // Continue even if Firestore fails - SQLite is primary
+        }
+      }
+      
+      debugPrint('UserRepository: Archive operation completed for user: $userId');
     } catch (e) {
       debugPrint('Error archiving user: $e');
       rethrow;
@@ -1072,7 +1121,7 @@ class UserRepositoryImpl implements UserRepository {
       final effectiveCompanyId = isSuperAdmin ? null : companyId;
       
       String query;
-      List<d.Variable> variables = [];
+      List<d.Variable<Object>> variables = [];
       
       if (isSuperAdmin) {
         query = '''
@@ -1099,7 +1148,7 @@ class UserRepositoryImpl implements UserRepository {
         variables = [d.Variable.withString(effectiveCompanyId ?? '')];
       }
       
-      final result = await db.customSelect(query, variables: variables).get();
+      final result = await db.customSelect(query, variables: <d.Variable<Object>>[...variables]).get();
       final data = result.first.data;
       
       return {

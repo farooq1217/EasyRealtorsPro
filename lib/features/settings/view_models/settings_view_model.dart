@@ -72,13 +72,28 @@ class SettingsViewModel extends ChangeNotifier {
         _loadCurrentUser().timeout(const Duration(seconds: 3), onTimeout: () {
           debugPrint('SettingsViewModel: Current user loading timed out');
           // Set default user to prevent complete failure
-          _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com'};
+          _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com', 'role': 'user'};
         }),
         _loadSocieties().timeout(const Duration(seconds: 3), onTimeout: () {
           debugPrint('SettingsViewModel: Societies loading timed out');
           _societies = [];
         }),
       ]);
+      
+      // ROLE SYNC FIX: Ensure role is properly detected after user load
+      if (_currentUser != null) {
+        final detectedRole = _currentUser!['role']?.toString().toLowerCase();
+        debugPrint('SettingsViewModel: ROLE SYNC FIX - User role detected: $detectedRole');
+        
+        // Ensure role field is properly set
+        if (detectedRole == null || detectedRole.isEmpty) {
+          final roleFromUtils = _getUserRoleFromUtils();
+          if (roleFromUtils.isNotEmpty) {
+            _currentUser!['role'] = roleFromUtils;
+            debugPrint('SettingsViewModel: ROLE SYNC FIX - Updated role from utils: $roleFromUtils');
+          }
+        }
+      }
       
       debugPrint('SettingsViewModel: User and societies loaded, loading blocks if needed');
       
@@ -109,12 +124,53 @@ class SettingsViewModel extends ChangeNotifier {
       
       if (_currentUser != null) {
         _profileImagePath = _currentUser!['profile_picture_path']?.toString();
+        
+        // ROLE SYNC FIX: Ensure role is properly detected and set
+        final detectedRole = _currentUser!['role']?.toString().toLowerCase();
+        debugPrint('SettingsViewModel._loadCurrentUser: Raw role from repository: $detectedRole');
+        
+        if (detectedRole == null || detectedRole.isEmpty) {
+          final roleFromUtils = _getUserRoleFromUtils();
+          if (roleFromUtils.isNotEmpty) {
+            _currentUser!['role'] = roleFromUtils;
+            debugPrint('SettingsViewModel._loadCurrentUser: ROLE SYNC FIX - Set role from utils: $roleFromUtils');
+          }
+        }
       }
     } catch (e) {
       debugPrint('Error loading current user: $e');
       // Set default user to prevent complete failure
-      _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com'};
+      _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com', 'role': 'user'};
     }
+  }
+  
+  // Helper method to get role using RoleUtils for consistency
+  String _getUserRoleFromUtils() {
+    try {
+      // Import RoleUtils here to avoid circular dependency
+      final role = _currentUser!['role']?.toString() ?? '';
+      if (role.isNotEmpty) return role;
+      
+      // Check permissions for role
+      final permissionsRaw = _currentUser!['permissions'];
+      if (permissionsRaw != null) {
+        if (permissionsRaw is String) {
+          try {
+            final permissions = Map<String, dynamic>.from(
+              Uri.splitQueryString(permissionsRaw)
+            );
+            return permissions['role']?.toString() ?? '';
+          } catch (e) {
+            debugPrint('SettingsViewModel: Error parsing permissions: $e');
+          }
+        } else if (permissionsRaw is Map) {
+          return permissionsRaw['role']?.toString() ?? '';
+        }
+      }
+    } catch (e) {
+      debugPrint('SettingsViewModel._getUserRoleFromUtils: Error: $e');
+    }
+    return '';
   }
 
   Future<void> updateProfile({

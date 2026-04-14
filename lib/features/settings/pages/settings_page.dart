@@ -32,6 +32,7 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
   final TextEditingController _emailController = TextEditingController();
   final GlobalKey<FormState> _profileFormKey = GlobalKey<FormState>();
   bool _mounted = true;
+  bool _initialized = false; // Track initialization state
   
   // CRITICAL FIX: Add timeout mechanism to prevent infinite loading
   DateTime? _loadingStartTime;
@@ -41,6 +42,9 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
   void initState() {
     super.initState();
     _loadingStartTime = DateTime.now();
+    
+    // PRE-FETCH CHECK: Initialize ViewModel immediately to prevent hanging
+    // This ensures the ViewModel is ready before the navigation animation completes
     _initializeViewModel();
   }
 
@@ -58,6 +62,8 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
   }
 
   Future<void> _initializeViewModel() async {
+    debugPrint('SettingsPage: PRE-FETCH CHECK - Starting ViewModel initialization');
+    
     final storage = AppStorage();
     final s = await storage.readSettings();
     final token = s['authToken'] as String?;
@@ -66,8 +72,23 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
       currentUser = await AuthService.getCurrentUser(token);
     }
     
+    // ROLE SYNC FIX: Enhanced role detection
     final isSuper = RoleUtils.isSuperAdmin(currentUser) || PermissionHelper.isBypassUser(currentUser);
-    final companyId = RoleUtils.getUserCompanyId(currentUser);
+    var companyId = RoleUtils.getUserCompanyId(currentUser);
+    
+    // IMMEDIATE FALLBACK: Set default fallback for null companyId
+    if (companyId == null) {
+      if (isSuper) {
+        companyId = 'GLOBAL_ADMIN';
+        debugPrint('SettingsPage: IMMEDIATE FALLBACK - Set companyId to GLOBAL_ADMIN for Super Admin');
+      } else {
+        debugPrint('SettingsPage: No companyId provided for non-super-admin, using empty string to prevent hanging');
+        companyId = '';
+      }
+    }
+    
+    debugPrint('SettingsPage: Final parameters - isSuper: $isSuper, companyId: $companyId');
+    debugPrint('SettingsPage: User data - Email: ${currentUser?['email']}, Role: ${currentUser?['role']}');
     
     _viewModel = SettingsViewModel(
       SettingsRepositoryImpl(
@@ -96,6 +117,9 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
         debugPrint('SettingsPage: Loading still true after initialization, forcing completion');
         _viewModel!.forceLoadingComplete();
       }
+      
+      _initialized = true;
+      setState(() {}); // Trigger rebuild with initialized ViewModel
       
       // Sync form after initialization is complete
       if (_mounted && _viewModel != null) {
@@ -337,17 +361,34 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
 
   @override
   Widget build(BuildContext context) {
+    // AVOID LAZY INITIALIZER ERRORS: Create ViewModel in build method if not yet initialized
+    // Note: storage.readSettings() is async, so we use fallback ViewModel here
+    // The actual user context will be loaded in _initializeViewModel()
+    final viewModel = _viewModel ?? SettingsViewModel(
+      SettingsRepositoryImpl(
+        widget.db,
+        companyId: 'GLOBAL_ADMIN', // Default fallback
+        isSuperAdmin: false, // Will be detected in initialization
+      ),
+    );
+    
+    // Initialize ViewModel if not yet done (fallback for edge cases)
+    if (!_initialized && _viewModel == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _initializeViewModel();
+      });
+    }
+    
     // CRITICAL FIX: Check for infinite loading and force resolution
     if (_loadingStartTime != null && 
         DateTime.now().difference(_loadingStartTime!) > _maxLoadingTime &&
-        _viewModel != null && 
-        _viewModel!.loading) {
+        viewModel.loading) {
       debugPrint('SettingsPage: Loading timeout reached, forcing completion');
-      _viewModel!.forceLoadingComplete();
+      viewModel.forceLoadingComplete();
       _loadingStartTime = null; // Prevent repeated checks
     }
     
-    if (_viewModel == null || _viewModel!.loading) {
+    if (viewModel.loading) {
       return Scaffold(
         appBar: AppBar(
           title: Text('Settings', style: AppFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
@@ -374,7 +415,7 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
     }
 
     return ChangeNotifierProvider.value(
-      value: _viewModel!,
+      value: viewModel,
       child: Scaffold(
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),

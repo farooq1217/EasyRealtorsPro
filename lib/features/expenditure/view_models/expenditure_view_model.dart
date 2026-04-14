@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' as io;
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
@@ -20,8 +21,18 @@ enum ExpenditureTab { office, project }
 class ExpenditureViewModel extends ChangeNotifier {
   final ExpenditureRepository _repository;
   final AppDatabase _database;
+  final String? _passedCompanyId;
+  final bool _passedIsSuperAdmin;
+  final String? _passedUserId;
   
-  ExpenditureViewModel(this._database) : _repository = ExpenditureRepositoryImpl(_database);
+  ExpenditureViewModel(this._database, {String? companyId, bool? isSuperAdmin, String? userId}) 
+      : _repository = ExpenditureRepositoryImpl(_database, 
+          companyId: companyId, 
+          isSuperAdmin: isSuperAdmin ?? false,
+          userId: userId),
+        _passedCompanyId = companyId,
+        _passedIsSuperAdmin = isSuperAdmin ?? false,
+        _passedUserId = userId;
 
   // State
   bool _loading = true;
@@ -143,21 +154,28 @@ class ExpenditureViewModel extends ChangeNotifier {
       _loading = true;
       notifyListeners();
       
+      // OPTIMIZATION: Load user first to get security context
       await _loadUser();
-      await _repository.ensureExpenditureTableColumns();
-      debugPrint('ExpenditureViewModel: About to ensure category column exists');
-      try {
-        await (_repository as ExpenditureRepositoryImpl).ensureExpenditureSubItemsCategoryColumn();
-        debugPrint('ExpenditureViewModel: Category column check completed');
-      } catch (e) {
-        debugPrint('ExpenditureViewModel: Error in category column check: $e');
-        // Don't rethrow - continue with initialization even if column check fails
-      }
       
-      // CRITICAL: Set loading to false before setting up streams
+      // OPTIMIZATION: Set loading to false immediately after user load to show UI
       _loading = false;
       notifyListeners();
       
+      // OPTIMIZATION: Move database checks to background to prevent UI blocking
+      Future.microtask(() async {
+        try {
+          debugPrint('ExpenditureViewModel: Starting background database checks...');
+          await _repository.ensureExpenditureTableColumns();
+          // OPTIMIZATION: Skip category column check to reduce blocking
+          // await (_repository as ExpenditureRepositoryImpl).ensureExpenditureSubItemsCategoryColumn();
+          debugPrint('ExpenditureViewModel: Background database checks completed');
+        } catch (e) {
+          debugPrint('ExpenditureViewModel: Background database checks failed: $e');
+          // Don't rethrow - continue with streams even if checks fail
+        }
+      });
+      
+      // CRITICAL: Setup streams immediately after user context is available
       await _setupStreams();
     } catch (e) {
       debugPrint('Error initializing ExpenditureViewModel: $e');
@@ -182,15 +200,49 @@ class ExpenditureViewModel extends ChangeNotifier {
   }
 
   Future<void> _setupStreams() async {
-    final companyId = local.RoleUtils.getUserCompanyId(_user);
-    if (companyId == null) return;
+    // CRITICAL FIX: Use passed parameters but also detect role for Super Admin fallback
+    var companyId = _passedCompanyId;
+    var isSuperAdmin = _passedIsSuperAdmin;
+    
+    // ROLE SYNC FIX: Re-detect role if passed parameters don't match user data
+    if (_user != null) {
+      final detectedRole = local.RoleUtils.getUserRole(_user);
+      final detectedIsSuperAdmin = local.RoleUtils.isSuperAdmin(_user);
+      
+      debugPrint('ExpenditureViewModel: Role detection - Detected Role: $detectedRole, Detected isSuperAdmin: $detectedIsSuperAdmin');
+      debugPrint('ExpenditureViewModel: Passed parameters - isSuperAdmin: $isSuperAdmin, companyId: $companyId');
+      
+      // ROLE SYNC FIX: Use detected role if it's Super Admin and passed parameter is false
+      if (detectedIsSuperAdmin && !isSuperAdmin) {
+        debugPrint('ExpenditureViewModel: ROLE SYNC FIX - Updating isSuperAdmin from false to true based on user role');
+        isSuperAdmin = detectedIsSuperAdmin;
+      }
+    }
+    
+    // IMMEDIATE FALLBACK: Set default fallback for null companyId
+    if (companyId == null) {
+      if (isSuperAdmin) {
+        companyId = 'GLOBAL_ADMIN';
+        debugPrint('ExpenditureViewModel: IMMEDIATE FALLBACK - Set companyId to GLOBAL_ADMIN for Super Admin');
+      } else {
+        debugPrint('ExpenditureViewModel: No companyId provided for non-super-admin, using empty string to prevent hanging');
+        companyId = '';
+      }
+    }
+    
+    debugPrint('ExpenditureViewModel: Final parameters - isSuperAdmin: $isSuperAdmin, companyId: $companyId');
+    debugPrint('ExpenditureViewModel: User data - Email: ${_user?['email']}, Role: ${_user?['role']}, Permissions: ${_user?['permissions']}');
+    
+    // For Super Admin with GLOBAL_ADMIN, pass null to see all companies
+    final effectiveCompanyId = (isSuperAdmin && companyId == 'GLOBAL_ADMIN') ? null : companyId;
+    debugPrint('ExpenditureViewModel: Effective companyId for streams: $effectiveCompanyId (Super Admin: $isSuperAdmin)');
 
     // Cancel existing subscriptions
     await _officeExpensesSubscription?.cancel();
     await _projectExpensesSubscription?.cancel();
 
     // Setup new streams
-    _officeExpensesSubscription = _repository.watchOfficeExpenses(companyId).listen(
+    _officeExpensesSubscription = _repository.watchOfficeExpenses(effectiveCompanyId).listen(
       (data) {
         // CRITICAL: Set loading to false when stream data arrives
         if (_loading) {
@@ -214,7 +266,7 @@ class ExpenditureViewModel extends ChangeNotifier {
       },
     );
 
-    _projectExpensesSubscription = _repository.watchProjectExpenses(companyId).listen(
+    _projectExpensesSubscription = _repository.watchProjectExpenses(effectiveCompanyId).listen(
       (data) {
         // CRITICAL: Set loading to false when stream data arrives
         if (_loading) {

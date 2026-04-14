@@ -84,7 +84,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
       final isSuperAdmin = await _isSuperAdmin();
       
       String query;
-      List<d.Variable> variables = [];
+      List<d.Variable<Object>> variables = [];
       
       if (isSuperAdmin) {
         // Super Admin - show all companies
@@ -112,7 +112,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
         debugPrint('CompanyRepository: getCompanies for regular user');
       }
       
-      final result = await db.customSelect(query, variables: variables).get();
+      final result = await db.customSelect(query, variables: <d.Variable<Object>>[...variables]).get();
       return result.map((row) => CompanyModel.fromMap(row.data)).toList();
     } catch (e) {
       debugPrint('CompanyRepository: Error getting companies: $e');

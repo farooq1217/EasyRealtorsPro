@@ -114,7 +114,11 @@ class ReportsViewModel extends ChangeNotifier {
     _todoViewModel = TodoViewModel(
       repository: TodoRepositoryImpl(db),
     );
-    _tradingViewModel = TradingViewModel(TradingRepositoryImpl(db));
+    _tradingViewModel = TradingViewModel(TradingRepositoryImpl(
+      db,
+      companyId: RoleUtils.getUserCompanyId(AuthService.currentUser),
+      isSuperAdmin: RoleUtils.isSuperAdmin(AuthService.currentUser),
+    ));
     _expenditureViewModel = ExpenditureViewModel(db);
   }
 

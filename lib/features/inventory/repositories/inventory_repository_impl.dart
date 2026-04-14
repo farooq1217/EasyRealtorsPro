@@ -103,6 +103,19 @@ class InventoryRepositoryImpl implements InventoryRepository {
     try {
       final map = item.toMap();
       
+      // CRITICAL FIX: Enforce companyId for non-super-admins to prevent data leakage
+      final itemCompanyId = map['company_id']?.toString();
+      if (!isSuperAdmin) {
+        if (itemCompanyId == null || itemCompanyId.isEmpty) {
+          throw Exception('Security Error: Company ID is required for inventory items');
+        }
+        // For non-super-admins, ensure the item belongs to their company
+        if (companyId?.isNotEmpty == true && itemCompanyId != companyId) {
+          throw Exception('Security Error: Cannot add items to other companies');
+        }
+        debugPrint('InventoryRepository: SECURITY - Adding item to company: $itemCompanyId');
+      }
+      
       if (item.type == InventoryType.file) {
         await db.customStatement('''
           INSERT INTO files_table (
@@ -199,15 +212,18 @@ class InventoryRepositoryImpl implements InventoryRepository {
       String whereClause = 'WHERE is_active = 1';
       List<dynamic> whereArgs = [];
       
-      // Super Admin bypass: No company filtering at all
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
       if (!isSuperAdmin) {
-        if (companyId != null && companyId.isNotEmpty) {
-          whereClause += ' AND company_id = ?';
-          whereArgs.add(companyId);
-        } else {
-          whereClause += ' AND 1=0'; // Return no results for non-super admins without company
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        if (companyId == null || companyId.isEmpty) {
+          debugPrint('InventoryRepository: SECURITY - No companyId for non-super-admin, returning empty results');
+          return []; // Return empty list for security
         }
+        whereClause += ' AND company_id = ?';
+        whereArgs.add(companyId);
+        debugPrint('InventoryRepository: SECURITY - Filtering files by company: $companyId');
       }
+      // Super Admin: No company filtering (can see all data)
       
       final query = '''
         SELECT * FROM files_table 
@@ -241,15 +257,18 @@ class InventoryRepositoryImpl implements InventoryRepository {
       String whereClause = 'WHERE is_active = 1';
       List<dynamic> whereArgs = [];
       
-      // Super Admin bypass: No company filtering at all
+      // CRITICAL FIX: Strict company filtering for data leakage prevention
       if (!isSuperAdmin) {
-        if (companyId != null && companyId.isNotEmpty) {
-          whereClause += ' AND company_id = ?';
-          whereArgs.add(companyId);
-        } else {
-          whereClause += ' AND 1=0'; // Return no results for non-super admins without company
+        // For non-super-admins, ALWAYS require companyId and never allow null
+        if (companyId == null || companyId.isEmpty) {
+          debugPrint('InventoryRepository: SECURITY - No companyId for non-super-admin, returning empty results');
+          return []; // Return empty list for security
         }
+        whereClause += ' AND company_id = ?';
+        whereArgs.add(companyId);
+        debugPrint('InventoryRepository: SECURITY - Filtering properties by company: $companyId');
       }
+      // Super Admin: No company filtering (can see all data)
       
       final query = '''
         SELECT * FROM properties 
