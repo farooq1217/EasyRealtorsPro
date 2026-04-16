@@ -25,7 +25,7 @@ import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../widgets/image_upload_widget.dart' show ImageUploadWidget;
 import '../../../widgets/primary_gradient_button.dart' show PrimaryGradientButton;
 import '../../../core/shared_utils.dart' show TopRightSearch, showCustomTimePicker;
-import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
+import '../../../widgets/standardized_footer.dart' show StandardizedFooter;
 import '../../agents/view_models/agent_view_model.dart';
 import '../../agents/repositories/agent_repository_impl.dart';
 import 'agent_working_detail_page.dart';
@@ -46,7 +46,6 @@ class _WorkNote {
 }
 
 class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerProviderStateMixin {
-  late AgentViewModel _viewModel;
   late TabController _tabController;
   final _transferFormKey = GlobalKey<FormState>();
   final _clientRequirementFormKey = GlobalKey<FormState>();
@@ -76,22 +75,13 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         if (!mounted) return;
         final type = _tabController.index == 0 ? 'Transfer' : 'Client Requirements';
         _onTypeChanged(type);
+        // Force UI update when tab changes
+        setState(() {});
       }
     });
     
-    // Initialize view model with repository
-    final isSuperAdmin = local.RoleUtils.isSuperAdmin(null) || PermissionHelper.isBypassUser(null);
-    final companyId = local.RoleUtils.getUserCompanyId(null);
-    final repository = AgentRepositoryImpl(widget.db, companyId: companyId, isSuperAdmin: isSuperAdmin);
-    _viewModel = AgentViewModel(repository);
-    
-    // Initialize data
-    _initData();
+    // Initialize note streams
     _initNoteStreams();
-  }
-
-  Future<void> _initData() async {
-    await _viewModel.initialize();
   }
 
   Future<void> _initNoteStreams() async {
@@ -151,7 +141,6 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     _tabController.dispose();
     _officeNotesSub?.cancel();
     _otherNotesSub?.cancel();
-    _viewModel.dispose();
     super.dispose();
   }
 
@@ -165,11 +154,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       lastDate: DateTime(2030),
     );
     if (date != null && mounted) {
-      setState(() {
-        // CRITICAL: Update both controller AND view model state
-        _viewModel.dateCtl.text = DateFormat('yyyy-MM-dd').format(date);
-        _viewModel.setSelectedDate(date); // Update validation state
-      });
+      final viewModel = context.read<AgentViewModel>();
+      // CRITICAL FIX: Update ViewModel state first, then controller
+      viewModel.setSelectedDate(date);
+      // Controller is already updated in setSelectedDate method
+      debugPrint('AgentWorkingPage: Date selected - $date, controller text: "${viewModel.dateCtl.text}"');
     }
   }
 
@@ -179,9 +168,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       initialTime: TimeOfDay.now(),
     );
     if (time != null && mounted) {
-      setState(() {
-        _viewModel.timeCtl.text = time.format(context);
-      });
+      final viewModel = context.read<AgentViewModel>();
+      // CRITICAL FIX: Update ViewModel state first, then controller
+      viewModel.setSelectedTime(time);
+      // Controller is already updated in setSelectedTime method
+      debugPrint('AgentWorkingPage: Time selected - $time, controller text: "${viewModel.timeCtl.text}"');
     }
   }
 
@@ -194,11 +185,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       lastDate: DateTime(2030),
     );
     if (date != null && mounted) {
-      setState(() {
-        // CRITICAL: Update both controller AND view model state
-        _viewModel.nextWorkingDateCtl.text = DateFormat('yyyy-MM-dd').format(date);
-        _viewModel.setNextWorkingDate(date); // Update validation state
-      });
+      final viewModel = context.read<AgentViewModel>();
+      // CRITICAL FIX: Update ViewModel state first, then controller
+      viewModel.setNextWorkingDate(date);
+      // Controller is already updated in setNextWorkingDate method
+      debugPrint('AgentWorkingPage: Next working date selected - $date, controller text: "${viewModel.nextWorkingDateCtl.text}"');
     }
   }
 
@@ -211,21 +202,21 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       lastDate: DateTime(2030),
     );
     if (date != null && mounted) {
-      setState(() {
-        // CRITICAL: Update both controller AND view model state
-        _viewModel.reqDateCtl.text = DateFormat('yyyy-MM-dd').format(date);
-        _viewModel.setReqSelectedDate(date); // Update validation state
-      });
+      final viewModel = context.read<AgentViewModel>();
+      // CRITICAL FIX: Update ViewModel state first, then controller
+      viewModel.setReqSelectedDate(date);
+      // Controller is already updated in setReqSelectedDate method
+      debugPrint('AgentWorkingPage: Requirement date selected - $date, controller text: "${viewModel.reqDateCtl.text}"');
     }
   }
 
   Future<void> _pickRequirementTime() async {
     final picked = await showCustomTimePicker(
       context,
-      initialTime: _viewModel.reqSelectedTime ?? TimeOfDay.now(),
+      initialTime: context.read<AgentViewModel>().reqSelectedTime ?? TimeOfDay.now(),
     );
     if (picked != null) {
-      _viewModel.setReqSelectedTime(picked);
+      context.read<AgentViewModel>().setReqSelectedTime(picked);
     }
   }
 
@@ -235,16 +226,16 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: _viewModel.reqNextWorkingDate ?? now,
+      initialDate: context.read<AgentViewModel>().reqNextWorkingDate ?? now,
       firstDate: now,
       lastDate: DateTime(2030),
     );
     if (picked != null && mounted) {
-      setState(() {
-        // CRITICAL: Update both controller AND view model state
-        _viewModel.reqNextWorkingDateCtl.text = DateFormat('yyyy-MM-dd').format(picked);
-        _viewModel.setReqNextWorkingDate(picked); // Update validation state
-      });
+      final viewModel = context.read<AgentViewModel>();
+      // CRITICAL FIX: Update ViewModel state first, then controller
+      viewModel.setReqNextWorkingDate(picked);
+      // Controller is already updated in setReqNextWorkingDate method
+      debugPrint('AgentWorkingPage: Req next working date selected - $picked, controller text: "${viewModel.reqNextWorkingDateCtl.text}"');
     }
   } 
 
@@ -255,10 +246,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     if (existingItem != null) {
       // It's an update. Pass the existing ID as String!
       final String itemId = existingItem['id'].toString();
-      success = await _viewModel.updateTransfer(itemId);
+      success = await context.read<AgentViewModel>().updateTransfer(itemId);
     } else {
       // It's a new entry.
-      success = await _viewModel.addTransfer();
+      success = await context.read<AgentViewModel>().addTransfer();
     }
     
     if (success && mounted) {
@@ -279,11 +270,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       } catch (e) {
         print("Warning: Could not show success message: $e");
       }
-    } else if (_viewModel.error != null && mounted) {
+    } else if (context.read<AgentViewModel>().error != null && mounted) {
       // Show error message with error handling
       try {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_viewModel.error!), backgroundColor: Colors.red),
+          SnackBar(content: Text(context.read<AgentViewModel>().error!), backgroundColor: Colors.red),
         );
       } catch (e) {
         print("Warning: Could not show error message: $e");
@@ -298,10 +289,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     if (existingItem != null) {
       // It's an update. Pass the existing ID as String!
       final String itemId = existingItem['id'].toString();
-      success = await _viewModel.updateClientRequirement(itemId);
+      success = await context.read<AgentViewModel>().updateClientRequirement(itemId);
     } else {
       // It's a new entry.
-      success = await _viewModel.addClientRequirement();
+      success = await context.read<AgentViewModel>().addClientRequirement();
     }
     
     if (success && mounted) {
@@ -322,11 +313,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       } catch (e) {
         print("Warning: Could not show success message: $e");
       }
-    } else if (_viewModel.error != null && mounted) {
+    } else if (context.read<AgentViewModel>().error != null && mounted) {
       // Show error message with error handling
       try {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_viewModel.error!), backgroundColor: Colors.red),
+          SnackBar(content: Text(context.read<AgentViewModel>().error!), backgroundColor: Colors.red),
         );
       } catch (e) {
         print("Warning: Could not show error message: $e");
@@ -337,9 +328,9 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   // Notes submission delegates to view model
   Future<void> _submitOfficeNote() async {
     if (_officeNotesFormKey.currentState?.validate() ?? false) {
-      final success = await _viewModel.addOfficeNote(text: _viewModel.commentsCtl.text.trim());
+      final success = await context.read<AgentViewModel>().addOfficeNote(text: context.read<AgentViewModel>().commentsCtl.text.trim());
       if (success && mounted) {
-        _viewModel.commentsCtl.clear();
+        context.read<AgentViewModel>().commentsCtl.clear();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Office note added successfully')),
         );
@@ -349,9 +340,9 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
 
   Future<void> _submitOtherNote() async {
     if (_otherNotesFormKey.currentState?.validate() ?? false) {
-      final success = await _viewModel.addOtherNote(text: _viewModel.commentsCtl.text.trim());
+      final success = await context.read<AgentViewModel>().addOtherNote(text: context.read<AgentViewModel>().commentsCtl.text.trim());
       if (success && mounted) {
-        _viewModel.commentsCtl.clear();
+        context.read<AgentViewModel>().commentsCtl.clear();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Other note added successfully')),
         );
@@ -361,22 +352,22 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
 
   // Search functionality delegates to view model
   void _onSearchChanged(String query) {
-    _viewModel.setSearchQuery(query);
+    context.read<AgentViewModel>().setSearchQuery(query);
   }
 
   void _clearSearch() {
-    _viewModel.clearSearch();
+    context.read<AgentViewModel>().clearSearch();
   }
 
   // Type selection delegates to view model
   void _onTypeChanged(String type) {
-    _viewModel.setSelectedType(type);
+    context.read<AgentViewModel>().setSelectedType(type);
     
     // Refresh data when switching tabs to ensure filters are applied correctly
     if (type == 'Transfer') {
-      _viewModel.loadTransfers();
+      context.read<AgentViewModel>().loadTransfers();
     } else {
-      _viewModel.loadClientRequirements();
+      context.read<AgentViewModel>().loadClientRequirements();
     }
   }
 
@@ -389,7 +380,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
           db: widget.db,
           onUpdate: () {
             // Refresh data when returning from detail page
-            _viewModel.refresh();
+            context.read<AgentViewModel>().refresh();
           },
         ),
       ),
@@ -417,11 +408,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
 
   // Receipt generation placeholder
   Future<void> _generateReceipt(WorkingProgressData entry) async {
-    await _viewModel.generateProfessionalReceipt(entry.id);
+    await context.read<AgentViewModel>().generateProfessionalReceipt(entry.id);
     
-    if (_viewModel.error != null && mounted) {
+    if (context.read<AgentViewModel>().error != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_viewModel.error!)),
+        SnackBar(content: Text(context.read<AgentViewModel>().error!)),
       );
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -432,11 +423,39 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<AgentViewModel>.value(
-      value: _viewModel,
-      child: AnimatedBuilder(
-        animation: _viewModel,
-        builder: (context, child) {
+    return ChangeNotifierProvider<AgentViewModel>(
+      create: (context) {
+        // Initialize view model with repository - Use default values for immediate creation
+        final repository = AgentRepositoryImpl(widget.db, companyId: null, isSuperAdmin: false);
+        final viewModel = AgentViewModel(repository);
+        
+        // Initialize data asynchronously with proper user context
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          try {
+            // Get current user from AuthService to determine proper context
+            final storage = AppStorage();
+            final settings = await storage.readSettings();
+            final authToken = settings['authToken'] as String?;
+            Map<String, dynamic>? currentUser;
+            if (authToken != null) {
+              currentUser = await AuthService.getCurrentUser(authToken);
+            }
+            
+            final isSuperAdmin = local.RoleUtils.isSuperAdmin(currentUser) || PermissionHelper.isBypassUser(currentUser);
+            final companyId = local.RoleUtils.getUserCompanyId(currentUser);
+            debugPrint('AgentWorkingPage: Initializing repository - isSuperAdmin: $isSuperAdmin, companyId: $companyId, user: ${currentUser?['email']}');
+            
+            // Update repository with proper context if needed (this would require repository to support context updates)
+            await viewModel.initialize();
+          } catch (e) {
+            debugPrint('AgentWorkingPage: Error during async initialization: $e');
+          }
+        });
+        
+        return viewModel;
+      },
+      child: Consumer<AgentViewModel>(
+        builder: (context, viewModel, child) {
           return Focus(
             autofocus: true,
             onKeyEvent: (node, event) {
@@ -520,28 +539,32 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                       ),
                     ),
                   ),
-                  // Fixed Pagination at the bottom
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    child: Consumer<AgentViewModel>(
-                      builder: (context, viewModel, child) => _buildPaginationCard(viewModel),
-                    ),
+                  // Standardized Footer with pagination and add button
+                  Consumer<AgentViewModel>(
+                    builder: (context, viewModel, child) {
+                      return StandardizedFooter(
+                        currentPage: viewModel.currentPage,
+                        totalItems: _tabController.index == 0 
+                          ? viewModel.transfers.length 
+                          : viewModel.clientRequirements.length,
+                        itemsPerPage: viewModel.itemsPerPage,
+                        onPageChanged: (page) => viewModel.setPage(page),
+                        onItemsPerPageChanged: (itemsPerPage) => viewModel.setItemsPerPage(itemsPerPage),
+                        addButtonLabel: _tabController.index == 0 ? 'Add Transfer' : 'Add Requirement',
+                        onAddPressed: () {
+                          if (_tabController.index == 0) {
+                            _showAddTransferDialog();
+                          } else {
+                            _showAddClientRequirementDialog();
+                          }
+                        },
+                        showAddButton: true,
+                        addButtonColor: const Color(0xFFFF6B35),
+                      );
+                    },
                   ),
                 ],
               ),
-            ),
-            floatingActionButton: FloatingActionButton.extended(
-              onPressed: () {
-                if (_tabController.index == 0) {
-                  _showAddTransferDialog();
-                } else {
-                  _showAddClientRequirementDialog();
-                }
-              },
-              label: Text('ADD'),
-              icon: const Icon(Icons.add),
-              backgroundColor: const Color(0xFFFF6B35),
-              foregroundColor: Colors.white,
             ),
           ),
         );
@@ -985,29 +1008,30 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   // Form initialization methods
   void _initializeTransferForm(Map<String, dynamic>? existingItem) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _viewModel.clearTransferForm();
+      context.read<AgentViewModel>().clearTransferForm();
       if (existingItem != null) {
         // Populate form with existing data
         if (existingItem['name'] != null) {
-          _viewModel.clientNameCtl.text = existingItem['name'];
+          context.read<AgentViewModel>().clientNameCtl.text = existingItem['name'];
         }
         
         if (existingItem['transfer_date'] != null) {
           try {
             final date = DateTime.parse(existingItem['transfer_date']);
-            _viewModel.setSelectedDate(date);
-            _viewModel.dateCtl.text = DateFormat('dd MMM yyyy').format(date);
+            final viewModel = context.read<AgentViewModel>();
+            viewModel.setSelectedDate(date);
+            // Controller is already updated in setSelectedDate method
           } catch (e) {
             debugPrint('Error parsing transfer date: $e');
           }
         }
         
         if (existingItem['category'] != null) {
-          _viewModel.setTransferCategory(existingItem['category']);
+          context.read<AgentViewModel>().setTransferCategory(existingItem['category']);
         }
         
         if (existingItem['remarks'] != null) {
-          _viewModel.commentsCtl.text = existingItem['remarks'];
+          context.read<AgentViewModel>().commentsCtl.text = existingItem['remarks'];
         }
         
         // Note: plot_no, registry_number, size, client_mobile are not available in WorkingProgressData
@@ -1018,36 +1042,38 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
 
   void _initializeClientRequirementForm(Map<String, dynamic>? existingItem) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _viewModel.clearRequirementForm();
+      context.read<AgentViewModel>().clearRequirementForm();
       if (existingItem != null) {
         // Populate form with existing data
         if (existingItem['name'] != null) {
-          _viewModel.reqClientNameCtl.text = existingItem['name'];
+          context.read<AgentViewModel>().reqClientNameCtl.text = existingItem['name'];
         }
         
         if (existingItem['transfer_date'] != null) {
           try {
             final date = DateTime.parse(existingItem['transfer_date']);
-            _viewModel.setReqSelectedDate(date);
-            _viewModel.reqDateCtl.text = DateFormat('dd MMM yyyy').format(date);
+            final viewModel = context.read<AgentViewModel>();
+            viewModel.setReqSelectedDate(date);
+            // Controller is already updated in setReqSelectedDate method
           } catch (e) {
             debugPrint('Error parsing requirement date: $e');
           }
         }
         
         if (existingItem['source'] != null) {
-          _viewModel.setRequirementSource(existingItem['source']);
+          context.read<AgentViewModel>().setRequirementSource(existingItem['source']);
         }
         
         if (existingItem['remarks'] != null) {
-          _viewModel.reqCommentsCtl.text = existingItem['remarks'];
+          context.read<AgentViewModel>().reqCommentsCtl.text = existingItem['remarks'];
         }
         
         if (existingItem['next_working_date'] != null) {
           try {
             final date = DateTime.parse(existingItem['next_working_date']);
-            _viewModel.setReqNextWorkingDate(date);
-            _viewModel.reqNextWorkingDateCtl.text = DateFormat('dd MMM yyyy').format(date);
+            final viewModel = context.read<AgentViewModel>();
+            viewModel.setReqNextWorkingDate(date);
+            // Controller is already updated in setReqNextWorkingDate method
           } catch (e) {
             debugPrint('Error parsing next working date: $e');
           }
@@ -1075,22 +1101,22 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildDropdownField('Category *', _viewModel.transferCategory, [
+                  child: _buildDropdownField('Category *', context.read<AgentViewModel>().transferCategory, [
                     'Residential',
                     'Commercial', 
                     'Plot',
                     'other'
-                  ], Icons.home, (value) => _viewModel.setTransferCategory(value)),
+                  ], Icons.home, (value) => context.read<AgentViewModel>().setTransferCategory(value)),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildDropdownField('Size', _viewModel.transferSize, [
+                  child: _buildDropdownField('Size', context.read<AgentViewModel>().transferSize, [
                     '5 Marla',
                     '10 Marla',
                     '1 Kanal',
                     '2 Kanal',
                     'other'
-                  ], Icons.straighten, (value) => _viewModel.setTransferSize(value)),
+                  ], Icons.straighten, (value) => context.read<AgentViewModel>().setTransferSize(value)),
                 ),
               ],
             ),
@@ -1098,11 +1124,19 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildDateFieldWithIcon('Date *', _viewModel.dateCtl, _pickDate),
+                  child: Consumer<AgentViewModel>(
+                    builder: (context, viewModel, child) {
+                      return _buildDateFieldWithIcon('Date *', viewModel.dateCtl, _pickDate);
+                    },
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildTimeFieldWithIcon('Time', _viewModel.timeCtl, _pickTime),
+                  child: Consumer<AgentViewModel>(
+                    builder: (context, viewModel, child) {
+                      return _buildTimeFieldWithIcon('Time', viewModel.timeCtl, _pickTime);
+                    },
+                  ),
                 ),
               ],
             ),
@@ -1110,11 +1144,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildTextFieldWithIcon('Plot No', _viewModel.plotCtl, Icons.location_on),
+                  child: _buildTextFieldWithIcon('Plot No', context.read<AgentViewModel>().plotCtl, Icons.location_on),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildTextFieldWithIcon('Registry No', _viewModel.registryCtl, Icons.description),
+                  child: _buildTextFieldWithIcon('Registry No', context.read<AgentViewModel>().registryCtl, Icons.description),
                 ),
               ],
             ),
@@ -1122,33 +1156,86 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildTextFieldWithIcon('Client Name *', _viewModel.clientNameCtl, Icons.person),
+                  child: _buildTextFieldWithIcon('Client Name *', context.read<AgentViewModel>().clientNameCtl, Icons.person),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildTextFieldWithIcon('Client Mobile', _viewModel.clientMobileCtl, Icons.phone),
+                  child: _buildTextFieldWithIcon('Client Mobile', context.read<AgentViewModel>().clientMobileCtl, Icons.phone),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            _buildTextFieldWithIcon('Comments', _viewModel.commentsCtl, Icons.comment, maxLines: 3),
+            _buildTextFieldWithIcon('Comments', context.read<AgentViewModel>().commentsCtl, Icons.comment, maxLines: 3),
             const SizedBox(height: 16),
             
             // Show "Other" category field if "other" is selected
-            if (_viewModel.transferCategory == 'other') ...[
-              _buildTextFieldWithIcon('Specify Category', _viewModel.transferOtherCategoryCtl, Icons.category),
+            if (context.read<AgentViewModel>().transferCategory == 'other') ...[
+              _buildTextFieldWithIcon('Specify Category', context.read<AgentViewModel>().transferOtherCategoryCtl, Icons.category),
               const SizedBox(height: 16),
             ],
             
             // Show "Other" size field if "other" is selected  
-            if (_viewModel.transferSize == 'other') ...[
-              _buildTextFieldWithIcon('Specify Size', _viewModel.transferOtherSizeCtl, Icons.straighten),
+            if (context.read<AgentViewModel>().transferSize == 'other') ...[
+              _buildTextFieldWithIcon('Specify Size', context.read<AgentViewModel>().transferOtherSizeCtl, Icons.straighten),
               const SizedBox(height: 16),
             ],
             
-            // Image upload section - simplified
+            // Image upload section with functional button
             _buildFormSection('Property Images', [
-              Text('Image upload functionality would be implemented here', style: AppFonts.poppins(color: Colors.grey)),
+              Consumer<AgentViewModel>(
+                builder: (context, viewModel, child) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Upload button
+                      ElevatedButton.icon(
+                        onPressed: () => viewModel.pickImage(),
+                        icon: const Icon(Icons.upload_file),
+                        label: const Text('Upload Image'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF6B35),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Show selected image path
+                      if (viewModel.imagePath != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            border: Border.all(color: Colors.green.shade300),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.green.shade600, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Image selected: ${viewModel.imagePath!.split('/').last}',
+                                  style: AppFonts.poppins(
+                                    fontSize: 12,
+                                    color: Colors.green.shade800,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => viewModel.clearImagePath(),
+                                icon: const Icon(Icons.clear, size: 18),
+                                color: Colors.red.shade600,
+                                tooltip: 'Clear image',
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              ),
             ]),
             
             const SizedBox(height: 32),
@@ -1169,7 +1256,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    child: _viewModel.saving
+                    child: context.read<AgentViewModel>().saving
                         ? const SizedBox(
                             height: 20,
                             width: 20,
@@ -1208,22 +1295,22 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildDropdownField('Category', _viewModel.reqCategory, [
+                  child: _buildDropdownField('Category', context.read<AgentViewModel>().reqCategory, [
                     'Residential',
                     'Commercial', 
                     'Plot',
                     'other'
-                  ], Icons.home, (value) => _viewModel.setReqCategory(value)),
+                  ], Icons.home, (value) => context.read<AgentViewModel>().setReqCategory(value)),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildDropdownField('Preferred Size', _viewModel.reqSize, [
+                  child: _buildDropdownField('Preferred Size', context.read<AgentViewModel>().reqSize, [
                     '5 Marla',
                     '10 Marla',
                     '1 Kanal',
                     '2 Kanal',
                     'other'
-                  ], Icons.straighten, (value) => _viewModel.setReqSize(value)),
+                  ], Icons.straighten, (value) => context.read<AgentViewModel>().setReqSize(value)),
                 ),
               ],
             ),
@@ -1231,13 +1318,13 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildDropdownField('Preferred Location/Society', _viewModel.reqLocation, [
+                  child: _buildDropdownField('Preferred Location/Society', context.read<AgentViewModel>().reqLocation, [
                     'DHA',
                     'Bahria Town',
                     'LDA Avenue',
                     'Valencia',
                     'other'
-                  ], Icons.location_on, (value) => _viewModel.setReqLocation(value)),
+                  ], Icons.location_on, (value) => context.read<AgentViewModel>().setReqLocation(value)),
                 ),
                 const SizedBox(width: 16),
                 const Expanded(child: SizedBox()), // Empty space for alignment
@@ -1250,11 +1337,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildTextFieldWithIcon('Client Name', _viewModel.reqClientNameCtl, Icons.person),
+                  child: _buildTextFieldWithIcon('Client Name', context.read<AgentViewModel>().reqClientNameCtl, Icons.person),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildTextFieldWithIcon('Client Mobile No', _viewModel.reqClientMobileCtl, Icons.phone),
+                  child: _buildTextFieldWithIcon('Client Mobile No', context.read<AgentViewModel>().reqClientMobileCtl, Icons.phone),
                 ),
               ],
             ),
@@ -1265,11 +1352,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildTextFieldWithIcon('Budget Min', _viewModel.reqBudgetMinCtl, Icons.money),
+                  child: _buildTextFieldWithIcon('Budget Min', context.read<AgentViewModel>().reqBudgetMinCtl, Icons.money),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _buildTextFieldWithIcon('Budget Max', _viewModel.reqBudgetMaxCtl, Icons.money),
+                  child: _buildTextFieldWithIcon('Budget Max', context.read<AgentViewModel>().reqBudgetMaxCtl, Icons.money),
                 ),
               ],
             ),
@@ -1277,7 +1364,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildDateFieldWithIcon('Date', _viewModel.reqDateCtl, _pickRequirementDate),
+                  child: Consumer<AgentViewModel>(
+                    builder: (context, viewModel, child) {
+                      return _buildDateFieldWithIcon('Date', viewModel.reqDateCtl, _pickRequirementDate);
+                    },
+                  ),
                 ),
                 const SizedBox(width: 16),
                 const Expanded(child: SizedBox()), // Empty space for alignment
@@ -1292,15 +1383,15 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                 Expanded(
                   flex: 2,
                   child: ImageUploadWidget(
-                    imagePaths: _viewModel.requirementImages,
-                    onImagesChanged: (images) => _viewModel.setRequirementImages(images),
+                    imagePaths: context.read<AgentViewModel>().requirementImages,
+                    onImagesChanged: (images) => context.read<AgentViewModel>().setRequirementImages(images),
                     maxImages: 3,
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   flex: 3,
-                  child: _buildTextFieldWithIcon('Remarks', _viewModel.reqCommentsCtl, Icons.edit, maxLines: 3),
+                  child: _buildTextFieldWithIcon('Remarks', context.read<AgentViewModel>().reqCommentsCtl, Icons.edit, maxLines: 3),
                 ),
               ],
             ),
@@ -1323,7 +1414,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    child: _viewModel.saving
+                    child: context.read<AgentViewModel>().saving
                         ? const SizedBox(
                             width: 20,
                             height: 20,
@@ -1453,7 +1544,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         if (value == 'other' && (label.contains('Category') || label.contains('Size'))) ...[
           const SizedBox(height: 8),
           TextFormField(
-            controller: label.contains('Category') ? _viewModel.transferOtherCategoryCtl : _viewModel.transferOtherSizeCtl,
+            controller: label.contains('Category') ? context.read<AgentViewModel>().transferOtherCategoryCtl : context.read<AgentViewModel>().transferOtherSizeCtl,
             decoration: InputDecoration(
               labelText: label.contains('Category') ? 'Specify Category' : 'Specify Size',
               border: OutlineInputBorder(
@@ -1600,12 +1691,12 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   }
 
   Widget _buildCategoryDropdown() {
-    return _buildDropdownField('Category *', _viewModel.transferCategory, [
+    return _buildDropdownField('Category *', context.read<AgentViewModel>().transferCategory, [
       'Residential',
       'Commercial',
       'Plot',
       'other'
-    ], Icons.home, (value) => _viewModel.setTransferCategory(value));
+    ], Icons.home, (value) => context.read<AgentViewModel>().setTransferCategory(value));
   }
 
   Widget _buildSourceDropdown() {
@@ -1622,7 +1713,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _viewModel.requirementSource,
+          value: context.read<AgentViewModel>().requirementSource,
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -1642,23 +1733,14 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             DropdownMenuItem(value: 'Referral', child: Text('Referral')),
           ],
           onChanged: (value) {
-            _viewModel.setRequirementSource(value);
+            context.read<AgentViewModel>().setRequirementSource(value);
           },
         ),
       ],
     );
   }
 
-  Widget _buildPaginationCard(AgentViewModel viewModel) {
-    return CustomPaginationCard(
-      currentPage: viewModel.currentPage,
-      totalItems: viewModel.filteredEntries.length,
-      itemsPerPage: viewModel.itemsPerPage,
-      onPageChanged: (page) => viewModel.setPage(page),
-      onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
-    );
-  }
-
+  
   void _showDetails(BuildContext context, WorkingProgressData item, bool isTransfer) {
     showDialog(
       context: context,

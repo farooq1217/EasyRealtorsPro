@@ -2,7 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:drift/drift.dart' as d;
 import '../../../core/services/auth_service.dart';
-import '../../../core/role_utils.dart';
+import '../../../core/utils/logger.dart';
+import '../../../core/utils/error_handler.dart';
+import '../../../core/role_utils.dart' as local;
 import '../users/repositories/user_repository.dart' as user_repo;
 import '../companies/repositories/company_repository.dart';
 import '../expenditure/repositories/expenditure_repository.dart';
@@ -185,14 +187,14 @@ class DashboardViewModel extends ChangeNotifier {
   /// Set up current user context for RBAC filtering
   void _setupUserContext() {
     _currentUser = AuthService.currentUser;
-    _currentUserCompanyId = RoleUtils.getUserCompanyId(_currentUser);
+    _currentUserCompanyId = local.RoleUtils.getUserCompanyId(_currentUser);
     _currentUserEmail = _currentUser?['email']?.toString();
     
-    _isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser);
-    _isCompanyAdmin = RoleUtils.isCompanyAdmin(_currentUser);
-    _isAgent = RoleUtils.isAgent(_currentUser);
+    final isSuper = local.RoleUtils.isSuperAdmin(_currentUser);
+    _isCompanyAdmin = local.RoleUtils.isCompanyAdmin(_currentUser);
+    _isAgent = local.RoleUtils.isAgent(_currentUser);
     
-    debugPrint('DashboardViewModel: User context set - Role: ${RoleUtils.getUserRole(_currentUser)}, Company: $_currentUserCompanyId, Email: $_currentUserEmail');
+    debugPrint('DashboardViewModel: User context set - Role: ${local.RoleUtils.getUserRole(_currentUser)}, Company: $_currentUserCompanyId, Email: $_currentUserEmail');
   }
 
   /// Refresh all dashboard data
@@ -824,7 +826,7 @@ class DashboardViewModel extends ChangeNotifier {
     _tradingSubscription?.cancel();
     _tasksSubscription?.cancel();
     _inventorySub?.cancel();
-    debugPrint('DashboardViewModel: Disposed - all subscriptions cancelled');
+    Logger.debug('DashboardViewModel: Disposed - all subscriptions cancelled', tag: 'DashboardViewModel');
     super.dispose();
   }
 

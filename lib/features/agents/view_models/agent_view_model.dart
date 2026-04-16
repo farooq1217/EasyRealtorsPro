@@ -2,10 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:image_picker/image_picker.dart';
 import '../repositories/agent_repository.dart';
 import '../repositories/agent_repository_impl.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
+import '../../../core/services/permission_sync_service.dart' show PermissionSyncService;
 import '../../../core/services/app_storage.dart' show AppStorage;
 import 'package:shared/shared.dart' show WorkingProgressData, WorkingComment;
 import '../../../core/role_utils.dart';
@@ -78,6 +81,7 @@ class AgentViewModel extends ChangeNotifier {
   DateTime? _reqNextWorkingDate;
   List<String> _transferImages = [];
   List<String> _clientRequirementImages = [];
+  String? _imagePath; // For single image upload in Transfer form
 
   // Getters
   List<WorkingProgressData> get transfers => _transfers;
@@ -174,6 +178,7 @@ class AgentViewModel extends ChangeNotifier {
   List<String> get transferImages => _transferImages;
   List<String> get requirementImages => _clientRequirementImages; // Renamed for consistency
   List<String> get clientRequirementImages => _clientRequirementImages; // Added for backward compatibility
+  String? get imagePath => _imagePath;
 
   // Initialize
   Future<void> initialize() async {
@@ -192,8 +197,36 @@ class AgentViewModel extends ChangeNotifier {
       final s = await storage.readSettings();
       final authToken = s['authToken'] as String?;
       if (authToken != null) {
-        final user = await AuthService.getCurrentUser(authToken);
-        _currentUser = user;
+        debugPrint('AgentViewModel: Loading current user with permissions...');
+        
+        // OPTIMIZED: Use getPermissionsInstantly() with proper cache initialization
+        try {
+          // CRITICAL: Ensure cache is properly initialized first
+          await PermissionSyncService.initializePermissionsCache(authToken);
+          
+          // CRITICAL: Double-check cache population before calling getPermissionsInstantly
+          if (!PermissionSyncService.hasCachedPermissions) {
+            debugPrint('AgentViewModel: Cache not populated, forcing refresh...');
+            await PermissionSyncService.refreshUserPermissions(authToken);
+          }
+          
+          final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(authToken)
+              .timeout(const Duration(seconds: 5)); // 5 second timeout
+          if (userWithPermissions != null) {
+            _currentUser = userWithPermissions;
+            debugPrint('AgentViewModel: User loaded successfully with permissions: ${userWithPermissions['email']}');
+          } else {
+            // Fallback to regular user loading if instant loading fails
+            debugPrint('AgentViewModel: Instant permission loading returned null, using fallback...');
+            final user = await AuthService.getCurrentUser(authToken);
+            _currentUser = user;
+          }
+        } catch (e) {
+          // Fallback to regular user loading if instant loading fails
+          debugPrint('AgentViewModel: Instant permission loading failed: $e, using fallback...');
+          final user = await AuthService.getCurrentUser(authToken);
+          _currentUser = user;
+        }
       }
     } catch (e) {
       debugPrint('Error loading current user: $e');
@@ -349,19 +382,35 @@ class AgentViewModel extends ChangeNotifier {
 
 
   void setSelectedDate(DateTime? date) {
+    debugPrint('AgentViewModel: setSelectedDate called with: $date');
+    debugPrint('AgentViewModel: Previous selectedDate: $_selectedDate');
     _selectedDate = date;
     if (date != null) {
       dateCtl.text = DateFormat('dd MMM yyyy').format(date);
+      debugPrint('AgentViewModel: dateCtl.text updated to: "${dateCtl.text}"');
+    } else {
+      debugPrint('AgentViewModel: Date is null, clearing dateCtl.text');
     }
+    debugPrint('AgentViewModel: New selectedDate: $_selectedDate');
+    debugPrint('AgentViewModel: Calling notifyListeners()');
     notifyListeners();
+    debugPrint('AgentViewModel: notifyListeners() completed');
   }
 
   void setSelectedTime(TimeOfDay? time) {
+    debugPrint('AgentViewModel: setSelectedTime called with: $time');
+    debugPrint('AgentViewModel: Previous selectedTime: $_selectedTime');
     _selectedTime = time;
     if (time != null) {
       timeCtl.text = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+      debugPrint('AgentViewModel: timeCtl.text updated to: "${timeCtl.text}"');
+    } else {
+      debugPrint('AgentViewModel: Time is null, clearing timeCtl.text');
     }
+    debugPrint('AgentViewModel: New selectedTime: $_selectedTime');
+    debugPrint('AgentViewModel: Calling notifyListeners()');
     notifyListeners();
+    debugPrint('AgentViewModel: notifyListeners() completed');
   }
 
   void setReqSelectedDate(DateTime? date) {
@@ -427,21 +476,97 @@ class AgentViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Image picker method for Windows compatibility
+  Future<void> pickImage() async {
+    try {
+      debugPrint('AgentViewModel: Starting image picker...');
+      
+      // For Windows, use file_selector for better compatibility
+      if (defaultTargetPlatform == TargetPlatform.windows) {
+        final XFile? image = await ImagePicker().pickImage(
+          source: ImageSource.gallery,
+          maxWidth: 1920,
+          maxHeight: 1080,
+          imageQuality: 85,
+        );
+        
+        if (image != null) {
+          _imagePath = image.path;
+          debugPrint('AgentViewModel: Image selected (Windows) - ${image.path}');
+          notifyListeners();
+        } else {
+          debugPrint('AgentViewModel: No image selected');
+        }
+      } else {
+        // For other platforms, use standard image picker
+        final XFile? image = await ImagePicker().pickImage(
+          source: ImageSource.gallery,
+          maxWidth: 1920,
+          maxHeight: 1080,
+          imageQuality: 85,
+        );
+        
+        if (image != null) {
+          _imagePath = image.path;
+          debugPrint('AgentViewModel: Image selected - ${image.path}');
+          notifyListeners();
+        } else {
+          debugPrint('AgentViewModel: No image selected');
+        }
+      }
+    } catch (e) {
+      debugPrint('AgentViewModel: Error picking image: $e');
+      _error = 'Failed to pick image: $e';
+      notifyListeners();
+    }
+  }
+
+  // Clear single image path
+  void clearImagePath() {
+    _imagePath = null;
+    notifyListeners();
+  }
+
   // Add transfer
   Future<bool> addTransfer() async {
     print("AgentViewModel: addTransfer() called. Starting validation...");
     
+    // CRITICAL FIX: Ensure user is loaded with permissions before proceeding
+    if (_currentUser == null) {
+      print("AgentViewModel: Current user is null, reloading...");
+      await _loadCurrentUser();
+    }
+    
+    debugPrint('AgentViewModel: Permission check - User: ${_currentUser?['email']}, Role: ${_currentUser?['role']}');
+    debugPrint('AgentViewModel: Permission check - User permissions: ${_currentUser?['permissions']}');
+    
     if (!PermissionHelper.canAddModule(_currentUser, 'agent_working')) {
-      _error = 'Permission Denied';
+      _error = 'Permission Denied: Cannot add agent working entries';
       notifyListeners();
+      debugPrint('AgentViewModel: Permission denied for agent_working module');
       return false;
     }
+    
+    debugPrint('AgentViewModel: Permission check passed for agent_working module');
 
+    debugPrint('AgentViewModel: Date validation - _selectedDate: $_selectedDate, dateCtl.text: "${dateCtl.text}"');
     if (_selectedDate == null && dateCtl.text.isEmpty) {
       _error = 'Please select a date';
       notifyListeners();
+      debugPrint('AgentViewModel: Validation failed - Date is required');
       return false;
     }
+    debugPrint('AgentViewModel: Date validation passed');
+
+    // Enhanced time validation
+    debugPrint('AgentViewModel: Time validation - _selectedTime: $_selectedTime, timeCtl.text: "${timeCtl.text}"');
+    if (_selectedTime == null && timeCtl.text.isEmpty) {
+      _error = 'Please select a time';
+      notifyListeners();
+      debugPrint('AgentViewModel: Validation failed - Time is required');
+      return false;
+    }
+    debugPrint('AgentViewModel: Time validation passed');
 
     // Validate category requirement
     if (_transferCategory == null || _transferCategory!.isEmpty) {
@@ -518,22 +643,9 @@ class AgentViewModel extends ChangeNotifier {
       print("AgentViewModel: Transfer saved successfully - ID: $id");
       debugPrint('AgentViewModel: Transfer saved successfully - ID: $id');
 
-      // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = RoleUtils.getUserCompanyId(_currentUser);
-      if (freshCompanyId != null) {
-        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
-        
-        final freshTransfers = await _repository.getTransfers(
-          companyId: freshCompanyId,
-          isSuperAdmin: isSuperAdmin,
-          searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
-        );
-        
-        _transfers = freshTransfers;
-        
-        debugPrint('AgentViewModel: Manual refresh completed after transfer - ${freshTransfers.length} items');
-        notifyListeners(); // Force UI rebuild immediately
-      }
+      // FIXED: Removed redundant manual refresh - notifyListeners() is enough
+      // The repository should handle data updates, and UI will react to notifyListeners()
+      notifyListeners(); // Single notify call after successful save
 
       // Clear form
       _clearTransferForm();
@@ -654,22 +766,9 @@ class AgentViewModel extends ChangeNotifier {
       print("AgentViewModel: Transfer updated successfully - ID: $id");
       debugPrint('AgentViewModel: Transfer updated successfully - ID: $id');
 
-      // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = RoleUtils.getUserCompanyId(_currentUser);
-      if (freshCompanyId != null) {
-        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
-        
-        final freshTransfers = await _repository.getTransfers(
-          companyId: freshCompanyId,
-          isSuperAdmin: isSuperAdmin,
-          searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
-        );
-        
-        _transfers = freshTransfers;
-        
-        debugPrint('AgentViewModel: Manual refresh completed after transfer update - ${freshTransfers.length} items');
-        notifyListeners(); // Force UI rebuild immediately
-      }
+      // FIXED: Removed redundant manual refresh - notifyListeners() is enough
+      // The repository should handle data updates, and UI will react to notifyListeners()
+      notifyListeners(); // Single notify call after successful update
 
       // Clear form
       _clearTransferForm();
@@ -739,15 +838,36 @@ class AgentViewModel extends ChangeNotifier {
   Future<bool> addClientRequirement() async {
     print("AgentViewModel: addClientRequirement() called. Starting validation...");
     
+    // CRITICAL FIX: Ensure user is loaded with permissions before proceeding
+    if (_currentUser == null) {
+      print("AgentViewModel: Current user is null, reloading...");
+      await _loadCurrentUser();
+    }
+    
+    debugPrint('AgentViewModel: Permission check - User: ${_currentUser?['email']}, Role: ${_currentUser?['role']}');
+    debugPrint('AgentViewModel: Permission check - User permissions: ${_currentUser?['permissions']}');
+    
     if (!PermissionHelper.canAddModule(_currentUser, 'agent_working')) {
-      _error = 'Permission Denied';
+      _error = 'Permission Denied: Cannot add client requirement entries';
       notifyListeners();
+      debugPrint('AgentViewModel: Permission denied for client_working module');
       return false;
     }
+    
+    debugPrint('AgentViewModel: Permission check passed for client_working module');
 
     if (_reqSelectedDate == null && reqDateCtl.text.isEmpty) {
       _error = 'Please select a date';
       notifyListeners();
+      debugPrint('AgentViewModel: Validation failed - Date is required for client requirement');
+      return false;
+    }
+
+    // Enhanced time validation for client requirement
+    if (_reqSelectedTime == null && reqTimeCtl.text.isEmpty) {
+      _error = 'Please select a time';
+      notifyListeners();
+      debugPrint('AgentViewModel: Validation failed - Time is required for client requirement');
       return false;
     }
 
@@ -789,22 +909,9 @@ class AgentViewModel extends ChangeNotifier {
       
       debugPrint('AgentViewModel: Client requirement saved successfully - Source: $_requirementSource');
 
-      // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = RoleUtils.getUserCompanyId(_currentUser);
-      if (freshCompanyId != null) {
-        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
-        
-        final freshRequirements = await _repository.getClientRequirements(
-          companyId: freshCompanyId,
-          isSuperAdmin: isSuperAdmin,
-          searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
-        );
-        
-        _clientRequirements = freshRequirements;
-        
-        debugPrint('AgentViewModel: Manual refresh completed after client requirement - ${freshRequirements.length} items');
-        notifyListeners(); // Force UI rebuild immediately
-      }
+      // FIXED: Removed redundant manual refresh - notifyListeners() is enough
+      // The repository should handle data updates, and UI will react to notifyListeners()
+      notifyListeners(); // Single notify call after successful save
 
       // Clear form
       _clearRequirementForm();
@@ -868,22 +975,9 @@ class AgentViewModel extends ChangeNotifier {
       
       debugPrint('AgentViewModel: Client requirement updated successfully - Source: $_requirementSource');
 
-      // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = RoleUtils.getUserCompanyId(_currentUser);
-      if (freshCompanyId != null) {
-        final isSuperAdmin = RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
-        
-        final freshRequirements = await _repository.getClientRequirements(
-          companyId: freshCompanyId,
-          isSuperAdmin: isSuperAdmin,
-          searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
-        );
-        
-        _clientRequirements = freshRequirements;
-        
-        debugPrint('AgentViewModel: Manual refresh completed after client requirement update - ${freshRequirements.length} items');
-        notifyListeners(); // Force UI rebuild immediately
-      }
+      // FIXED: Removed redundant manual refresh - notifyListeners() is enough
+      // The repository should handle data updates, and UI will react to notifyListeners()
+      notifyListeners(); // Single notify call after successful update
 
       // Clear form
       _clearRequirementForm();
@@ -1056,6 +1150,7 @@ class AgentViewModel extends ChangeNotifier {
     _transferCategory = null;
     _transferSize = null;
     _transferImages = [];
+    _imagePath = null; // Clear single image path
     
     notifyListeners();
   }

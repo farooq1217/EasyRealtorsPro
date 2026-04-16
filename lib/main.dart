@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'core/utils/logger.dart';
 import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -15,6 +16,88 @@ import 'core/services/auth_service.dart';
 import 'core/services/update_manager.dart';
 import 'core/app.dart';
 import 'firestore_sync_service.dart';
+
+/// Safe Firebase initialization with Windows support and graceful fallback
+Future<void> _initializeFirebaseSafely(bool isWindows) async {
+  Logger.info('Firebase: Starting safe initialization...', tag: 'Firebase');
+  
+  try {
+    // Check if Firebase is already initialized
+    if (Firebase.apps.isNotEmpty) {
+      Logger.info('Firebase: Already initialized', tag: 'Firebase');
+      return;
+    }
+
+    // Windows-specific initialization checks
+    if (isWindows) {
+      Logger.info('Firebase: Windows platform detected, performing additional checks...', tag: 'Firebase');
+      
+      // Check for required Firebase files
+      final hasGoogleServices = await _checkGoogleServicesFile();
+      if (!hasGoogleServices) {
+        Logger.warning('Firebase: google-services-desktop.json not found, using fallback mode', tag: 'Firebase');
+        _initializeFallbackMode();
+        return;
+      }
+    }
+
+    // Try to initialize Firebase with platform-specific options
+    try {
+      final options = DefaultFirebaseOptions.currentPlatform;
+      
+      // Validate options before initialization
+      if (_validateFirebaseOptions(options)) {
+        await Firebase.initializeApp(
+          options: options,
+        );
+        Logger.info('Firebase: Successfully initialized with options', tag: 'Firebase');
+      } else {
+        Logger.warning('Firebase: Invalid options detected, using fallback mode', tag: 'Firebase');
+        _initializeFallbackMode();
+      }
+      
+    } catch (e) {
+      Logger.error('Firebase: Initialization failed', tag: 'Firebase', error: e);
+      _initializeFallbackMode();
+    }
+
+  } catch (e) {
+    Logger.error('Firebase: Critical initialization error', tag: 'Firebase', error: e);
+    _initializeFallbackMode();
+  }
+}
+
+/// Check if google-services-desktop.json exists (Windows specific)
+Future<bool> _checkGoogleServicesFile() async {
+  try {
+    // Try to access the file that should exist for Windows Firebase setup
+    final appDir = await getApplicationSupportDirectory();
+    final googleServicesFile = io.File('${appDir.path}/google-services-desktop.json');
+    return await googleServicesFile.exists();
+  } catch (e) {
+    Logger.error('Firebase: Could not check google-services file', tag: 'Firebase', error: e);
+    return false;
+  }
+}
+
+/// Validate Firebase options before initialization
+bool _validateFirebaseOptions(FirebaseOptions options) {
+  return options.apiKey.isNotEmpty && 
+         options.appId.isNotEmpty && 
+         options.projectId.isNotEmpty &&
+         !options.apiKey.contains('TODO') &&
+         !options.appId.contains('placeholder');
+}
+
+/// Initialize fallback mode when Firebase setup is incomplete
+void _initializeFallbackMode() {
+  Logger.info('Firebase: Initializing in offline-only mode', tag: 'Firebase');
+  Logger.info('Firebase: Features disabled - Firestore, Auth, Storage', tag: 'Firebase');
+  Logger.info('Firebase: Local SQLite database will be used exclusively', tag: 'Firebase');
+  
+  // The app will continue to work with local SQLite database
+  // NetworkSyncManager and other Firebase-dependent services should check Firebase.apps.isEmpty
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +125,7 @@ void main() async {
           final tableInfo = await db.customSelect('PRAGMA table_info(trading_entries)', variables: <d.Variable<Object>>[]).get();
           final columns = tableInfo.map((row) => row.data['name'] as String).toSet();
           
-          print('[MAIN] Current trading_entries columns: ${columns.toList()}');
+          Logger.debug('Current trading_entries columns: ${columns.toList()}', tag: 'MAIN');
           
           final requiredColumns = {
             'id', 'entry_type', 'date', 'person_name', 'mobile_no', 
@@ -53,88 +136,57 @@ void main() async {
           final missingColumns = requiredColumns.where((col) => !columns.contains(col));
           
           if (missingColumns.isNotEmpty) {
-            print('[MAIN] Missing columns detected: $missingColumns');
-            print('[MAIN] Resetting database in development mode...');
+            Logger.warning('Missing columns detected: $missingColumns', tag: 'MAIN');
+            Logger.info('Resetting database in development mode...', tag: 'MAIN');
             await AppDatabase.closeInstance();
             await AppDatabase.resetDatabaseInDevMode();
           } else {
-            print('[MAIN] Database schema validation passed');
+            Logger.debug('Database schema validation passed', tag: 'MAIN');
           }
         } catch (e) {
           // If schema check fails, reset the database
-          print('[MAIN] Database schema check failed: $e');
-          print('[MAIN] Resetting database in development mode...');
+          Logger.error('Database schema check failed', tag: 'MAIN', error: e);
+          Logger.info('Resetting database in development mode...', tag: 'MAIN');
           await AppDatabase.closeInstance();
           await AppDatabase.resetDatabaseInDevMode();
         }
       } catch (e) {
-        print('[MAIN] Database initialization failed: $e');
-        print('[MAIN] Resetting database in development mode...');
+        Logger.error('Database initialization failed', tag: 'MAIN', error: e);
+        Logger.info('Resetting database in development mode...', tag: 'MAIN');
         await AppDatabase.resetDatabaseInDevMode();
       }
     }
 
-    // 2. Firebase Initialization - Wrapped in postFrame callback to avoid threading issues
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await runZonedGuarded(() async {
-        try {
-          if (Firebase.apps.isEmpty) {
-            await Firebase.initializeApp(
-              options: DefaultFirebaseOptions.currentPlatform,
-            );
-          }
+    // 2. Firebase Initialization - Enhanced Windows Support with Graceful Fallback
+    await _initializeFirebaseSafely(isWindows);
 
-          // 3. Firestore Settings (Initialization ke BAAD)
-          if (Firebase.apps.isNotEmpty) {
-            if (isWindows) {
-              FirebaseFirestore.instance.settings = const Settings(
-                persistenceEnabled: false,
-                cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-              );
-              debugPrint('Windows Firestore: Persistence Disabled');
-            } else {
-              FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
-            }
-          }
+    // 3. Firestore Settings (Initialization ke BAAD)
+    if (Firebase.apps.isNotEmpty) {
+      if (isWindows) {
+        FirebaseFirestore.instance.settings = const Settings(
+          persistenceEnabled: false,
+          cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+        );
+        Logger.debug('Windows Firestore: Persistence Disabled', tag: 'Firestore');
+      } else {
+        FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
+      }
+    }
 
-          // 4. Check for updates after Firebase initialization
-          if (isWindows) {
-            debugPrint('Windows Platform: Checking for updates...');
-            UpdateManager().checkForUpdate();
-          }
-        } catch (e) {
-          debugPrint('Firebase Error: $e');
-        }
-      }, (error, stack) {
-        // Enhanced silence for non-blocking native plugin warnings
-        final criticalPatterns = [
-          'channel sent a message',
-          'non-platform thread',
-          'firebase_auth_plugin',
-          'id-token',
-          'Platform channel message',
-          'Announce message',
-          'viewId',
-          'FlutterViewId',
-          'accessibility',
-          'semantics',
-          'background_fetch',
-          'flutter_background_fetch',
-        ];
-        
-        if (criticalPatterns.any((pattern) => error.toString().contains(pattern))) {
-          debugPrint('Platform warning silenced: ${error.runtimeType}');
-        } else {
-          debugPrint('Firebase initialization error: $error');
-        }
-      });
-    });
+    // 3. Check for updates after Firebase initialization (if successful)
+    if (isWindows && Firebase.apps.isNotEmpty) {
+      Logger.debug('Windows Platform: Checking for updates...', tag: 'Update');
+      UpdateManager().checkForUpdate();
+    }
   }, (error, stack) {
     // Comprehensive global error handler for platform channel issues and Windows accessibility errors
     // CRITICAL: Enhanced filtering of platform-specific warnings to eliminate console noise
     final criticalPatterns = [
       'channel sent a message',
       'non-platform thread',
+      'firebase_auth_plugin',
+      'id-token',
+      'Platform channel message',
       'Announce message',
       'viewId',
       'FlutterViewId',
@@ -160,11 +212,11 @@ void main() async {
     ];
     
     if (criticalPatterns.any((pattern) => error.toString().contains(pattern))) {
-      debugPrint('Platform warning silenced: ${error.runtimeType}');
+      Logger.debug('Platform warning silenced: ${error.runtimeType}', tag: 'Platform');
     } else {
-      debugPrint('Global error: $error');
+      Logger.error('Global error', tag: 'Global', error: error);
       if (kDebugMode) {
-        debugPrint('Stack trace: $stack');
+        Logger.debug('Stack trace: $stack', tag: 'Global');
       }
     }
   });
@@ -172,7 +224,7 @@ void main() async {
   // 4. Run App with Offline-First Architecture
   if (isWindows) {
     // Windows: Add connection stability handling
-    debugPrint('Windows Platform: Applying connection stability fixes');
+    Logger.debug('Windows Platform: Applying connection stability fixes', tag: 'Platform');
   }
   
   // Use original AdminApp to avoid build issues

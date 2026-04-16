@@ -26,10 +26,11 @@ class UserCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Padding(
         padding: const EdgeInsets.all(10), // Further reduced from 12 to 10
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min, // Make card wrap content tightly
-          children: [
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min, // Make card wrap content tightly
+            children: [
             // Header: Avatar, Name/ID, Action Buttons
             Row(
               crossAxisAlignment: CrossAxisAlignment.start, // Align to top
@@ -152,6 +153,7 @@ class UserCard extends StatelessWidget {
               ],
             ),
           ],
+          ),
         ),
       ),
     );

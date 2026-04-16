@@ -17,7 +17,8 @@ import '../repositories/user_repository_impl.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/services/permission_helper.dart';
-import '../../../core/app_utils.dart';
+import '../../../core/utils/logger.dart';
+import '../../../core/utils/error_handler.dart';
 import 'package:drift/drift.dart' as d;
 
 class UserViewModel extends ChangeNotifier {
@@ -92,10 +93,10 @@ class UserViewModel extends ChangeNotifier {
   // Set mounted state and process any stored data
   void setMounted(bool mounted) {
     _mounted = mounted;
-    debugPrint('UserViewModel: setMounted called with mounted: $mounted');
+    Logger.debug('UserViewModel: setMounted called with mounted: $mounted', tag: 'UserViewModel');
     
     if (mounted && _users.isNotEmpty) {
-      debugPrint('UserViewModel: Widget mounted, processing stored ${_users.length} users');
+      Logger.debug('UserViewModel: Widget mounted, processing stored ${_users.length} users', tag: 'UserViewModel');
       
       // Process the stored data that was received before widget was mounted
       final isSuperAdmin = local.RoleUtils.isSuperAdmin(_currentUser) || PermissionHelper.isBypassUser(_currentUser);
@@ -1161,7 +1162,7 @@ class UserViewModel extends ChangeNotifier {
     _mounted = false;
     _usersSubscription?.cancel();
     _firestoreUsersSubscription?.cancel(); // CRITICAL FIX: Cleanup Firestore listener
-    debugPrint('UserViewModel: Disposed - all subscriptions cancelled');
+    Logger.debug('UserViewModel: Disposed - all subscriptions cancelled', tag: 'UserViewModel');
     _nameController.dispose();
     _emailController.dispose();
     _contactController.dispose();

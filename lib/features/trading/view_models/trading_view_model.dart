@@ -8,6 +8,8 @@ import '../repositories/trading_repository.dart';
 import '../repositories/trading_repository_impl.dart' show AlreadyDeletedException;
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/firebase_threading_handler.dart';
+import '../../../core/utils/logger.dart';
+import '../../../core/utils/error_handler.dart';
 
 class TradingViewModel extends ChangeNotifier {
   final TradingRepository _repository;
@@ -191,15 +193,18 @@ class TradingViewModel extends ChangeNotifier {
 
   // Save entry with proper user context and Firebase thread safety
   Future<void> saveEntry(TradingEntry entry) async {
+    debugPrint('TradingViewModel: saveEntry() called with entry: ${entry.toString()}');
     if (_isDisposed) return; // Prevent calls after dispose
     
     try {
+      debugPrint('TradingViewModel: Setting loading state to true');
       _setLoading(true); // Set loading state
       _error = null; // Clear any previous error
       notifyListeners();
       
       await FirebaseThreadingHandler.executeWithThreadSafety(
         () async {
+          debugPrint('TradingViewModel: Executing save operation with Firebase thread safety');
           // Super Admin bypass: Super admins can save entries without restrictions
           // No permission check needed for save operations as they create new entries
           // Enhanced: Explicit role check for debugging
@@ -228,13 +233,14 @@ class TradingViewModel extends ChangeNotifier {
             status: entry.status, // Add status field
           );
 
+          debugPrint('TradingViewModel: Calling repository.addEntry...');
           await _repository.addEntry(entryWithContext);
           debugPrint('TradingViewModel: Entry saved successfully${_isSuperAdmin ? ' (Super Admin)' : ''}');
           
           // Immediate UI sync: Add to local list immediately
           _entries.insert(0, entryWithContext);
           debugPrint('TradingViewModel: Added entry to local list immediately - new count: ${_entries.length}');
-          debugPrint('TradingViewModel: Entry category: ${entryWithContext.category}, Current tab: $_currentCategory');
+          debugPrint('TradingViewModel: Entry category: ${entryWithContext.category}, Current tab: $_currentCategory}');
           
           // Notify listeners immediately for instant UI update
           if (!_isDisposed) {
@@ -250,7 +256,7 @@ class TradingViewModel extends ChangeNotifier {
       // Clean Async Calls: Removed redundant loadEntries() - stream handles updates automatically
       // The real-time stream will automatically update the UI when data changes
     } catch (e) {
-      debugPrint('Error saving trading entry: $e');
+      debugPrint('TradingViewModel: Error saving trading entry: $e');
       _error = 'Failed to save entry: $e';
       
       // In debug mode, if it's a schema error, reset the database
@@ -267,6 +273,7 @@ class TradingViewModel extends ChangeNotifier {
       
       rethrow;
     } finally {
+      debugPrint('TradingViewModel: Setting loading state to false');
       _setLoading(false); // Always reset loading state
       notifyListeners();
     }
@@ -435,12 +442,7 @@ class TradingViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Filter by type (removed - using simple string types)
-  // void filterByType(TradingEntryType? type) {
-  //   _selectedTypeFilter = type;
-  //   notifyListeners();
-  // }
-
+  
   // Filter by entry type
   void filterByEntryType(String type) {
     _entryTypeFilter = type;
@@ -573,19 +575,19 @@ class TradingViewModel extends ChangeNotifier {
   // Reinitialize method for recovery after unexpected disposal
   Future<void> reinitializeIfNeeded() async {
     if (_isDisposed && _mounted == false) {
-      debugPrint('TradingViewModel: Reinitializing after disposal');
+      Logger.debug('TradingViewModel: Reinitializing after disposal', tag: 'TradingViewModel');
       _isDisposed = false;
       _mounted = true;
       _isStreamInitialized = false;
       
       await _initializeUser();
-      debugPrint('TradingViewModel: Reinitialized successfully');
+      Logger.debug('TradingViewModel: Reinitialized successfully', tag: 'TradingViewModel');
     }
   }
 
   // Proper cleanup method for app exit (not navigation)
   void disposeForAppExit() {
-    debugPrint('APP EXIT: Disposing TradingViewModel singleton');
+    Logger.debug('APP EXIT: Disposing TradingViewModel singleton', tag: 'TradingViewModel');
     _isDisposed = true;
     _mounted = false;
     _isStreamInitialized = false;
@@ -644,11 +646,11 @@ class TradingViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    debugPrint('DISPOSING TradingViewModel instance: ${identityHashCode(this)}');
+    Logger.debug('DISPOSING TradingViewModel instance: ${identityHashCode(this)}', tag: 'TradingViewModel');
     
     // PROPER DISPOSAL: Allow natural lifecycle management
     // The singleton pattern will be handled at the Provider level
-    debugPrint('TradingViewModel: Properly disposing streams and state');
+    Logger.debug('TradingViewModel: Properly disposing streams and state', tag: 'TradingViewModel');
     
     // Cancel streams to prevent memory leaks
     _entriesSubscription?.cancel();

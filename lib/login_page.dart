@@ -109,16 +109,13 @@ class _LoginPageState extends State<LoginPage> {
             try {
               final token = result['token'] as String?;
               if (token != null) {
-                debugPrint('LoginPage: Refreshing user permissions...');
+                debugPrint('LoginPage: Initializing permissions cache...');
                 
-                // Force permission refresh
-                await PermissionSyncService.refreshUserPermissions(token);
+                // Initialize permissions cache immediately from local database
+                await PermissionSyncService.initializePermissionsCache(token);
                 
-                // Wait for permissions to be fully loaded with timeout
-                final userWithPermissions = await PermissionSyncService.waitForPermissionsToLoad(
-                  token,
-                  timeout: const Duration(seconds: 2), // OPTIMIZATION: Reduced timeout
-                );
+                // Get permissions instantly without timeout
+                final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(token);
                 
                 if (userWithPermissions != null) {
                   debugPrint('LoginPage: Permissions loaded successfully, navigating to dashboard...');

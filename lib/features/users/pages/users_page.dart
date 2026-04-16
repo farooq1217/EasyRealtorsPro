@@ -33,7 +33,7 @@ import '../../../core/shared_utils.dart' show TopRightSearch;
 import '../models/user_model.dart';
 import '../repositories/user_repository_impl.dart';
 import '../widgets/user_card_widget.dart';
-import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
+import '../../../widgets/standardized_footer.dart' show StandardizedFooter;
 
 class UsersPage extends StatefulWidget {
   final AppDatabase db;
@@ -217,10 +217,21 @@ class _UsersPageState extends State<UsersPage> {
                         ),
                       ),
                       
-                      // Pagination (Fixed at bottom)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        child: _buildPaginationCard(),
+                      // Standardized Footer with pagination and add button
+                      Consumer<UserViewModel>(
+                        builder: (context, viewModel, child) {
+                          return StandardizedFooter(
+                            currentPage: viewModel.currentPage,
+                            totalItems: viewModel.filteredUsers.length,
+                            itemsPerPage: viewModel.itemsPerPage,
+                            onPageChanged: (page) => viewModel.setPage(page),
+                            onItemsPerPageChanged: (itemsPerPage) => viewModel.setItemsPerPage(itemsPerPage),
+                            addButtonLabel: 'Add New User',
+                            onAddPressed: () => _showAddUserDialog(context, viewModel),
+                            showAddButton: true,
+                            addButtonColor: const Color(0xFFFF6B35),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -235,7 +246,6 @@ class _UsersPageState extends State<UsersPage> {
 
   Widget _buildHeaderSection(UserViewModel userViewModel) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Expanded(
           child: Text(
@@ -247,33 +257,6 @@ class _UsersPageState extends State<UsersPage> {
             ),
           ),
         ),
-        const SizedBox(width: 16),
-      // "Add New User" Button (Filled)
-      ElevatedButton(
-        onPressed: () => _showAddUserDialog(context, userViewModel),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFFF6B35),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-          elevation: 2,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.add, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              'Add New User',
-              style: AppFonts.poppins(
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
       ],
     );
   }
@@ -718,20 +701,7 @@ class _UsersPageState extends State<UsersPage> {
     );
   }
 
-  Widget _buildPaginationCard() {
-    return Consumer<UserViewModel>(
-      builder: (context, viewModel, child) {
-        return CustomPaginationCard(
-          currentPage: viewModel.currentPage,
-          totalItems: viewModel.filteredUsers.length,
-          itemsPerPage: viewModel.itemsPerPage,
-          onPageChanged: (page) => viewModel.setPage(page),
-          onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
-        );
-      },
-    );
-  }
-
+  
 
   // Calculate responsive aspect ratio to prevent overflow
   double _getResponsiveAspectRatio(double screenWidth, int crossAxisCount) {

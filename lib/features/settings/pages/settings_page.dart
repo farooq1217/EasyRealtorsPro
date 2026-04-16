@@ -62,6 +62,12 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
   }
 
   Future<void> _initializeViewModel() async {
+    // Prevent duplicate initialization
+    if (_initialized) {
+      debugPrint('SettingsPage: Already initialized, skipping duplicate call');
+      return;
+    }
+    
     debugPrint('SettingsPage: PRE-FETCH CHECK - Starting ViewModel initialization');
     
     final storage = AppStorage();

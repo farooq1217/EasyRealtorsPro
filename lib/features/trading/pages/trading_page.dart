@@ -12,7 +12,7 @@ import '../widgets/trading_list.dart';
 import '../../../core/services/pdf_service.dart';
 import '../../../core/shared_utils.dart' show TopRightSearch;
 import '../widgets/trading_form.dart';
-import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
+import '../../../widgets/standardized_footer.dart' show StandardizedFooter;
 
 class TradingPage extends StatefulWidget {
   final dynamic db;
@@ -143,26 +143,25 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
                     ),
                   ),
                 ),
-                // 4. Pagination stays safely at absolute bottom
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  child: _buildPaginationCard(viewModel),
+                // 4. Standardized Footer with pagination and add button
+                Consumer<TradingViewModel>(
+                  builder: (context, viewModel, child) {
+                    return StandardizedFooter(
+                      currentPage: viewModel.currentPage,
+                      totalItems: _getFilteredEntriesCount(viewModel),
+                      itemsPerPage: viewModel.itemsPerPage,
+                      onPageChanged: (page) => viewModel.setPage(page),
+                      onItemsPerPageChanged: (itemsPerPage) => viewModel.setItemsPerPage(itemsPerPage),
+                      addButtonLabel: 'Add Trading Entry',
+                      onAddPressed: () => _showTradingFormDialog(),
+                      showAddButton: true,
+                      addButtonColor: const Color(0xFFFF6B35),
+                    );
+                  },
                 ),
               ],
             );
           },
-        ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _showTradingFormDialog(),
-          backgroundColor: const Color(0xFFFF6B35),
-          icon: const Icon(Icons.add, color: Colors.white),
-          label: Text(
-            'Add',
-            style: AppFonts.poppins(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
         ),
       ),
     );
@@ -358,12 +357,16 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
                       viewModel: viewModel,
                       initialCategory: viewModel.currentCategory, // Pass current tab category
                       onSave: (entry) async {
+                        debugPrint('TradingPage: onSave callback called with entry: ${entry.toString()}');
                         try {
+                          debugPrint('TradingPage: Calling viewModel.saveEntry...');
                           // Await the save operation without passing context
                           await viewModel.saveEntry(entry);
+                          debugPrint('TradingPage: viewModel.saveEntry completed successfully');
                           
                           // Close dialog exactly once after successful save
                           if (dialogContext.mounted) {
+                            debugPrint('TradingPage: Closing dialog...');
                             Navigator.of(dialogContext).pop();
                           }
                           
@@ -381,6 +384,7 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
                             );
                           }
                         } catch (e) {
+                          debugPrint('TradingPage: Error saving entry: $e');
                           // Show error message using dialog context so it's visible without closing
                           if (dialogContext.mounted) {
                             ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -420,19 +424,7 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
     );
   }
 
-  Widget _buildPaginationCard(TradingViewModel viewModel) {
-    // Get total filtered entries for current category pagination
-    final totalFilteredEntries = _getFilteredEntriesCount(viewModel);
-    
-    return CustomPaginationCard(
-      currentPage: viewModel.currentPage,
-      totalItems: totalFilteredEntries,
-      itemsPerPage: viewModel.itemsPerPage,
-      onPageChanged: (page) => viewModel.setPage(page),
-      onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
-    );
-  }
-
+  
   // Helper method to get filtered entries count for current category
   int _getFilteredEntriesCount(TradingViewModel viewModel) {
     final allEntries = viewModel.entries;

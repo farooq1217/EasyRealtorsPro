@@ -10,109 +10,164 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Service to handle permission synchronization and refresh
-/// CRITICAL: Ensures permissions are properly loaded and cached
+/// OPTIMIZED: Singleton with global permissions cache and minimal logging
 class PermissionSyncService {
-  /// Force permission refresh and ensure permissionsMap is fully loaded
-  /// CRITICAL: This ensures that when a user logs in, their fresh permissions are loaded
-  /// from local database (which already has permissionsMap) before UI navigation occurs
+  // Singleton instance
+  static final PermissionSyncService _instance = PermissionSyncService._internal();
+  factory PermissionSyncService() => _instance;
+  PermissionSyncService._internal();
+  
+  // Global permissions cache
+  static Map<String, dynamic>? _cachedPermissionsMap;
+  static Map<String, dynamic>? _cachedUser;
+  static String? _lastUserId;
+  static bool _hasLoggedInitialization = false;
+  
+  // Getters for global cache access
+  static Map<String, dynamic>? get cachedPermissionsMap => _cachedPermissionsMap;
+  static Map<String, dynamic>? get cachedUser => _cachedUser;
+  static bool get hasCachedPermissions => _cachedPermissionsMap != null && _cachedPermissionsMap!.isNotEmpty;
+  /// Initialize permissions cache with immediate local data injection
+  /// OPTIMIZED: No timeouts, immediate cache population from local database
+  static Future<void> initializePermissionsCache(String? token) async {
+    if (token == null) return;
+    
+    // Check if already cached for this user
+    if (_cachedUser != null && _lastUserId == token) {
+      if (!_hasLoggedInitialization) {
+        debugPrint('PermissionSyncService: Permissions already cached for user');
+        _hasLoggedInitialization = true;
+      }
+      return;
+    }
+    
+    // Get user data immediately from local database (no Firestore wait)
+    final user = await AuthService.getCurrentUser(token, waitForFirestore: false);
+    
+    if (user != null) {
+      // Extract and cache permissionsMap immediately
+      final permissionsMap = _extractPermissionsMap(user);
+      
+      if (permissionsMap != null && permissionsMap.isNotEmpty) {
+        _cachedUser = user;
+        _cachedPermissionsMap = permissionsMap;
+        _lastUserId = token;
+        
+        if (!_hasLoggedInitialization) {
+          debugPrint('PermissionSyncService: Permissions cached successfully for ${user['email']}');
+          debugPrint('PermissionSyncService: Available modules: ${permissionsMap.keys.toList()}');
+          _hasLoggedInitialization = true;
+        }
+      } else {
+        if (!_hasLoggedInitialization) {
+          debugPrint('PermissionSyncService: No permissions found for user ${user['email']}');
+          _hasLoggedInitialization = true;
+        }
+      }
+    }
+  }
+  
+  /// Extract permissionsMap from user object
+  static Map<String, dynamic>? _extractPermissionsMap(Map<String, dynamic> user) {
+    try {
+      // Check permissionsMap field first
+      var permissionsMapRaw = user['permissionsMap'];
+      
+      if (permissionsMapRaw == null) {
+        // Check inside permissions field
+        final permissionsField = user['permissions'];
+        if (permissionsField != null) {
+          Map<String, dynamic>? permissions;
+          if (permissionsField is String) {
+            permissions = jsonDecode(permissionsField) as Map<String, dynamic>?;
+          } else if (permissionsField is Map<String, dynamic>) {
+            permissions = permissionsField;
+          }
+          
+          if (permissions != null) {
+            permissionsMapRaw = permissions['permissionsMap'];
+          }
+        }
+      }
+      
+      if (permissionsMapRaw != null) {
+        if (permissionsMapRaw is Map) {
+          return Map<String, dynamic>.from(permissionsMapRaw);
+        } else if (permissionsMapRaw is String) {
+          final decoded = jsonDecode(permissionsMapRaw);
+          if (decoded is Map) {
+            return Map<String, dynamic>.from(decoded);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('PermissionSyncService: Error extracting permissionsMap: $e');
+    }
+    
+    return null;
+  }
+  
+  /// Force permission refresh and update cache
   static Future<Map<String, dynamic>?> refreshUserPermissions(String? token) async {
     if (token == null) return null;
 
-    debugPrint('PermissionSyncService: Force refreshing user permissions...');
-    
     // Clear cache to force fresh data fetch
+    _clearCache();
     AuthService.clearUserCache();
     
-    // Get current user from local data (which already has permissionsMap)
-    final freshUser = await AuthService.getCurrentUser(token, waitForFirestore: false);
+    // Re-initialize cache with fresh data
+    await initializePermissionsCache(token);
     
-    if (freshUser != null) {
-      debugPrint('PermissionSyncService: Permission refresh completed for ${freshUser['email']}');
-      debugPrint('PermissionSyncService: User role: ${local.RoleUtils.getUserRole(freshUser)}');
-      debugPrint('PermissionSyncService: Permissions: ${freshUser['permissions']}');
-      debugPrint('PermissionSyncService: PermissionsMap: ${freshUser['permissionsMap']}');
-      
-      // The user update will be emitted automatically by getCurrentUser
-    } else {
-      debugPrint('PermissionSyncService: Permission refresh failed - no user data returned');
-    }
-    
-    return freshUser;
+    return _cachedUser;
   }
 
   /// Check if user permissions are fully loaded and valid
-  /// Returns true if permissionsMap exists and has valid data
+  /// OPTIMIZED: Uses global cache first, minimal logging
   static bool arePermissionsFullyLoaded(Map<String, dynamic>? user) {
-    if (user == null) {
-      debugPrint('PermissionSyncService: User is null - permissions not loaded');
-      return false;
-    }
-    
-    // Check if permissionsMap exists and has content
-    final permissionsMapRaw = user['permissionsMap'];
-    if (permissionsMapRaw == null) {
-      debugPrint('PermissionSyncService: permissionsMap is null - permissions not loaded');
-      return false;
-    }
-    
-    try {
-      Map<String, dynamic>? permissionsMap;
-      if (permissionsMapRaw is String) {
-        permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
-      } else if (permissionsMapRaw is Map<String, dynamic>) {
-        permissionsMap = permissionsMapRaw;
-      }
-      
-      if (permissionsMap == null || permissionsMap.isEmpty) {
-        debugPrint('PermissionSyncService: Permissions not fully loaded - empty permissionsMap');
-        return false;
-      }
-      
-      debugPrint('PermissionSyncService: Permissions fully loaded with ${permissionsMap.length} module permissions');
-      debugPrint('PermissionSyncService: Available modules: ${permissionsMap.keys.toList()}');
+    // First check global cache
+    if (_cachedPermissionsMap != null && _cachedPermissionsMap!.isNotEmpty) {
       return true;
-    } catch (e) {
-      debugPrint('PermissionSyncService: Error checking permissions loaded: $e');
+    }
+    
+    // Fallback to user object check
+    if (user == null) {
       return false;
     }
+    
+    final permissionsMap = _extractPermissionsMap(user);
+    return permissionsMap != null && permissionsMap.isNotEmpty;
   }
 
-  /// Wait for permissions to be loaded with timeout
-  /// OPTIMIZATION: Reduced timeout from 8 seconds to 1.5 seconds
-  static Future<Map<String, dynamic>?> waitForPermissionsToLoad(String? token, {Duration timeout = const Duration(seconds: 1, milliseconds: 500)}) async {
+  /// Get permissions immediately without timeout
+  /// OPTIMIZED: Returns cached permissions or loads them instantly from local database
+  static Future<Map<String, dynamic>?> getPermissionsInstantly(String? token) async {
     if (token == null) return null;
 
-    debugPrint('PermissionSyncService: Checking if permissions are already loaded...');
-    
-    // OPTIMIZATION: Check if permissions are already loaded before starting timeout loop
-    final currentUser = await AuthService.getCurrentUser(token);
-    if (currentUser != null && arePermissionsFullyLoaded(currentUser)) {
-      debugPrint('PermissionSyncService: Permissions already loaded, skipping timeout');
-      return currentUser;
+    // Return cached permissions if available
+    if (_cachedPermissionsMap != null && _cachedPermissionsMap!.isNotEmpty && _lastUserId == token) {
+      return _cachedUser;
     }
     
-    debugPrint('PermissionSyncService: Permissions not loaded, waiting with optimized timeout...');
-    final stopwatch = Stopwatch()..start();
+    // Initialize cache immediately from local database
+    await initializePermissionsCache(token);
     
-    // OPTIMIZATION: Faster polling interval and shorter timeout
-    while (stopwatch.elapsed < timeout) {
-      final user = await AuthService.getCurrentUser(token);
-      if (user != null && arePermissionsFullyLoaded(user)) {
-        debugPrint('PermissionSyncService: Permissions loaded successfully in ${stopwatch.elapsedMilliseconds}ms');
-        return user;
-      }
-      
-      // Faster polling: 200ms instead of 500ms
-      await Future.delayed(const Duration(milliseconds: 200));
-    }
-    
-    debugPrint('PermissionSyncService: Timeout waiting for permissions after ${stopwatch.elapsedMilliseconds}ms');
-    return null;
+    return _cachedUser;
   }
 
+  /// Clear global permissions cache
+  static void _clearCache() {
+    _cachedPermissionsMap = null;
+    _cachedUser = null;
+    _lastUserId = null;
+    _hasLoggedInitialization = false;
+  }
+  
   /// Enhanced logout that clears all permission-related caches
   static Future<void> clearAllPermissionCaches() async {
     debugPrint('PermissionSyncService: Clearing all permission caches...');
+    
+    // Clear global cache
+    _clearCache();
     
     // Clear AuthService cache
     AuthService.clearUserCache();
@@ -127,7 +182,6 @@ class PermissionSyncService {
       settings.remove('cachedCompanyId');
       settings.remove('cachedPermissionsMap');
       await storage.writeSettings(settings);
-      debugPrint('PermissionSyncService: Cleared permission-related settings');
     } catch (e) {
       debugPrint('PermissionSyncService: Error clearing permission settings: $e');
     }

@@ -5,6 +5,8 @@ import 'dart:async';
 import 'package:shared/shared.dart';
 import '../repositories/todo_repository.dart';
 import '../repositories/todo_repository_impl.dart';
+import '../../../core/utils/logger.dart';
+import '../../../core/utils/error_handler.dart';
 import '../../../core/services/notification_service.dart';
 
 enum TaskSortOption {
@@ -65,12 +67,12 @@ class TodoViewModel extends ChangeNotifier {
   // Combined and filtered tasks
   List<dynamic> get allTasks {
     final combined = <dynamic>[..._reminders, ..._aggregatedTasks];
-    debugPrint('TodoViewModel: allTasks getter - reminders: ${_reminders.length}, aggregated: ${_aggregatedTasks.length}, combined: ${combined.length}');
+    Logger.debug('TodoViewModel: allTasks getter - reminders: ${_reminders.length}, aggregated: ${_aggregatedTasks.length}, combined: ${combined.length}', tag: 'TodoViewModel');
     final filtered = _searchQuery.isEmpty 
         ? combined 
         : combined.where((task) => _matchesSearch(task)).toList();
     
-    debugPrint('TodoViewModel: allTasks getter - filtered: ${filtered.length}');
+    Logger.debug('TodoViewModel: allTasks getter - filtered: ${filtered.length}', tag: 'TodoViewModel');
     return _sortTasks(filtered);
   }
 
@@ -174,7 +176,7 @@ class TodoViewModel extends ChangeNotifier {
     _setLoading(true);
     _error = null;
     
-    debugPrint('TodoViewModel: Loading tasks for user: $userId, company: $companyId, date: $_selectedDate');
+    Logger.debug('TodoViewModel: Loading tasks for user: $userId, company: $companyId, date: $_selectedDate', tag: 'TodoViewModel');
     
     // Cancel existing subscription
     await _remindersSubscription?.cancel();
@@ -187,14 +189,14 @@ class TodoViewModel extends ChangeNotifier {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!_mounted) return;
             
-            debugPrint('TodoViewModel: Stream update received - ${reminders.length} reminders');
+            Logger.debug('TodoViewModel: Stream update received - ${reminders.length} reminders', tag: 'TodoViewModel');
             for (final reminder in reminders) {
-              debugPrint('TodoViewModel: Reminder - ${reminder.reminderTitle} at ${reminder.reminderDate}');
+              Logger.debug('TodoViewModel: Reminder - ${reminder.reminderTitle} at ${reminder.reminderDate}', tag: 'TodoViewModel');
             }
             _reminders = reminders;
-            debugPrint('TodoViewModel: _reminders assigned with ${reminders.length} items');
+            Logger.debug('TodoViewModel: _reminders assigned with ${reminders.length} items', tag: 'TodoViewModel');
             notifyListeners();
-            debugPrint('TodoViewModel: UI notified of update');
+            Logger.debug('TodoViewModel: UI notified of update', tag: 'TodoViewModel');
           });
         },
         onError: (e) {
@@ -202,19 +204,19 @@ class TodoViewModel extends ChangeNotifier {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!_mounted) return;
             
-            debugPrint('TodoViewModel: Stream error: $e');
+            Logger.error('TodoViewModel: Stream error', tag: 'TodoViewModel', error: e);
             _error = e.toString();
             notifyListeners();
           });
         },
       );
       
-      debugPrint('TodoViewModel: Stream subscription set up');
+      Logger.debug('TodoViewModel: Stream subscription set up', tag: 'TodoViewModel');
       
       // Load aggregated tasks (one-time load)
       await _loadAggregatedTasks(userId, companyId);
     } catch (e) {
-      debugPrint('TodoViewModel: Error loading tasks: $e');
+      Logger.error('TodoViewModel: Error loading tasks', tag: 'TodoViewModel', error: e);
       _error = e.toString();
     } finally {
       _setLoading(false);
@@ -223,20 +225,20 @@ class TodoViewModel extends ChangeNotifier {
 
   Future<void> _loadAggregatedTasks(String userId, String? companyId) async {
     try {
-      debugPrint('TodoViewModel: Loading aggregated tasks for user: $userId, company: $companyId, date: $_selectedDate');
+      Logger.debug('TodoViewModel: Loading aggregated tasks for user: $userId, company: $companyId, date: $_selectedDate', tag: 'TodoViewModel');
       _aggregatedTasks = await _repository.getAggregatedTasksForDate(
         userId, 
         companyId, 
         _selectedDate,
       );
-      debugPrint('TodoViewModel: _aggregatedTasks assigned with ${_aggregatedTasks.length} items');
+      Logger.debug('TodoViewModel: _aggregatedTasks assigned with ${_aggregatedTasks.length} items', tag: 'TodoViewModel');
       for (final task in _aggregatedTasks) {
-        debugPrint('TodoViewModel: Task - ${task['title']} at ${task['date']}');
+        Logger.debug('TodoViewModel: Task - ${task['title']} at ${task['date']}', tag: 'TodoViewModel');
       }
       notifyListeners();
-      debugPrint('TodoViewModel: UI notified after aggregated tasks load');
+      Logger.debug('TodoViewModel: UI notified after aggregated tasks load', tag: 'TodoViewModel');
     } catch (e) {
-      debugPrint('TodoViewModel: Error loading aggregated tasks: $e');
+      Logger.error('TodoViewModel: Error loading aggregated tasks', tag: 'TodoViewModel', error: e);
       _error = e.toString();
       notifyListeners();
     }
@@ -254,7 +256,7 @@ class TodoViewModel extends ChangeNotifier {
     String priority = 'Medium',
   }) async {
     try {
-      debugPrint('TodoViewModel: Adding reminder - Title: $title, Date: $reminderDate, Time: $reminderTime');
+      Logger.debug('TodoViewModel: Adding reminder - Title: $title, Date: $reminderDate, Time: $reminderTime', tag: 'TodoViewModel');
       
       final reminder = Reminder(
         reminderId: -1, // Will be set by database
@@ -273,9 +275,9 @@ class TodoViewModel extends ChangeNotifier {
         isSynced: true,
       );
 
-      debugPrint('TodoViewModel: Calling repository.addReminder');
+      Logger.debug('TodoViewModel: Calling repository.addReminder', tag: 'TodoViewModel');
       await _repository.addReminder(reminder);
-      debugPrint('TodoViewModel: Repository.addReminder completed successfully');
+      Logger.debug('TodoViewModel: Repository.addReminder completed successfully', tag: 'TodoViewModel');
       
       // FOOLPROOF FIX: Manually fetch fresh data and update state
       // Refresh both reminders and aggregated tasks
@@ -286,12 +288,12 @@ class TodoViewModel extends ChangeNotifier {
       );
       
       _aggregatedTasks = freshAggregatedTasks;
-      debugPrint('TodoViewModel: Manual refresh completed after addReminder - aggregated: ${freshAggregatedTasks.length} items');
+      Logger.debug('TodoViewModel: Manual refresh completed after addReminder - aggregated: ${freshAggregatedTasks.length} items', tag: 'TodoViewModel');
       
       // Also refresh reminders to ensure the new reminder appears
       final freshReminders = await _repository.getRemindersForDateFuture(userId, companyId, _selectedDate);
       _reminders = freshReminders;
-      debugPrint('TodoViewModel: Manual refresh completed after addReminder - reminders: ${freshReminders.length} items');
+      Logger.debug('TodoViewModel: Manual refresh completed after addReminder - reminders: ${freshReminders.length} items', tag: 'TodoViewModel');
       
       notifyListeners(); // Force UI rebuild immediately
       
@@ -307,15 +309,15 @@ class TodoViewModel extends ChangeNotifier {
           scheduledDate: reminderDate,
           scheduledTime: reminderTime,
         );
-        debugPrint('TodoViewModel: Notification scheduled successfully');
+        Logger.debug('TodoViewModel: Notification scheduled successfully', tag: 'TodoViewModel');
       } catch (e) {
-        debugPrint('TodoViewModel: Failed to schedule notification: $e');
+        Logger.error('TodoViewModel: Failed to schedule notification', tag: 'TodoViewModel', error: e);
       }
-      debugPrint('TodoViewModel: Add reminder process completed - waiting for stream update');
+      Logger.debug('TodoViewModel: Add reminder process completed - waiting for stream update', tag: 'TodoViewModel');
       // Note: No need to manually reload tasks since the stream will automatically update
       // The database insert will trigger the stream to emit new data
     } catch (e) {
-      debugPrint('TodoViewModel: Error adding reminder: $e');
+      Logger.error('TodoViewModel: Error adding reminder', tag: 'TodoViewModel', error: e);
       _error = e.toString();
       notifyListeners();
     }
@@ -333,7 +335,7 @@ class TodoViewModel extends ChangeNotifier {
       );
       
       _aggregatedTasks = freshTasks;
-      debugPrint('TodoViewModel: Manual refresh completed after updateReminder - ${freshTasks.length} items');
+      Logger.debug('TodoViewModel: Manual refresh completed after updateReminder - ${freshTasks.length} items', tag: 'TodoViewModel');
       notifyListeners(); // Force UI rebuild immediately
     } catch (e) {
       _error = e.toString();
@@ -354,7 +356,7 @@ class TodoViewModel extends ChangeNotifier {
       );
       
       _aggregatedTasks = freshAggregatedTasks;
-      debugPrint('TodoViewModel: Manual refresh completed after deleteReminder - aggregated: ${freshAggregatedTasks.length} items');
+      Logger.debug('TodoViewModel: Manual refresh completed after deleteReminder - aggregated: ${freshAggregatedTasks.length} items', tag: 'TodoViewModel');
       
       // Also refresh reminders to ensure the deleted reminder is removed
       final freshReminders = await _repository.getRemindersForDateFuture(
@@ -364,7 +366,7 @@ class TodoViewModel extends ChangeNotifier {
       );
       
       _reminders = freshReminders;
-      debugPrint('TodoViewModel: Manual refresh completed after deleteReminder - reminders: ${freshReminders.length} items');
+      Logger.debug('TodoViewModel: Manual refresh completed after deleteReminder - reminders: ${freshReminders.length} items', tag: 'TodoViewModel');
       
       notifyListeners(); // Force UI rebuild immediately
     } catch (e) {
@@ -385,7 +387,7 @@ class TodoViewModel extends ChangeNotifier {
       );
       
       _aggregatedTasks = freshTasks;
-      debugPrint('TodoViewModel: Manual refresh completed after toggleReminderStatus - ${freshTasks.length} items');
+      Logger.debug('TodoViewModel: Manual refresh completed after toggleReminderStatus - ${freshTasks.length} items', tag: 'TodoViewModel');
       notifyListeners(); // Force UI rebuild immediately
     } catch (e) {
       _error = e.toString();
@@ -407,7 +409,7 @@ class TodoViewModel extends ChangeNotifier {
       );
       
       _aggregatedTasks = freshAggregatedTasks;
-      debugPrint('TodoViewModel: Manual refresh completed after updateReminderStatus - aggregated: ${freshAggregatedTasks.length} items');
+      Logger.debug('TodoViewModel: Manual refresh completed after updateReminderStatus - aggregated: ${freshAggregatedTasks.length} items', tag: 'TodoViewModel');
       
       // Also refresh reminders to ensure the updated reminder status is reflected
       final freshReminders = await _repository.getRemindersForDateFuture(
@@ -417,7 +419,7 @@ class TodoViewModel extends ChangeNotifier {
       );
       
       _reminders = freshReminders;
-      debugPrint('TodoViewModel: Manual refresh completed after updateReminderStatus - reminders: ${freshReminders.length} items');
+      Logger.debug('TodoViewModel: Manual refresh completed after updateReminderStatus - reminders: ${freshReminders.length} items', tag: 'TodoViewModel');
       
       notifyListeners(); // Force UI rebuild immediately
     } catch (e) {

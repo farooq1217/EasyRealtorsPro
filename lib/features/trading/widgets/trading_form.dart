@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../../core/font_utils.dart';
+import '../../../../core/utils/error_handler.dart';
 import 'package:shared/shared.dart' show TradingEntry;
 import '../view_models/trading_view_model.dart';
 
@@ -209,7 +210,11 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
 
   // Method to create TradingEntry from current form data
   TradingEntry createEntry() {
+    debugPrint('TradingForm: createEntry() called');
+    debugPrint('TradingForm: _formKey.currentState?.validate() = ${_formKey.currentState?.validate()}');
+    
     if (!_formKey.currentState!.validate()) {
+      debugPrint('TradingForm: Form validation failed, returning empty entry');
       return TradingEntry(
         id: '',
         entryType: '',
@@ -228,16 +233,21 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
       );
     }
 
+    debugPrint('TradingForm: Form validation passed, creating entry with data');
     final quantity = double.tryParse(_quantityController.text) ?? 0.0;
+    debugPrint('TradingForm: Parsed quantity = $quantity');
+    
     // Clean unit price by removing any currency symbols and whitespace
     final unitPriceText = _unitPriceController.text.trim();
     final cleanUnitPriceText = unitPriceText.replaceAll(RegExp(r'[^\d.]'), ''); // Remove non-numeric characters except decimal
     final unitPrice = double.tryParse(cleanUnitPriceText) ?? 0.0;
+    debugPrint('TradingForm: Cleaned unit price = $unitPrice (from "$unitPriceText")');
     
     final now = DateTime.now();
+    final entryId = DateTime.now().millisecondsSinceEpoch.toString();
 
-    return TradingEntry(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+    final entry = TradingEntry(
+      id: entryId,
       entryType: _selectedEntryType ?? '',
       tradeType: _selectedTradeType,
       category: _selectedCategory,
@@ -253,6 +263,13 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
       updatedAt: now,
       status: 'pending',
     );
+    
+    debugPrint('TradingForm: Created entry with ID: $entryId');
+    debugPrint('TradingForm: Entry details - Type: ${entry.entryType}, Trade: ${entry.tradeType}, Category: ${entry.category}');
+    debugPrint('TradingForm: Entry details - Person: ${entry.personName}, Mobile: ${entry.mobileNo}, Estate: ${entry.estateName}');
+    debugPrint('TradingForm: Entry details - Quantity: ${entry.quantity}, Unit Price: ${entry.unitPrice}, Date: ${entry.date}');
+    
+    return entry;
   }
 
   // Method to reset form fields
@@ -291,14 +308,11 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
   // Image picker (placeholder)
   Future<void> _pickImage() async {
     // TODO: Implement image picker
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Image upload feature coming soon!',
-          style: AppFonts.poppins(),
-        ),
-        backgroundColor: Colors.orange,
-      ),
+    ErrorHandler.handle(
+      Exception('Image upload feature coming soon!'),
+      userMessage: 'Image upload feature will be available in a future update.',
+      operation: 'Image picker',
+      context: context,
     );
   }
 
@@ -736,7 +750,19 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                 // Save Entry Button
                 ElevatedButton(
                   onPressed: () {
+                    debugPrint('TradingForm: Save button clicked');
+                    debugPrint('TradingForm: _selectedEntryType = $_selectedEntryType');
+                    debugPrint('TradingForm: _selectedTradeType = $_selectedTradeType');
+                    debugPrint('TradingForm: _nameController.text = ${_nameController.text}');
+                    debugPrint('TradingForm: _mobileController.text = ${_mobileController.text}');
+                    debugPrint('TradingForm: _estateController.text = ${_estateController.text}');
+                    debugPrint('TradingForm: _quantityController.text = ${_quantityController.text}');
+                    debugPrint('TradingForm: _unitPriceController.text = ${_unitPriceController.text}');
+                    debugPrint('TradingForm: Form validation result = ${_formKey.currentState?.validate()}');
+                    
                     if (_formKey.currentState!.validate()) {
+                      debugPrint('TradingForm: Form validation passed');
+                      
                       // Additional stock validation for Sell entries (double-check)
                       if (_selectedTradeType.toLowerCase() == 'sell' && 
                           _selectedEntryType != null && 
@@ -773,8 +799,13 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                         }
                       }
                       
+                      debugPrint('TradingForm: Creating entry...');
                       final entry = createEntry();
+                      debugPrint('TradingForm: Entry created: ${entry.toString()}');
+                      debugPrint('TradingForm: Calling widget.onSave...');
                       widget.onSave(entry);
+                    } else {
+                      debugPrint('TradingForm: Form validation failed');
                     }
                   },
                   style: ElevatedButton.styleFrom(

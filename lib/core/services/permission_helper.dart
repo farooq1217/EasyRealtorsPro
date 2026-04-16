@@ -2,10 +2,16 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../role_utils.dart' as local;
 import 'package:shared/shared.dart';
+import 'permission_sync_service.dart';
 
 /// Global permission helper for checking user permissions
+/// OPTIMIZED: Uses global cache, minimal logging, session-based state tracking
 /// Based on permission levels: 'view_only', 'view_add', 'full_access', 'no_access'
 class PermissionHelper {
+  // Session-based logging control
+  static bool _hasLoggedAccessState = false;
+  static String? _lastLoggedUserId;
+  static Set<String> _loggedModules = <String>{};
   static bool isBypassUser(Map<String, dynamic>? user) {
     final email = (user?['email'] ?? user?['username'])?.toString().toLowerCase();
     return email == 'mayof286@gmail.com';
@@ -63,6 +69,23 @@ class PermissionHelper {
   }
 
   static Map<String, String> getModulePermissionsMap(Map<String, dynamic>? user) {
+    // OPTIMIZED: Use global cache first
+    if (PermissionSyncService.hasCachedPermissions) {
+      final cachedMap = PermissionSyncService.cachedPermissionsMap!;
+      final userId = user?['id']?.toString();
+      
+      // Inject Company Admin permissions if needed
+      if (local.RoleUtils.isCompanyAdmin(user)) {
+        final enhancedMap = Map<String, dynamic>.from(cachedMap);
+        enhancedMap['users'] = 'full_access';
+        enhancedMap['reports'] = 'full_access';
+        return enhancedMap.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+      }
+      
+      return cachedMap.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+    }
+    
+    // Fallback to parsing user object
     final perms = _parsePermissions(user?['permissions']);
     if (perms == null) return const {};
     
@@ -85,7 +108,6 @@ class PermissionHelper {
     // CRITICAL FIX: Inject required permissions for Company Admins
     final userRole = perms['role']?.toString().toLowerCase();
     if (userRole == 'company_admin') {
-      debugPrint('PermissionHelper: Injecting Company Admin permissions into permissionsMap');
       permissionsMap['users'] = 'full_access';
       permissionsMap['reports'] = 'full_access';
     }
@@ -113,9 +135,8 @@ class PermissionHelper {
     if (isBypassUser(user)) return 'view_add_edit';
     if (local.RoleUtils.isSuperAdmin(user)) return 'view_add_edit';
     
-    // CRITICAL FIX: Allow permissions to load, but maintain security
-    // If permissions are still loading, return 'loading' state for sidebar to handle
-    if (_arePermissionsStillLoading(user)) {
+    // OPTIMIZED: Check global cache first for loading state
+    if (!PermissionSyncService.hasCachedPermissions && _arePermissionsStillLoading(user)) {
       return 'loading';
     }
     
@@ -129,19 +150,21 @@ class PermissionHelper {
     
     final userRole = local.RoleUtils.getUserRole(user);
     
-        
     // CRITICAL SECURITY FIX: Company Admins only get access to specific modules
     if (userRole == 'company_admin') {
       // Company Admin gets access to users and reports ONLY
       if (moduleKey == 'users' || moduleKey == 'reports') {
         return 'view_add_edit';
       }
+      
       // For all other modules, check permissionsMap explicitly
       final map = getModulePermissionsMap(user);
       final v = map[moduleKey];
+      
       if (v != null && v.trim().isNotEmpty) {
         return v.trim();
       }
+      
       return 'no_access';
     }
     
@@ -166,9 +189,14 @@ class PermissionHelper {
   }
 
   /// Check if permissions are still loading (permissionsMap not populated yet)
+  /// OPTIMIZED: Uses global cache, minimal logging
   static bool _arePermissionsStillLoading(Map<String, dynamic>? user) {
+    // OPTIMIZED: Use global cache first
+    if (PermissionSyncService.hasCachedPermissions) {
+      return false;
+    }
+    
     if (user == null) {
-      debugPrint('PermissionHelper: user is null - still loading');
       return true;
     }
     
@@ -176,12 +204,7 @@ class PermissionHelper {
     // First check if permissionsMap exists as a direct field
     var permissionsMapRaw = user['permissionsMap'];
     
-    // DEBUG: Only log when permissions are actually loading
-    if (permissionsMapRaw == null) {
-      debugPrint('PermissionHelper: User permissions field is null or empty');
-    }
-    
-    // If not, check inside the permissions field (JSON string)
+    // CRITICAL FIX: If not found directly, check inside the permissions field
     if (permissionsMapRaw == null) {
       final permissionsField = user['permissions'];
       if (permissionsField != null) {
@@ -195,36 +218,30 @@ class PermissionHelper {
           
           if (permissions != null) {
             permissionsMapRaw = permissions['permissionsMap'];
+            // CRITICAL FIX: Check if permissionsMap exists and has content
+            if (permissionsMapRaw != null) {
+              if (permissionsMapRaw is Map && (permissionsMapRaw as Map).isNotEmpty) {
+                return false;
+              }
+            }
           }
         } catch (e) {
-          debugPrint('PermissionHelper: Error parsing permissions field: $e');
+          // Silently handle parsing errors
         }
       }
     }
     
+    // CRITICAL FIX: Enhanced null and empty check
     if (permissionsMapRaw == null) {
-      debugPrint('PermissionHelper: permissionsMap is null - still loading');
       return true;
     }
     
-    try {
-      Map<String, dynamic>? permissionsMap;
-      if (permissionsMapRaw is String) {
-        permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
-      } else if (permissionsMapRaw is Map<String, dynamic>) {
-        permissionsMap = permissionsMapRaw;
-      }
-      
-      if (permissionsMap == null || permissionsMap.isEmpty) {
-        debugPrint('PermissionHelper: permissionsMap is empty - still loading');
-        return true;
-      }
-      
-      return false; // Permissions are loaded
-    } catch (e) {
-      debugPrint('PermissionHelper: Error checking permissions loading state: $e');
-      return true; // Assume still loading if there's an error
+    // Check if permissionsMap is empty
+    if (permissionsMapRaw is Map && (permissionsMapRaw as Map).isEmpty) {
+      return true;
     }
+    
+    return false;
   }
 
   static bool canViewModule(Map<String, dynamic>? user, String moduleKey) {
@@ -232,28 +249,36 @@ class PermissionHelper {
     
     // CRITICAL FIX: Company Admins MUST have access to users and reports modules
     if (local.RoleUtils.isCompanyAdmin(user) && (moduleKey == 'users' || moduleKey == 'reports')) {
-      debugPrint('PermissionHelper.canViewModule: Company Admin override granted for module: $moduleKey');
+      _logAccessOnce(user, moduleKey, 'Company Admin override granted');
       return true;
     }
     
-    // DEBUG: Add detailed logging for 'users' module
-    if (moduleKey == 'users') {
-      final email = (user?['email'] ?? user?['username'])?.toString().toLowerCase();
-      debugPrint('PermissionHelper.canViewModule(users) DEBUG:');
-      debugPrint('  User email: $email');
-      debugPrint('  isBypassUser: ${isBypassUser(user)}');
-      debugPrint('  local.RoleUtils.isSuperAdmin: ${local.RoleUtils.isSuperAdmin(user)}');
-      debugPrint('  local.RoleUtils.isCompanyAdmin: ${local.RoleUtils.isCompanyAdmin(user)}');
-      debugPrint('  local.RoleUtils.isAgent: ${local.RoleUtils.isAgent(user)}');
-      debugPrint('  local.RoleUtils.getUserRole: ${local.RoleUtils.getUserRole(user)}');
-      
-      final level = getModulePermissionLevel(user, moduleKey);
-      debugPrint('  getModulePermissionLevel: $level');
-      debugPrint('  Final result: ${level != 'no_access'}');
+    final level = getModulePermissionLevel(user, moduleKey);
+    final hasAccess = level != 'no_access';
+    
+    // OPTIMIZED: Log only once per session per module
+    _logAccessOnce(user, moduleKey, hasAccess ? 'Access granted' : 'Access denied');
+    
+    return hasAccess;
+  }
+  
+  /// Log access state once per session per module
+  static void _logAccessOnce(Map<String, dynamic>? user, String moduleKey, String action) {
+    final userId = user?['id']?.toString() ?? user?['email']?.toString();
+    final sessionKey = '${userId}_$moduleKey';
+    
+    if (_lastLoggedUserId != userId) {
+      // New user session, reset logging state
+      _hasLoggedAccessState = false;
+      _lastLoggedUserId = userId;
+      _loggedModules.clear();
     }
     
-    final level = getModulePermissionLevel(user, moduleKey);
-    return level != 'no_access';
+    if (!_loggedModules.contains(sessionKey)) {
+      final email = (user?['email'] ?? user?['username'])?.toString().toLowerCase();
+      debugPrint('PermissionHelper: $action for module: $moduleKey (User: $email)');
+      _loggedModules.add(sessionKey);
+    }
   }
 
   static bool canAddModule(Map<String, dynamic>? user, String moduleKey) {
@@ -268,7 +293,7 @@ class PermissionHelper {
     if (local.RoleUtils.isAgent(user)) return false;
     
     final level = getModulePermissionLevel(user, moduleKey);
-    return level == 'view_add' || level == 'view_add_edit';
+    return level == 'view_add' || level == 'view_add_edit' || level == 'full_access';
   }
 
   static bool canEditModule(Map<String, dynamic>? user, String moduleKey) {
@@ -283,7 +308,7 @@ class PermissionHelper {
     if (local.RoleUtils.isAgent(user)) return false;
     
     final level = getModulePermissionLevel(user, moduleKey);
-    return level == 'view_add_edit';
+    return level == 'view_add_edit' || level == 'full_access';
   }
 
   static bool canDeleteModule(Map<String, dynamic>? user, String moduleKey) {
@@ -298,7 +323,7 @@ class PermissionHelper {
     if (local.RoleUtils.isAgent(user)) return false;
     
     final level = getModulePermissionLevel(user, moduleKey);
-    return level == 'view_add_edit';
+    return level == 'view_add_edit' || level == 'full_access';
   }
   
   /// Check if user can view (any permission except 'no_access')

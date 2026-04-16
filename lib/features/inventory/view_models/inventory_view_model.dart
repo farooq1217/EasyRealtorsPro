@@ -528,13 +528,7 @@ class InventoryViewModel extends ChangeNotifier {
             return blockId.contains('$_selectedSocietyId\_');
           }).toList();
     
-    // Remove debug logging to prevent console spam
-    // debugPrint('InventoryViewModel: getAvailableBlocks - selectedSocietyId: $_selectedSocietyId, total blocks: ${_blocks.length}, available blocks: ${availableBlocks.length}');
-    // debugPrint('InventoryViewModel: Available blocks: ${availableBlocks.map((b) => '${b['id']}:${b['name']}').toList()}');
-    
-    // Remove the notifyListeners() call that was causing infinite loop
-    // The UI will automatically update when _blocks or _selectedSocietyId changes
-    
+        
     return availableBlocks;
   }
 

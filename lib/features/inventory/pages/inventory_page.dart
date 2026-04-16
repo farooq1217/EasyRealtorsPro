@@ -258,15 +258,6 @@ class _InventoryPageState extends State<InventoryPage> with SingleTickerProvider
             ],
           ),
         ),
-        floatingActionButton: Consumer<InventoryViewModel>(
-          builder: (context, viewModel, child) {
-            return FloatingActionButton.extended(
-              onPressed: () => _showAddFormDialog(),
-              label: Text('ADD'),
-              icon: const Icon(Icons.add),
-            );
-          },
-        ),
       ),
     );
   }

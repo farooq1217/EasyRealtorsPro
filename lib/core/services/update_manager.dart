@@ -5,21 +5,31 @@ import 'package:archive/archive_io.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
+import '../utils/connectivity_utils.dart';
 
 class UpdateManager {
+  static const Duration _remoteConfigTimeout = Duration(minutes: 1);
+  static const Duration _downloadTimeout = Duration(minutes: 10);
   
   // Step 1: Check for Update via Firebase Remote Config
   Future<void> checkForUpdate() async {
     try {
+      // Check internet connectivity first
+      final hasInternet = await ConnectivityUtils.hasInternetConnection();
+      if (!hasInternet) {
+        debugPrint("UpdateManager: No internet connection - skipping update check");
+        return;
+      }
+
       final remoteConfig = FirebaseRemoteConfig.instance;
       await remoteConfig.setConfigSettings(RemoteConfigSettings(
-        fetchTimeout: const Duration(minutes: 1),
+        fetchTimeout: _remoteConfigTimeout,
         minimumFetchInterval: const Duration(hours: 1),
       ));
       await remoteConfig.fetchAndActivate();
 
-      String latestVersion = remoteConfig.getString('latest_version');
-      String updateUrl = remoteConfig.getString('update_url');
+      String latestVersion = remoteConfig.getString('latest_version') ?? '';
+      String updateUrl = remoteConfig.getString('update_url') ?? '';
 
       PackageInfo packageInfo = await PackageInfo.fromPlatform();
       String currentVersion = packageInfo.version;
@@ -27,20 +37,28 @@ class UpdateManager {
       debugPrint("UpdateManager: Current version: $currentVersion");
       debugPrint("UpdateManager: Latest version: $latestVersion");
 
-      if (latestVersion.isNotEmpty && latestVersion != currentVersion) {
+      if (latestVersion.isNotEmpty && latestVersion != currentVersion && updateUrl.isNotEmpty) {
         debugPrint("UpdateManager: New update available: $latestVersion. Downloading...");
         await _downloadAndApplyUpdate(updateUrl);
       } else {
-        debugPrint("UpdateManager: App is up to date.");
+        debugPrint("UpdateManager: App is up to date or no update URL configured.");
       }
     } catch (e) {
-      debugPrint("UpdateManager: Error checking for update: $e");
+      // Silent failure during startup - don't crash the app
+      debugPrint("UpdateManager: Update check failed silently: $e");
     }
   }
 
   // Step 2 & 3: Download and Extract ZIP
   Future<void> _downloadAndApplyUpdate(String url) async {
     try {
+      // Check internet before download
+      final hasInternet = await ConnectivityUtils.hasInternetConnection();
+      if (!hasInternet) {
+        debugPrint("UpdateManager: No internet connection - cannot download update");
+        return;
+      }
+
       Directory tempDir = await getTemporaryDirectory();
       String zipPath = '${tempDir.path}\\update.zip';
       String extractPath = '${tempDir.path}\\EasyRealtorsPro_Update';
@@ -48,9 +66,16 @@ class UpdateManager {
       debugPrint("UpdateManager: Downloading update from: $url");
       debugPrint("UpdateManager: Downloading to: $zipPath");
       
-      // Download
+      // Download with timeout
       Dio dio = Dio();
-      await dio.download(url, zipPath);
+      await dio.download(
+        url, 
+        zipPath,
+        options: Options(
+          receiveTimeout: _downloadTimeout,
+          sendTimeout: _downloadTimeout,
+        ),
+      );
       debugPrint("UpdateManager: Download completed");
 
       // Clean up previous extraction if exists
@@ -101,7 +126,13 @@ class UpdateManager {
       Directory tempDir = await getTemporaryDirectory();
       String batFilePath = '${tempDir.path}\\updater.bat';
       
-      String localAppData = Platform.environment['LOCALAPPDATA']!;
+      // Use unified connectivity utility for null-safe path retrieval
+      String localAppData = ConnectivityUtils.getLocalAppDataPath();
+      if (localAppData.isEmpty) {
+        debugPrint("UpdateManager: LOCALAPPDATA environment variable not found");
+        return;
+      }
+      
       String appInstallPath = '$localAppData\\EasyRealtorsPro';
 
       debugPrint("UpdateManager: Creating updater script at: $batFilePath");
@@ -140,14 +171,21 @@ echo Update process finished.
   /// Check if update is available without downloading
   Future<bool> isUpdateAvailable() async {
     try {
+      // Check internet connectivity first
+      final hasInternet = await ConnectivityUtils.hasInternetConnection();
+      if (!hasInternet) {
+        debugPrint("UpdateManager: No internet connection - cannot check for updates");
+        return false;
+      }
+
       final remoteConfig = FirebaseRemoteConfig.instance;
       await remoteConfig.setConfigSettings(RemoteConfigSettings(
-        fetchTimeout: const Duration(minutes: 1),
+        fetchTimeout: _remoteConfigTimeout,
         minimumFetchInterval: const Duration(hours: 1),
       ));
       await remoteConfig.fetchAndActivate();
 
-      String latestVersion = remoteConfig.getString('latest_version');
+      String latestVersion = remoteConfig.getString('latest_version') ?? '';
       PackageInfo packageInfo = await PackageInfo.fromPlatform();
       String currentVersion = packageInfo.version;
 
@@ -161,14 +199,21 @@ echo Update process finished.
   /// Get latest version from Remote Config
   Future<String> getLatestVersion() async {
     try {
+      // Check internet connectivity first
+      final hasInternet = await ConnectivityUtils.hasInternetConnection();
+      if (!hasInternet) {
+        debugPrint("UpdateManager: No internet connection - cannot get latest version");
+        return '';
+      }
+
       final remoteConfig = FirebaseRemoteConfig.instance;
       await remoteConfig.setConfigSettings(RemoteConfigSettings(
-        fetchTimeout: const Duration(minutes: 1),
+        fetchTimeout: _remoteConfigTimeout,
         minimumFetchInterval: const Duration(hours: 1),
       ));
       await remoteConfig.fetchAndActivate();
 
-      return remoteConfig.getString('latest_version');
+      return remoteConfig.getString('latest_version') ?? '';
     } catch (e) {
       debugPrint("UpdateManager: Error getting latest version: $e");
       return '';

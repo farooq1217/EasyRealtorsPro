@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:drift/drift.dart' as d;
@@ -67,6 +68,14 @@ class NetworkSyncManager {
     debugPrint('NetworkSyncManager: Initializing...');
 
     try {
+      // Check if Firebase is properly initialized
+      if (Firebase.apps.isEmpty) {
+        debugPrint('NetworkSyncManager: Firebase not initialized - running in offline-only mode');
+        _isInitialized = true;
+        debugPrint('NetworkSyncManager: Offline-only mode initialization complete');
+        return;
+      }
+
       // Start periodic connectivity check
       _startConnectivityCheck();
 
@@ -85,6 +94,8 @@ class NetworkSyncManager {
 
     } catch (e) {
       debugPrint('NetworkSyncManager: Initialization error: $e');
+      // Still mark as initialized to prevent repeated attempts
+      _isInitialized = true;
     }
   }
 
@@ -94,6 +105,14 @@ class NetworkSyncManager {
       return SyncResult(
         success: false,
         message: 'Sync already in progress',
+      );
+    }
+
+    // Check if Firebase is initialized
+    if (Firebase.apps.isEmpty) {
+      return SyncResult(
+        success: false,
+        message: 'Firebase not initialized - offline-only mode',
       );
     }
 
@@ -107,6 +126,14 @@ class NetworkSyncManager {
       return SyncResult(
         success: false,
         message: 'Sync already in progress',
+      );
+    }
+
+    // Check if Firebase is initialized
+    if (Firebase.apps.isEmpty) {
+      return SyncResult(
+        success: false,
+        message: 'Firebase not initialized - offline-only mode',
       );
     }
 
@@ -204,14 +231,25 @@ class NetworkSyncManager {
   }
 
   void _listenToFirebaseAuth() {
-    _authSubscription = fb.FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user != null) {
-        debugPrint('NetworkSyncManager: Firebase user authenticated, ready for sync');
-        _processSyncQueue();
-      } else {
-        debugPrint('NetworkSyncManager: Firebase user not authenticated, pausing sync');
-      }
-    });
+    // Check if Firebase is initialized before setting up auth listener
+    if (Firebase.apps.isEmpty) {
+      debugPrint('NetworkSyncManager: Firebase not initialized - skipping auth listener');
+      return;
+    }
+
+    try {
+      _authSubscription = fb.FirebaseAuth.instance.authStateChanges().listen((user) {
+        if (user != null) {
+          debugPrint('NetworkSyncManager: Firebase user authenticated, ready for sync');
+          _processSyncQueue();
+        } else {
+          debugPrint('NetworkSyncManager: Firebase user not authenticated, pausing sync');
+        }
+      });
+    } catch (e) {
+      debugPrint('NetworkSyncManager: Error setting up Firebase auth listener: $e');
+      // Continue without auth listener - app will work in offline mode
+    }
   }
 
   Future<void> _performInitialSync() async {
@@ -404,6 +442,12 @@ class NetworkSyncManager {
   }
 
   Future<void> _syncRecordToFirebase(String tableName, Map<String, dynamic> record) async {
+    // Check if Firebase is initialized
+    if (Firebase.apps.isEmpty) {
+      debugPrint('NetworkSyncManager: Firebase not initialized - skipping record sync');
+      throw Exception('Firebase not initialized - cannot sync record');
+    }
+
     final firestore = FirebaseFirestore.instance;
     final collection = _getFirestoreCollection(tableName);
     final docId = record['id'] as String;
@@ -448,6 +492,12 @@ class NetworkSyncManager {
   }
 
   Future<void> _executeCreateOperation(SyncOperation operation) async {
+    // Check if Firebase is initialized
+    if (Firebase.apps.isEmpty) {
+      debugPrint('NetworkSyncManager: Firebase not initialized - skipping create operation');
+      throw Exception('Firebase not initialized - cannot execute create operation');
+    }
+
     final firestore = FirebaseFirestore.instance;
     final collection = _getFirestoreCollection(operation.tableName);
     
@@ -460,6 +510,12 @@ class NetworkSyncManager {
   }
 
   Future<void> _executeUpdateOperation(SyncOperation operation) async {
+    // Check if Firebase is initialized
+    if (Firebase.apps.isEmpty) {
+      debugPrint('NetworkSyncManager: Firebase not initialized - skipping update operation');
+      throw Exception('Firebase not initialized - cannot execute update operation');
+    }
+
     final firestore = FirebaseFirestore.instance;
     final collection = _getFirestoreCollection(operation.tableName);
     
@@ -471,6 +527,12 @@ class NetworkSyncManager {
   }
 
   Future<void> _executeDeleteOperation(SyncOperation operation) async {
+    // Check if Firebase is initialized
+    if (Firebase.apps.isEmpty) {
+      debugPrint('NetworkSyncManager: Firebase not initialized - skipping delete operation');
+      throw Exception('Firebase not initialized - cannot execute delete operation');
+    }
+
     final firestore = FirebaseFirestore.instance;
     final collection = _getFirestoreCollection(operation.tableName);
     

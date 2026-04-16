@@ -45,7 +45,7 @@ class ModernSidebar extends StatelessWidget {
     final isSuperAdmin = role == 'super_admin';
     
     bool _canSee(String moduleKey) {
-      // CRITICAL SECURITY FIX: Strict RBAC enforcement
+      // CRITICAL SECURITY FIX: Deny-by-default policy
       
       // Bypass users and Super Admins get all access
       if (isBypass || isSuperAdmin) {
@@ -58,12 +58,54 @@ class ModernSidebar extends StatelessWidget {
         return true;
       }
       
+      // CRITICAL FIX: Deny-by-default - if permissionsMap is null or empty, HIDE all modules
+      var permissionsMapRaw = currentUser?['permissionsMap'];
+      
+      // If permissionsMap is not a direct field, check inside the permissions field
+      if (permissionsMapRaw == null) {
+        final permissionsField = currentUser?['permissions'];
+        if (permissionsField != null) {
+          try {
+            Map<String, dynamic>? permissions;
+            if (permissionsField is String) {
+              permissions = jsonDecode(permissionsField) as Map<String, dynamic>?;
+            } else if (permissionsField is Map<String, dynamic>) {
+              permissions = permissionsField;
+            }
+            
+            if (permissions != null) {
+              permissionsMapRaw = permissions['permissionsMap'];
+            }
+          } catch (e) {
+            return false; // Deny on error for security
+          }
+        }
+      }
+      
+      Map<String, dynamic>? permissionsMap;
+      
+      // Handle JSON string permissionsMap from database
+      if (permissionsMapRaw is String) {
+        try {
+          permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
+        } catch (e) {
+          return false; // Deny on error for security
+        }
+      } else if (permissionsMapRaw is Map<String, dynamic>) {
+        permissionsMap = permissionsMapRaw;
+      }
+      
+      // CRITICAL: Deny-by-default policy - if permissionsMap is null or empty, HIDE module
+      if (permissionsMap == null || permissionsMap.isEmpty) {
+        return false; // DENY by default - no permissions means no access
+      }
+      
       // Check permission level
       final level = PermissionHelper.getModulePermissionLevel(currentUser, moduleKey);
       
-      // If permissions are still loading, show module temporarily (will be updated when loaded)
+      // If permissions are still loading, deny by default for security
       if (level == 'loading') {
-        return true;
+        return false; // DENY by default - no temporary access
       }
       
       // Strict permission check - only allow if explicitly granted

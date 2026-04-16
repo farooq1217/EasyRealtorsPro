@@ -9,7 +9,7 @@ import 'inventory_detail_page.dart';
 import 'inventory_details_modal.dart';
 import 'inventory_form.dart';
 import '../../../core/phone_actions.dart' show showPhoneActionSheet;
-import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
+import '../../../widgets/standardized_footer.dart' show StandardizedFooter;
 
 class InventoryList extends StatefulWidget {
   const InventoryList({super.key});
@@ -23,9 +23,7 @@ class _InventoryListState extends State<InventoryList> {
   Widget build(BuildContext context) {
     return Consumer<InventoryViewModel>(
       builder: (context, viewModel, child) {
-        // Remove debug logging to prevent console spam
-        // debugPrint('InventoryList: Building UI - Societies: ${viewModel.societies.length}, Blocks: ${viewModel.blocks.length}, Loading: ${viewModel.isLoadingSocieties}/${viewModel.isLoadingBlocks}');
-        
+                
         // Filter paginated items by selected type
         final paginatedItemsForType = viewModel.paginatedItems
             .where((item) => item.type == viewModel.selectedType)
@@ -141,10 +139,22 @@ class _InventoryListState extends State<InventoryList> {
                 ),
               ),
             ),
-            // Pagination stays fixed at the absolute bottom
+            // Standardized Footer with pagination and add button
             Container(
               padding: const EdgeInsets.all(16),
-              child: _buildPaginationCard(viewModel),
+              child: StandardizedFooter(
+                currentPage: viewModel.currentPage,
+                totalItems: viewModel.filteredItems
+                    .where((item) => item.type == viewModel.selectedType)
+                    .length,
+                itemsPerPage: viewModel.itemsPerPage,
+                onPageChanged: (page) => viewModel.setPage(page),
+                onItemsPerPageChanged: (itemsPerPage) => viewModel.setItemsPerPage(itemsPerPage),
+                addButtonLabel: 'Add Item',
+                onAddPressed: () => _showAddFormDialog(context, viewModel),
+                showAddButton: true,
+                addButtonColor: const Color(0xFFFF6B35),
+              ),
             ),
           ],
         );
@@ -522,21 +532,57 @@ class _InventoryListState extends State<InventoryList> {
     }
   }
 
-  Widget _buildPaginationCard(InventoryViewModel viewModel) {
-    // Filter items by selected type for pagination
-    final filteredItemsForType = viewModel.filteredItems
-        .where((item) => item.type == viewModel.selectedType)
-        .toList();
-    
-    return CustomPaginationCard(
-      currentPage: viewModel.currentPage,
-      totalItems: filteredItemsForType.length,
-      itemsPerPage: viewModel.itemsPerPage,
-      onPageChanged: (page) => viewModel.setPage(page),
-      onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
+  }
+
+  void _showAddFormDialog(BuildContext context, InventoryViewModel viewModel) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+          ),
+          child: Column(
+            children: [
+              // Header with back button
+              Container(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                    ),
+                    const Spacer(),
+                  ],
+                ),
+              ),
+              // Scrollable form content
+              Expanded(
+                child: SingleChildScrollView(
+                  child: InventoryForm(
+                    onSave: () {
+                      Navigator.of(dialogContext).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Item saved successfully'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
-}
 
 class _InfoEntry {
   final String label;

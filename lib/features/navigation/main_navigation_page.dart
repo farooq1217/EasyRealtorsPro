@@ -246,7 +246,22 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           lazy: false, // Ensure ViewModel is created immediately and stays alive
         ),
         ChangeNotifierProvider<ExpenditureViewModel>(
-          create: (context) => ExpenditureViewModel(widget.db),
+          create: (context) {
+            // Get current user for Agent filtering
+            final user = AuthService.currentUser;
+            final userId = user?['id']?.toString() ?? user?['userId']?.toString();
+            final companyId = RoleUtils.getUserCompanyId(user);
+            final isSuperAdmin = RoleUtils.isSuperAdmin(user);
+            
+            debugPrint('MainNavigationPage: ExpenditureViewModel created with userId: $userId, companyId: $companyId, isSuperAdmin: $isSuperAdmin');
+            
+            return ExpenditureViewModel(
+              widget.db,
+              companyId: companyId,
+              isSuperAdmin: isSuperAdmin,
+              userId: userId, // Pass userId for Agent filtering
+            );
+          },
           lazy: false, // Ensure ViewModel is created immediately and stays alive
         ),
         ChangeNotifierProvider<InventoryViewModel>(

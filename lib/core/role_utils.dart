@@ -8,7 +8,7 @@ class RoleUtils {
   static bool isSuperAdmin(Map<String, dynamic>? user) {
     if (user == null) return false;
     final role = (user['role'] ?? '').toString().toLowerCase();
-    return role == 'super admin' || role == 'superadmin';
+    return role == 'super admin' || role == 'superadmin' || role == 'super_admin';
   }
 
   /// Check if user is an Agent

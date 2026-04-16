@@ -32,7 +32,7 @@ import '../../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../widgets/image_upload_widget.dart' show ImageUploadWidget;
 import '../../../core/shared_utils.dart' show TopRightSearch;
-import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
+import '../../../widgets/standardized_footer.dart' show StandardizedFooter;
 
 class CompaniesPage extends StatefulWidget {
   final AppDatabase db;
@@ -965,12 +965,17 @@ class _CompaniesPageState extends State<CompaniesPage> {
   Widget _buildPaginationCard() {
     return Consumer<CompanyViewModel>(
       builder: (context, viewModel, child) {
-        return CustomPaginationCard(
+        return StandardizedFooter(
           currentPage: viewModel.currentPage,
           totalItems: viewModel.filteredCompanies.length,
           itemsPerPage: viewModel.itemsPerPage,
           onPageChanged: (page) => viewModel.setPage(page),
           onItemsPerPageChanged: (limit) => viewModel.setItemsPerPage(limit),
+          addButtonLabel: 'Add Company',
+          onAddPressed: () {
+            _showAddCompanyDialog(context, viewModel);
+          },
+          addButtonColor: const Color(0xFF4A90E2), // Blue color for companies
         );
       },
     );

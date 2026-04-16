@@ -135,9 +135,19 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
   
-  bool get canAdd => 
-    PermissionHelper.getModulePermissionLevel(_user, 'expenditure').contains('add') || 
-    local.RoleUtils.isCompanyAdmin(_user);
+  bool get canAdd {
+    if (_user == null) return false;
+    
+    // Super Admin always can add
+    if (local.RoleUtils.isSuperAdmin(_user)) return true;
+    
+    // Company Admin always can add within their company
+    if (local.RoleUtils.isCompanyAdmin(_user)) return true;
+    
+    // Check permission level for Agents
+    final level = PermissionHelper.getModulePermissionLevel(_user, 'expenditure');
+    return level == 'view_add' || level == 'view_add_edit' || level == 'full_access';
+  }
 
   // Pagination getters
   int get currentPage => _currentPage;
@@ -154,20 +164,28 @@ class ExpenditureViewModel extends ChangeNotifier {
       _loading = true;
       notifyListeners();
       
-      // OPTIMIZATION: Load user first to get security context
-      await _loadUser();
+      // CRITICAL FIX: Load user first with timeout to prevent hanging
+      await _loadUser().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          debugPrint('ExpenditureViewModel: User loading timed out, proceeding with default values');
+        },
+      );
       
-      // OPTIMIZATION: Set loading to false immediately after user load to show UI
+      // CRITICAL FIX: Set loading to false immediately to show UI
       _loading = false;
       notifyListeners();
       
-      // OPTIMIZATION: Move database checks to background to prevent UI blocking
+      // CRITICAL FIX: Move database checks to background with timeout to prevent hanging
       Future.microtask(() async {
         try {
           debugPrint('ExpenditureViewModel: Starting background database checks...');
-          await _repository.ensureExpenditureTableColumns();
-          // OPTIMIZATION: Skip category column check to reduce blocking
-          // await (_repository as ExpenditureRepositoryImpl).ensureExpenditureSubItemsCategoryColumn();
+          await _repository.ensureExpenditureTableColumns().timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              debugPrint('ExpenditureViewModel: Database checks timed out, proceeding with streams');
+            },
+          );
           debugPrint('ExpenditureViewModel: Background database checks completed');
         } catch (e) {
           debugPrint('ExpenditureViewModel: Background database checks failed: $e');
@@ -175,8 +193,15 @@ class ExpenditureViewModel extends ChangeNotifier {
         }
       });
       
-      // CRITICAL: Setup streams immediately after user context is available
-      await _setupStreams();
+      // CRITICAL FIX: Setup streams with timeout to prevent hanging
+      await _setupStreams().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          debugPrint('ExpenditureViewModel: Stream setup timed out, UI should be visible');
+          _loading = false;
+          notifyListeners();
+        },
+      );
     } catch (e) {
       debugPrint('Error initializing ExpenditureViewModel: $e');
       _loading = false;
@@ -212,10 +237,29 @@ class ExpenditureViewModel extends ChangeNotifier {
       debugPrint('ExpenditureViewModel: Role detection - Detected Role: $detectedRole, Detected isSuperAdmin: $detectedIsSuperAdmin');
       debugPrint('ExpenditureViewModel: Passed parameters - isSuperAdmin: $isSuperAdmin, companyId: $companyId');
       
-      // ROLE SYNC FIX: Use detected role if it's Super Admin and passed parameter is false
-      if (detectedIsSuperAdmin && !isSuperAdmin) {
-        debugPrint('ExpenditureViewModel: ROLE SYNC FIX - Updating isSuperAdmin from false to true based on user role');
-        isSuperAdmin = detectedIsSuperAdmin;
+      isSuperAdmin = detectedIsSuperAdmin;
+      
+      // CRITICAL FIX: Enhanced GLOBAL_ADMIN handling for Super Admin
+      if (detectedIsSuperAdmin) {
+        // Super Admin should always be allowed to use GLOBAL_ADMIN
+        if (companyId != 'GLOBAL_ADMIN') {
+          debugPrint('ExpenditureViewModel: ROLE SYNC FIX - Super Admin detected, setting companyId to GLOBAL_ADMIN');
+          companyId = 'GLOBAL_ADMIN';
+        }
+        // CRITICAL: Never clear GLOBAL_ADMIN for confirmed Super Admin
+      } else {
+        // Only clear GLOBAL_ADMIN for confirmed non-super-admins
+        if (companyId == 'GLOBAL_ADMIN') {
+          debugPrint('ExpenditureViewModel: ROLE SYNC FIX - Confirmed non-super-admin with GLOBAL_ADMIN, clearing to empty');
+          companyId = ''; // Clear to empty for non-super-admin
+        }
+      }
+    } else {
+      // If user is null, preserve original Super Admin status from passed parameters
+      debugPrint('ExpenditureViewModel: User data not available, using passed isSuperAdmin: $isSuperAdmin');
+      if (isSuperAdmin && companyId != 'GLOBAL_ADMIN') {
+        debugPrint('ExpenditureViewModel: Using passed Super Admin status, setting companyId to GLOBAL_ADMIN');
+        companyId = 'GLOBAL_ADMIN';
       }
     }
     
@@ -595,6 +639,33 @@ class ExpenditureViewModel extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error deleting expense: $e');
       _showErrorSnackBar('Failed to delete expense');
+      return false;
+    }
+  }
+
+  Future<bool> updateExpense(domain.ExpenditureItem expense) async {
+    try {
+      await _repository.updateExpenditure(expense);
+      _showSuccessSnackBar('Expense updated successfully');
+      
+      // FOOLPROOF FIX: Manually fetch fresh data and update state
+      final freshCompanyId = local.RoleUtils.getUserCompanyId(_user);
+      if (freshCompanyId != null) {
+        final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
+        final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
+        
+        _officeExpenses = freshOfficeExpenses;
+        _projectExpenses = freshProjectExpenses;
+        _applySearchFilter(); // Apply search filter to fresh data
+        
+        debugPrint('ExpenditureViewModel: Manual refresh completed after update - office: ${freshOfficeExpenses.length}, projects: ${freshProjectExpenses.length}');
+        notifyListeners(); // Force UI rebuild immediately
+      }
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error updating expense: $e');
+      _showErrorSnackBar('Failed to update expense');
       return false;
     }
   }

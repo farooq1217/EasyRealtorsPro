@@ -36,7 +36,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
         // CRITICAL FIX: Add created_by filtering for Agent role
         // This ensures Agents can only see their own expenditures
         if (userId != null) {
-          query += ' AND (created_by IS NULL OR created_by = ?)'; // Allow null for backward compatibility
+          query += ' AND created_by = ?'; // Strict filtering - only user's own records
           variables.add(d.Variable.withString(userId ?? ''));
         } else {
           debugPrint('ExpenditureRepository: SECURITY - No userId for Agent filtering, returning empty results');
@@ -83,7 +83,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
         
         // CRITICAL FIX: Add created_by filtering for Agent role
         if (userId != null) {
-          query += ' AND (created_by IS NULL OR created_by = ?)'; // Allow null for backward compatibility
+          query += ' AND created_by = ?'; // Strict filtering - only user's own records
           variables.add(d.Variable.withString(userId ?? ''));
         } else {
           debugPrint('ExpenditureRepository: SECURITY - No userId for Agent filtering, returning empty results');
@@ -131,7 +131,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
         
         // CRITICAL FIX: Add created_by filtering for Agent role
         if (userId != null) {
-          query += ' AND (created_by IS NULL OR created_by = ?)'; // Allow null for backward compatibility
+          query += ' AND created_by = ?'; // Strict filtering - only user's own records
           variables.add(d.Variable.withString(userId ?? ''));
         } else {
           debugPrint('ExpenditureRepository: SECURITY - No userId for Agent filtering, returning empty results');

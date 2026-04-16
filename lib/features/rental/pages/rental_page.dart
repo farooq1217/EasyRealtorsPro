@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/font_utils.dart';
-import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;
+import '../../../widgets/standardized_footer.dart' show StandardizedFooter;
 
 // Firebase imports
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -98,6 +98,10 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
 
   // SQLite-only flag
   static const bool _sqliteOnlyMode = true;
+  
+  // Pagination state
+  int _currentPage = 1;
+  int _itemsPerPage = 20;
 
   bool _isFirestoreOperationAllowed() {
     return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
@@ -145,6 +149,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
 
   @override
   void dispose() {
+    _firestoreSub?.cancel(); // CRITICAL: Clean up Firestore subscription to prevent memory leaks
     super.dispose();
   }
 
@@ -165,17 +170,22 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
       return;
     }
 
+    // Calculate pagination
+    final offset = (_currentPage - 1) * _itemsPerPage;
+    
     final result = await widget.db.customSelect(
       isSuperAdmin
-          ? 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE is_active = 1 ORDER BY updated_at DESC'
+          ? 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE is_active = 1 ORDER BY updated_at DESC LIMIT ? OFFSET ?'
           : (isAgent
-              ? 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE company_id = ? AND created_by = ? AND is_active = 1 ORDER BY updated_at DESC'
-              : 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE company_id = ? AND is_active = 1 ORDER BY updated_at DESC'),
+              ? 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE company_id = ? AND created_by = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT ? OFFSET ?'
+              : 'SELECT id, created_by, name, price, remarks, location, owner_name, contact_no, cnic, security, sale_status, company_id, updated_at FROM rental_items WHERE company_id = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT ? OFFSET ?'),
       variables: isSuperAdmin
-          ? []
+          ? [d.Variable.withInt(_itemsPerPage), d.Variable.withInt(offset)]
           : [
               d.Variable.withString(companyId ?? ''),
               if (isAgent) d.Variable.withString(myUserId ?? ''),
+              d.Variable.withInt(_itemsPerPage),
+              d.Variable.withInt(offset),
             ],
       readsFrom: {widget.db.rentalItems},
     ).get();
@@ -1170,16 +1180,28 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   }
 
   Widget _buildPaginationCard() {
-    return CustomPaginationCard(
-      currentPage: 1, // TODO: Implement pagination state
+    return StandardizedFooter(
+      currentPage: _currentPage,
       totalItems: _rows.length,
-      itemsPerPage: 20, // TODO: Make configurable
+      itemsPerPage: _itemsPerPage,
       onPageChanged: (page) {
-        // TODO: Implement page change logic
+        setState(() {
+          _currentPage = page;
+        });
+        _load(); // Reload data for the new page
       },
       onItemsPerPageChanged: (limit) {
-        // TODO: Implement items per page change logic
+        setState(() {
+          _itemsPerPage = limit;
+          _currentPage = 1; // Reset to first page when changing items per page
+        });
+        _load(); // Reload data with new items per page
       },
+      addButtonLabel: 'Add Rental Item',
+      onAddPressed: () {
+        _showAddFormDialog();
+      },
+      addButtonColor: const Color(0xFFFF6B35),
     );
   }
 
