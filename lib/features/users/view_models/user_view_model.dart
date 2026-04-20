@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';

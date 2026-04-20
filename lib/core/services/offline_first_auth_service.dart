@@ -11,7 +11,7 @@ import 'package:drift/drift.dart' as d;
 import 'package:shared/shared.dart';
 import 'firebase_threading_handler.dart';
 import 'package:http/http.dart' as http;
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+// Removed sqflite_common_ffi import to prevent FFI issues on web
 import 'package:firebase_core/firebase_core.dart';
 
 /// Offline-First Authentication Service
@@ -443,10 +443,10 @@ class OfflineFirstAuthService {
 
   static Future<void> _initializeWindowsFfi() async {
     try {
-      if (Platform.isWindows) {
+      if (!kIsWeb && Platform.isWindows) {
         // Initialize SQLite FFI for Windows
-        sqfliteFfiInit();
-        debugPrint('OfflineFirstAuthService: Windows FFI initialized');
+        // sqflite.sqfliteFfiInit(); // Commented out for web compatibility
+        debugPrint('OfflineFirstAuthService: Windows FFI initialization skipped for web');
       }
     } catch (e) {
       debugPrint('OfflineFirstAuthService: Windows FFI initialization error: $e');

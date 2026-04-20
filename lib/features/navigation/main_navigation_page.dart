@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import '../../../widgets/custom_sidebar.dart';
+import '../../../widgets/platform_aware_image.dart';
+import '../../../widgets/adaptive_dialog.dart';
 import '../../../core/font_utils.dart';
 import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../core/services/auth_service.dart';
@@ -74,10 +76,19 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     // CRITICAL: Listen to user stream for reactive sidebar updates
     _userStreamSubscription = AuthService.currentUserStream.listen((user) {
       if (mounted) {
-        debugPrint('MainNavigationPage: User stream update received - ${user?['email']}');
-        setState(() {
-          _currentUser = user;
-        });
+        // Only log and update when a valid user is detected (prevent redundant null logs)
+        if (user != null && user['email'] != null) {
+          debugPrint('MainNavigationPage: User stream update received - ${user['email']}');
+          setState(() {
+            _currentUser = user;
+          });
+        } else if (user == null && _currentUser != null) {
+          // Log when user is explicitly logged out (but not on initial null)
+          debugPrint('MainNavigationPage: User logged out, clearing current user');
+          setState(() {
+            _currentUser = user;
+          });
+        }
       }
     });
   }
@@ -304,218 +315,502 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
       ],
       child: Scaffold(
         backgroundColor: const Color(0xFFF8F9FA),
-        body: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Sidebar
-            ModernSidebar(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: _onDestinationSelected,
-              onTradingTap: _onTradingTap,
-              onLogout: _onLogout,
-              onToggle: _onToggleSidebar,
-              isOpen: _isSidebarOpen,
-              currentUser: _currentUser,
-              badgeFiles: _badgeFiles,
-              badgeRentals: _badgeRentals,
-            ),
-            
-            // Separation Gap
-            const SizedBox(width: 8),
-            
-            // Main Content Area
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Header Bar
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [
-                          const Color(0xFFFF6B35), // Orange on left
-                          const Color(0xFF4A90E2), // Blue on right
-                        ],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+        body: _buildResponsiveLayout(),
+      ),
+    );
+  }
+
+  /// Build responsive layout with original sidebar
+  Widget _buildResponsiveLayout() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Use original sidebar on desktop, drawer on mobile
+        final isDesktop = constraints.maxWidth > 768;
+        
+        if (isDesktop) {
+          // Original desktop layout with custom sidebar
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Original Sidebar
+              ModernSidebar(
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: _onDestinationSelected,
+                onTradingTap: _onTradingTap,
+                onLogout: _onLogout,
+                onToggle: _onToggleSidebar,
+                isOpen: _isSidebarOpen,
+                currentUser: _currentUser,
+                badgeFiles: _badgeFiles,
+                badgeRentals: _badgeRentals,
+              ),
+              
+              // Separation Gap
+              const SizedBox(width: 8),
+              
+              // Main Content Area
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Header Bar
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            const Color(0xFFFF6B35), // Orange on left
+                            const Color(0xFF4A90E2), // Blue on right
+                          ],
                         ),
-                      ],
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        topRight: Radius.circular(16),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        // Spacer for centering
-                        if (!_isSidebarOpen) const SizedBox(width: 16),
-                        
-                        // Branding - Centered (vertically centered)
-                        Expanded(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Real Estate Management System',
-                                  style: AppFonts.poppins(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                    letterSpacing: 0.5,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                              ),
-                            ],
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
+                        ],
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(16),
+                          topRight: Radius.circular(16),
                         ),
-                        
-                        // Dark Mode Toggle - Positioned in top-right corner
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Profile Picture
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundColor: const Color(0xFF805AD5),
-                              backgroundImage: _currentUser?['profile_picture_path'] != null
-                                  ? AssetImage(_currentUser!['profile_picture_path'])
-                                  : null,
-                              child: _currentUser?['profile_picture_path'] == null
-                                  ? Text(
-                                      (_currentUser?['name']?.isNotEmpty == true) 
-                                          ? _currentUser!['name'].substring(0, 1).toUpperCase() 
-                                          : 'U',
-                                      style: AppFonts.poppins(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                            const SizedBox(width: 8),
-                            // Notification Bell
-                            Stack(
+                      ),
+                      child: Row(
+                        children: [
+                          // Spacer for centering
+                          if (!_isSidebarOpen) const SizedBox(width: 16),
+                          
+                          // Branding - Centered (vertically centered)
+                          Expanded(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.notifications_outlined,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                  onPressed: () {
-                                    // Handle notifications
-                                  },
-                                  style: IconButton.styleFrom(
-                                    minimumSize: const Size(32, 32),
-                                    padding: EdgeInsets.zero,
-                                  ),
-                                  tooltip: 'Notifications',
-                                ),
-                                Positioned(
-                                  top: 6,
-                                  right: 6,
-                                  child: Container(
-                                    width: 6,
-                                    height: 6,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.red,
-                                      shape: BoxShape.circle,
+                                Expanded(
+                                  child: Text(
+                                    'Real Estate Management System',
+                                    style: AppFonts.poppins(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                      letterSpacing: 0.5,
                                     ),
+                                    textAlign: TextAlign.center,
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(width: 8),
-                            Container(
-                              margin: const EdgeInsets.only(top: 0, right: 0),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.2),
-                                  width: 1,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.white.withOpacity(0.1),
-                                    blurRadius: 8,
-                                    spreadRadius: 0.5,
-                                  ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(18),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                  child: IconButton(
-                                    icon: Icon(
-                                      _themeMode == ThemeMode.dark 
-                                        ? Icons.light_mode 
-                                        : Icons.dark_mode,
+                          ),
+                          
+                          // Dark Mode Toggle - Positioned in top-right corner
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Profile Picture
+                              PlatformAwareImage(
+                                imagePath: _currentUser?['profile_picture_path'],
+                                width: 32,
+                                height: 32,
+                                builder: (context, imageWidget) {
+                                  return CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: const Color(0xFF805AD5),
+                                    backgroundImage: _currentUser?['profile_picture_path'] != null
+                                        ? null
+                                        : null,
+                                    child: _currentUser?['profile_picture_path'] == null
+                                        ? Text(
+                                            (_currentUser?['name']?.isNotEmpty == true) 
+                                                ? _currentUser!['name'].substring(0, 1).toUpperCase() 
+                                                : 'U',
+                                            style: AppFonts.poppins(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : ClipOval(child: imageWidget),
+                                  );
+                                },
+                                placeholder: CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: const Color(0xFF805AD5),
+                                  child: Text(
+                                    (_currentUser?['name']?.isNotEmpty == true) 
+                                        ? _currentUser!['name'].substring(0, 1).toUpperCase() 
+                                        : 'U',
+                                    style: AppFonts.poppins(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
                                       color: Colors.white,
-                                      size: 16,
                                     ),
-                                    onPressed: () async {
-                                      final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
-                                      final s = await AppStorage().readSettings();
-                                      s['theme'] = newMode;
-                                      await AppStorage().writeSettings(s);
-                                      _onThemeChanged(newMode);
+                                  ),
+                                ),
+                                errorWidget: CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: const Color(0xFF805AD5),
+                                  child: Text(
+                                    (_currentUser?['name']?.isNotEmpty == true) 
+                                        ? _currentUser!['name'].substring(0, 1).toUpperCase() 
+                                        : 'U',
+                                    style: AppFonts.poppins(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Notification Bell
+                              Stack(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.notifications_outlined,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    onPressed: () {
+                                      // Handle notifications
                                     },
                                     style: IconButton.styleFrom(
                                       minimumSize: const Size(32, 32),
                                       padding: EdgeInsets.zero,
                                     ),
-                                    tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                                    tooltip: 'Notifications',
+                                  ),
+                                  Positioned(
+                                    top: 6,
+                                    right: 6,
+                                    child: Container(
+                                      width: 6,
+                                      height: 6,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                margin: const EdgeInsets.only(top: 0, right: 0),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.2),
+                                    width: 1,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.white.withOpacity(0.1),
+                                      blurRadius: 8,
+                                      spreadRadius: 0.5,
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(18),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                    child: IconButton(
+                                      icon: Icon(
+                                        _themeMode == ThemeMode.dark 
+                                          ? Icons.light_mode 
+                                          : Icons.dark_mode,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                      onPressed: () async {
+                                        final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
+                                        final s = await AppStorage().readSettings();
+                                        s['theme'] = newMode;
+                                        await AppStorage().writeSettings(s);
+                                        _onThemeChanged(newMode);
+                                      },
+                                      style: IconButton.styleFrom(
+                                        minimumSize: const Size(32, 32),
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                      tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                                    ),
                                   ),
                                 ),
                               ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // 12px vertical gap separator
+                    const SizedBox(height: 12),
+                    
+                    // Page Content - Fixed layout constraints
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              const Color(0xFFF8F9FA),
+                              const Color(0xFFF1F3F4),
+                            ],
+                          ),
+                        ),
+                        child: _buildCurrentPage(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        } else {
+          // Mobile layout with drawer
+          return Scaffold(
+            body: _buildMobileContent(),
+            drawer: _buildMobileDrawer(),
+            appBar: AppBar(
+              title: Text(
+                _getNavigationTitle(),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              backgroundColor: const Color(0xFFFF6B35),
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  /// Build mobile drawer with same styling as sidebar
+  Widget _buildMobileDrawer() {
+    return Drawer(
+      backgroundColor: const Color(0xFF2C3E50),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF4A90E2).withOpacity(0.8),
+                  Color(0xFF2C3E50).withOpacity(0.95),
+                ],
+              ),
+            ),
+            child: SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 24,
+                        backgroundColor: Colors.white.withOpacity(0.2),
+                        backgroundImage: _currentUser?['profile_picture_path'] != null
+                            ? null
+                            : null,
+                        child: _currentUser?['profile_picture_path'] == null
+                            ? Text(
+                                (_currentUser?['name']?.isNotEmpty == true)
+                                    ? _currentUser!['name'].substring(0, 1).toUpperCase()
+                                    : 'U',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _currentUser?['name'] ?? 'User',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              _currentUser?['email'] ?? 'user@example.com',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.8),
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  
-                  // 12px vertical gap separator
-                  const SizedBox(height: 12),
-                  
-                  // Page Content - Fixed layout constraints
-                  Expanded(
-                    child: Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            const Color(0xFFF8F9FA),
-                            const Color(0xFFF1F3F4),
-                          ],
-                        ),
                       ),
-                      child: _buildCurrentPage(),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'EasyRealtorsPro',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+          
+          // Navigation Items (simplified version of sidebar)
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              children: [
+                _buildMobileDrawerItem('Dashboard', Icons.dashboard, 0),
+                _buildMobileDrawerItem('Inventory', Icons.insert_drive_file, 1, badge: _badgeFiles),
+                _buildMobileDrawerItem('Agent Working', Icons.support_agent, 2),
+                _buildMobileDrawerItem('Rental Items', Icons.chair, 3, badge: _badgeRentals),
+                _buildMobileDrawerItem('To-Do', Icons.checklist, 4),
+                _buildMobileDrawerItem('Expenditure', Icons.payments, 10),
+                if (_currentUser != null && _currentUser!['role'] == 'super_admin')
+                  _buildMobileDrawerItem('User Management', Icons.people, 9),
+                if (_currentUser != null && _currentUser!['role'] == 'super_admin')
+                  _buildMobileDrawerItem('Company Management', Icons.business, 11),
+                _buildMobileDrawerItem('Reports', Icons.bar_chart, 8),
+                _buildMobileDrawerItem('Settings', Icons.settings, 5),
+              ],
+            ),
+          ),
+          
+          // Logout
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: ListTile(
+              leading: const Icon(
+                Icons.logout,
+                color: Colors.red,
+              ),
+              title: const Text(
+                'Logout',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              onTap: _onLogout,
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  /// Build mobile drawer item
+  Widget _buildMobileDrawerItem(String title, IconData icon, int index, {int? badge}) {
+    final isSelected = _selectedIndex == index;
+    
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isSelected ? const Color(0xFFFF6B35) : Colors.white,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: isSelected ? const Color(0xFFFF6B35) : Colors.white,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+      trailing: badge != null && badge > 0
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6B35),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                badge.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            )
+          : null,
+      selected: isSelected,
+      selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
+      onTap: () {
+        _onDestinationSelected(index);
+        Navigator.of(context).pop(); // Close drawer
+      },
+    );
+  }
+
+  /// Build mobile content (same as desktop content)
+  Widget _buildMobileContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header Bar (hidden on mobile since we have AppBar)
+        const SizedBox(height: 0),
+        
+        // Page Content
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xFFF8F9FA),
+                  const Color(0xFFF1F3F4),
+                ],
+              ),
+            ),
+            child: _buildCurrentPage(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Get navigation title for mobile app bar
+  String _getNavigationTitle() {
+    switch (_selectedIndex) {
+      case 0: return 'Dashboard';
+      case 1: return 'Inventory';
+      case 2: return 'Agent Working';
+      case 3: return 'Rental Items';
+      case 4: return 'To-Do';
+      case 5: return 'Settings';
+      case 8: return 'Reports';
+      case 9: return 'User Management';
+      case 10: return 'Expenditure';
+      case 11: return 'Company Management';
+      default: return 'EasyRealtorsPro';
+    }
   }
 }

@@ -456,20 +456,8 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
         ),
       );
       
-      // CRITICAL: Since the generated companion doesn't include category, 
-      // we need to update it separately - but only if the column exists
-      if (subItem.category != null) {
-        try {
-          await db.customStatement(
-            'UPDATE expenditure_sub_items SET category = ? WHERE id = ?',
-            [subItem.category, subItem.id],
-          );
-          debugPrint('ExpenditureRepository: Category saved successfully: ${subItem.category}');
-        } catch (e) {
-          // If category column doesn't exist, log but don't fail
-          debugPrint('ExpenditureRepository: Category column missing, category not saved: $e');
-        }
-      }
+      // FIXED: Category column is now handled in database schema and companion
+      // No need for separate UPDATE statement - category is included in the insert
     } catch (e) {
       throw Exception('Failed to add expenditure sub-item: $e');
     }
@@ -543,6 +531,8 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       // Execute all operations in parallel for speed
       await Future.wait(operations);
       debugPrint('ExpenditureRepository: Table columns optimization completed - ${operations.length} operations processed');
+      
+      // FIXED: Category column is now handled in database migration, no need to ensure here
     } catch (e) {
       debugPrint('ExpenditureRepository: Failed to ensure expenditure table columns: $e');
       // Don't throw - allow app to continue even if column checks fail

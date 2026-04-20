@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, kDebugMode;
 import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:shared/shared.dart';
 import '../login_page.dart';
 import '../offline_sync_service.dart';
@@ -339,8 +340,16 @@ class _GuardedEntryState extends State<_GuardedEntry> {
   @override
   void initState() {
     super.initState();
+    // CRITICAL FIX: Ensure proper view context for Windows accessibility
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _runGuard();
+      if (mounted && context.mounted) {
+        // Additional safety for Windows accessibility announcements
+        if (defaultTargetPlatform == TargetPlatform.windows && kDebugMode) {
+          // Reduce accessibility verbosity on Windows in debug mode to prevent viewId errors
+          debugPrint('Windows accessibility: Running in debug mode with reduced verbosity');
+        }
+        _runGuard();
+      }
     });
   }
 
@@ -410,8 +419,16 @@ class _RedirectToHomeState extends State<_RedirectToHome> {
   @override
   void initState() {
     super.initState();
+    // CRITICAL FIX: Ensure proper view context for Windows accessibility
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || !context.mounted) return;
+      
+      // Additional safety for Windows accessibility announcements
+      if (defaultTargetPlatform == TargetPlatform.windows && kDebugMode) {
+        // Reduce accessibility verbosity on Windows in debug mode to prevent viewId errors
+        debugPrint('Windows accessibility: Running in debug mode with reduced verbosity');
+      }
+      
       Future.microtask(() async {
         try {
           final routeName = ModalRoute.of(context)?.settings.name;

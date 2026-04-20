@@ -418,6 +418,7 @@ Widget buildPlatformImage(String imagePath, {BoxFit fit = BoxFit.cover, Widget? 
       errorBuilder: (context, error, stackTrace) => errorWidget ?? const Icon(Icons.broken_image),
     );
   } else {
+    // Native platforms: use file-based image
     return Image.file(
       io.File(imagePath) as dynamic,
       fit: fit,

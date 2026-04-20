@@ -1,0 +1,102 @@
+EasyRealtorsPro - End User License Agreement
+Version 1.0.0
+Effective Date: April 2025
+
+IMPORTANT: PLEASE READ THIS LICENSE AGREEMENT CAREFULLY. BY INSTALLING AND USING EASYREALTORSPRO, YOU AGREE TO BE BOUND BY THE TERMS AND CONDITIONS OF THIS AGREEMENT.
+
+1. LICENSE GRANT
+=================
+Real Estate Management Solutions ("Licensor") grants you ("Licensee") a non-exclusive, non-transferable license to use EasyRealtorsPro software ("Software") in accordance with the terms of this agreement.
+
+2. PERMITTED USES
+=================
+You may:
+- Install and use the Software on a single computer
+- Make one backup copy of the Software for archival purposes
+- Use the Software for your internal business operations
+- Create reports and export data for business use
+
+3. RESTRICTIONS
+===============
+You may not:
+- Distribute, sell, or lease the Software to third parties
+- Reverse engineer, decompile, or disassemble the Software
+- Modify, adapt, or create derivative works of the Software
+- Remove or alter any copyright notices or license information
+- Use the Software for illegal purposes or in violation of applicable laws
+
+4. TERM AND TERMINATION
+=======================
+This license is effective until terminated. Licensor may terminate this license immediately without notice if you fail to comply with any term of this agreement. Upon termination, you must destroy all copies of the Software.
+
+5. INTELLECTUAL PROPERTY
+========================
+All intellectual property rights in the Software, including but not limited to copyrights, trademarks, and trade secrets, remain the property of Licensor. This license does not grant you any rights to such intellectual property.
+
+6. WARRANTY DISCLAIMER
+======================
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+7. LIMITATION OF LIABILITY
+==========================
+IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+8. TECHNICAL SUPPORT
+====================
+Technical support is provided as part of the license agreement. Support availability and response times may vary based on your license tier.
+
+9. UPDATES AND MAINTENANCE
+===========================
+Licensor may provide updates, patches, and maintenance releases for the Software. Such updates may be provided at no additional cost or may require separate fees.
+
+10. DATA PRIVACY AND SECURITY
+=============================
+Licensor respects your privacy and will handle your data in accordance with applicable privacy laws. The Software may collect usage data for diagnostic and improvement purposes.
+
+11. THIRD-PARTY SOFTWARE
+========================
+The Software may include third-party software components subject to their own license terms. Such components are provided "as is" without additional warranty from Licensor.
+
+12. EXPORT COMPLIANCE
+=====================
+You acknowledge that the Software may be subject to export control laws and regulations. You agree to comply with all applicable export controls.
+
+13. GOVERNING LAW
+=================
+This agreement shall be governed by and construed in accordance with the laws of the jurisdiction where Licensor is located, without regard to its conflict of law principles.
+
+14. ENTIRE AGREEMENT
+====================
+This agreement constitutes the entire agreement between the parties regarding the Software and supersedes all prior agreements, representations, and understandings.
+
+15. SEVERABILITY
+================
+If any provision of this agreement is found to be invalid or unenforceable, the remaining provisions shall remain in full force and effect.
+
+16. NOTICES
+==========
+All notices under this agreement shall be in writing and delivered to:
+- Licensor: Real Estate Management Solutions, [Address], [Email]
+- Licensee: The address provided during registration
+
+17. REFUND POLICY
+=================
+Refunds are available within 30 days of purchase if the Software does not perform as described in the documentation. To request a refund, contact support@easyrealtorspro.com.
+
+18. COMPLIANCE WITH LAWS
+======================
+You agree to use the Software in compliance with all applicable laws, regulations, and industry standards, including but not limited to real estate licensing requirements and data protection regulations.
+
+19. AUDIT RIGHTS
+================
+Licensor reserves the right to audit your use of the Software to ensure compliance with this agreement. Such audits shall be conducted during normal business hours with reasonable notice.
+
+20. MISCELLANEOUS
+=================
+No waiver of any provision of this agreement shall be effective unless in writing and signed by both parties. This agreement may not be modified except by written agreement signed by both parties.
+
+For questions about this license agreement, please contact:
+Email: legal@easyrealtorspro.com
+Phone: 1-800-LEGAL-ERP
+
+Copyright © 2025 Real Estate Management Solutions. All rights reserved.

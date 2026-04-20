@@ -1,8 +1,9 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.html) '../../web_stub.dart' as io;
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
+import 'package:drift/native.dart' if (dart.library.html) '../../web_stub.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import 'package:path_provider/path_provider.dart' if (dart.library.html) '../../web_stub.dart';
 
 part 'schema.g.dart';
 
@@ -422,21 +423,25 @@ class AppDatabase extends _$AppDatabase {
       // Close existing instance
       await closeInstance();
       
-      // Get the database file path using path_provider
-      try {
-        final appDir = await getApplicationSupportDirectory();
-        final dbFile = File(p.join(appDir.path, 'data.sqlite'));
-        print('[DB] Deleting database file: ${dbFile.path}');
-        
-        // Delete the database file
-        if (await dbFile.exists()) {
-          await dbFile.delete();
-          print('[DB] Database file deleted successfully');
-        } else {
-          print('[DB] Database file not found, no deletion needed');
+      // Get the database file path using path_provider (only on non-web platforms)
+      if (!kIsWeb) {
+        try {
+          final appDir = await getApplicationSupportDirectory();
+          final dbFile = io.File(p.join(appDir.path, 'data.sqlite'));
+          print('[DB] Deleting database file: ${dbFile.path}');
+          
+          // Delete the database file
+          if (await dbFile.exists()) {
+            await dbFile.delete();
+            print('[DB] Database file deleted successfully');
+          } else {
+            print('[DB] Database file not found, no deletion needed');
+          }
+        } catch (e) {
+          print('[DB] Error accessing database file: $e');
         }
-      } catch (e) {
-        print('[DB] Error accessing database file: $e');
+      } else {
+        print('[DB] Database reset not supported on web platform');
       }
       
       print('[DB] Database reset completed. Next app start will create fresh database.');
@@ -1281,6 +1286,7 @@ Future<void> _safeAddIsSyncedColumns(GeneratedDatabase db) async {
     'ALTER TABLE expenditures ADD COLUMN is_synced INTEGER DEFAULT 1',
     'ALTER TABLE expenditure_projects ADD COLUMN is_synced INTEGER DEFAULT 1',
     'ALTER TABLE expenditure_sub_items ADD COLUMN is_synced INTEGER DEFAULT 1',
+    'ALTER TABLE expenditure_sub_items ADD COLUMN category TEXT',
   ]) {
     try {
       await db.customStatement(stmt);

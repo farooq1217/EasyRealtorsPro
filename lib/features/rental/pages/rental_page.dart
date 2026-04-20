@@ -40,7 +40,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:drive_client/drive_client.dart';
 import 'package:drive_client/retention.dart';
 import 'package:http/http.dart' as http;
-import 'package:system_tray/system_tray.dart' if (dart.library.html) '../../platform_stubs/system_tray_stub.dart' hide AppWindow;
+import 'package:system_tray/system_tray.dart' if (dart.library.html) '../../../platform_stubs/system_tray_stub.dart' hide AppWindow;
 import '../../../core/services/auth_service.dart';
 import '../../../login_page.dart';
 import '../../../features/rental/view_models/rental_view_model.dart';

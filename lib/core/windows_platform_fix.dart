@@ -2,7 +2,7 @@
 /// This module provides Windows-specific fixes to prevent connection loss issues
 /// caused by FirebaseThreadingHandler and other platform threading conflicts.
 
-import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
+import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 
 class WindowsPlatformFix {

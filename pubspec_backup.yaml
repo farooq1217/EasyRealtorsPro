@@ -54,7 +54,7 @@ dependencies:
   archive: ^3.4.9
   flutter_secure_storage: ^9.2.2
   permission_handler: ^11.3.1
-  # sqlite3: ^2.4.0 # Permanently removed for web compatibility
+  # sqlite3: ^2.4.0 # Temporarily commented out for web build
 
 dev_dependencies:
   build_runner: ^2.4.12
@@ -67,6 +67,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+# Web-specific configuration
+web:
+  # Exclude FFI dependencies from web build
+  ffi: false
   assets:
     - assets/fonts/
     - assets/images/

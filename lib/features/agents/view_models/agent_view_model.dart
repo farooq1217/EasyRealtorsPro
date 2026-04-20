@@ -182,12 +182,19 @@ class AgentViewModel extends ChangeNotifier {
 
   // Initialize
   Future<void> initialize() async {
+    // CRITICAL FIX: Ensure user is loaded before any operations
     await _loadCurrentUser();
-    await loadTransfers();
-    await loadClientRequirements();
-    await loadOfficeNotes();
-    await loadOtherNotes();
-    await checkAndShowNotifications();
+    
+    // Only proceed with data loading if user is available
+    if (_currentUser != null) {
+      await loadTransfers();
+      await loadClientRequirements();
+      await loadOfficeNotes();
+      await loadOtherNotes();
+      await checkAndShowNotifications();
+    } else {
+      debugPrint('AgentViewModel: Cannot initialize - no user available');
+    }
   }
 
   // Load current user
@@ -199,37 +206,50 @@ class AgentViewModel extends ChangeNotifier {
       if (authToken != null) {
         debugPrint('AgentViewModel: Loading current user with permissions...');
         
-        // OPTIMIZED: Use getPermissionsInstantly() with proper cache initialization
+        // CRITICAL FIX: Ensure AuthService is fully initialized before getting user
         try {
-          // CRITICAL: Ensure cache is properly initialized first
-          await PermissionSyncService.initializePermissionsCache(authToken);
-          
-          // CRITICAL: Double-check cache population before calling getPermissionsInstantly
-          if (!PermissionSyncService.hasCachedPermissions) {
-            debugPrint('AgentViewModel: Cache not populated, forcing refresh...');
-            await PermissionSyncService.refreshUserPermissions(authToken);
-          }
-          
-          final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(authToken)
-              .timeout(const Duration(seconds: 5)); // 5 second timeout
-          if (userWithPermissions != null) {
-            _currentUser = userWithPermissions;
-            debugPrint('AgentViewModel: User loaded successfully with permissions: ${userWithPermissions['email']}');
-          } else {
-            // Fallback to regular user loading if instant loading fails
-            debugPrint('AgentViewModel: Instant permission loading returned null, using fallback...');
-            final user = await AuthService.getCurrentUser(authToken);
+          // CRITICAL: Wait for user data with proper timeout to avoid null issues
+          final user = await AuthService.getCurrentUser(authToken, waitForFirestore: false)
+              .timeout(const Duration(seconds: 5));
+              
+          if (user != null) {
             _currentUser = user;
+            debugPrint('AgentViewModel: User loaded successfully from AuthService: ${user['email']}');
+            
+            // NOW: Try to enhance with permissions after basic user data is loaded
+            try {
+              // Ensure cache is properly initialized with user data already available
+              await PermissionSyncService.initializePermissionsCache(authToken);
+              
+              // Try to get enhanced user with permissions
+              final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(authToken)
+                  .timeout(const Duration(seconds: 3)); // Reduced timeout since we have basic user
+              
+              if (userWithPermissions != null && userWithPermissions['permissions'] != null) {
+                _currentUser = userWithPermissions;
+                debugPrint('AgentViewModel: User enhanced with permissions: ${userWithPermissions['email']}');
+              } else {
+                debugPrint('AgentViewModel: Permission enhancement returned null, using basic user data');
+              }
+            } catch (permError) {
+              debugPrint('AgentViewModel: Permission enhancement failed, using basic user data: $permError');
+              // Keep the basic user data we already loaded
+            }
+          } else {
+            debugPrint('AgentViewModel: AuthService returned null user');
+            throw Exception('User authentication failed - no user data available');
           }
         } catch (e) {
-          // Fallback to regular user loading if instant loading fails
-          debugPrint('AgentViewModel: Instant permission loading failed: $e, using fallback...');
-          final user = await AuthService.getCurrentUser(authToken);
-          _currentUser = user;
+          debugPrint('AgentViewModel: Error loading user from AuthService: $e');
+          throw Exception('User authentication failed: $e');
         }
+      } else {
+        debugPrint('AgentViewModel: No auth token found');
+        throw Exception('No authentication token available');
       }
     } catch (e) {
       debugPrint('Error loading current user: $e');
+      rethrow; // Re-throw to ensure proper error handling
     }
   }
 
@@ -558,14 +578,43 @@ class AgentViewModel extends ChangeNotifier {
     }
     debugPrint('AgentViewModel: Date validation passed');
 
-    // Enhanced time validation
+    // CRITICAL FIX: Enhanced time validation with proper fallback
     debugPrint('AgentViewModel: Time validation - _selectedTime: $_selectedTime, timeCtl.text: "${timeCtl.text}"');
-    if (_selectedTime == null && timeCtl.text.isEmpty) {
+    
+    // Check both selected time and text field - if either has a value, parse it
+    TimeOfDay? timeToUse;
+    if (_selectedTime != null) {
+      timeToUse = _selectedTime;
+    } else if (timeCtl.text.isNotEmpty) {
+      // Parse time from text field (format: HH:MM)
+      final parts = timeCtl.text.split(':');
+      if (parts.length == 2) {
+        try {
+          final hour = int.parse(parts[0]);
+          final minute = int.parse(parts[1]);
+          if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+            timeToUse = TimeOfDay(hour: hour, minute: minute);
+            debugPrint('AgentViewModel: Parsed time from text field: ${timeToUse.hour.toString().padLeft(2, '0')}:${timeToUse.minute.toString().padLeft(2, '0')}');
+          }
+        } catch (e) {
+          debugPrint('AgentViewModel: Failed to parse time from text field: $e');
+        }
+      }
+    }
+    
+    if (timeToUse == null) {
       _error = 'Please select a time';
       notifyListeners();
       debugPrint('AgentViewModel: Validation failed - Time is required');
       return false;
     }
+    
+    // Update selected time if we parsed from text
+    if (_selectedTime == null && timeToUse != null) {
+      _selectedTime = timeToUse;
+      debugPrint('AgentViewModel: Updated _selectedTime from text field: $_selectedTime');
+    }
+    
     debugPrint('AgentViewModel: Time validation passed');
 
     // Validate category requirement
@@ -841,7 +890,19 @@ class AgentViewModel extends ChangeNotifier {
     // CRITICAL FIX: Ensure user is loaded with permissions before proceeding
     if (_currentUser == null) {
       print("AgentViewModel: Current user is null, reloading...");
-      await _loadCurrentUser();
+      try {
+        await _loadCurrentUser();
+        // If still null after reload, fail early
+        if (_currentUser == null) {
+          _error = 'User authentication failed - please log in again';
+          notifyListeners();
+          return false;
+        }
+      } catch (e) {
+        _error = 'Failed to load user: $e';
+        notifyListeners();
+        return false;
+      }
     }
     
     debugPrint('AgentViewModel: Permission check - User: ${_currentUser?['email']}, Role: ${_currentUser?['role']}');
@@ -863,13 +924,44 @@ class AgentViewModel extends ChangeNotifier {
       return false;
     }
 
-    // Enhanced time validation for client requirement
-    if (_reqSelectedTime == null && reqTimeCtl.text.isEmpty) {
+    // CRITICAL FIX: Enhanced time validation for client requirement with proper fallback
+    debugPrint('AgentViewModel: Client requirement time validation - _reqSelectedTime: $_reqSelectedTime, reqTimeCtl.text: "${reqTimeCtl.text}"');
+    
+    // Check both selected time and text field - if either has a value, parse it
+    TimeOfDay? timeToUse;
+    if (_reqSelectedTime != null) {
+      timeToUse = _reqSelectedTime;
+    } else if (reqTimeCtl.text.isNotEmpty) {
+      // Parse time from text field (format: HH:MM)
+      final parts = reqTimeCtl.text.split(':');
+      if (parts.length == 2) {
+        try {
+          final hour = int.parse(parts[0]);
+          final minute = int.parse(parts[1]);
+          if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+            timeToUse = TimeOfDay(hour: hour, minute: minute);
+            debugPrint('AgentViewModel: Parsed client requirement time from text field: ${timeToUse.hour.toString().padLeft(2, '0')}:${timeToUse.minute.toString().padLeft(2, '0')}');
+          }
+        } catch (e) {
+          debugPrint('AgentViewModel: Failed to parse client requirement time from text field: $e');
+        }
+      }
+    }
+    
+    if (timeToUse == null) {
       _error = 'Please select a time';
       notifyListeners();
       debugPrint('AgentViewModel: Validation failed - Time is required for client requirement');
       return false;
     }
+    
+    // Update selected time if we parsed from text
+    if (_reqSelectedTime == null && timeToUse != null) {
+      _reqSelectedTime = timeToUse;
+      debugPrint('AgentViewModel: Updated _reqSelectedTime from text field: $_reqSelectedTime');
+    }
+    
+    debugPrint('AgentViewModel: Client requirement time validation passed');
 
     if (_requirementSource == null || _requirementSource!.isEmpty) {
       _error = 'Please select a source (Direct, Agent, Website, Social Media, or Referral)';

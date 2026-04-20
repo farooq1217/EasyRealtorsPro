@@ -444,43 +444,46 @@ class _InventoryListState extends State<InventoryList> {
       barrierDismissible: false,
       builder: (dialogContext) => Dialog(
         insetPadding: const EdgeInsets.all(16),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
-            maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
-          ),
-          child: Column(
-            children: [
-              // Header with back button
-              Container(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
-                    ),
-                    const Spacer(),
-                  ],
+        child: SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+              maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header with back button
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                      ),
+                      const Spacer(),
+                    ],
+                  ),
                 ),
-              ),
-              // Scrollable form content
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: ChangeNotifierProvider.value(
-                    value: viewModel,
-                    child: InventoryForm(
-                      existing: item,
-                      onSave: () { 
-                        Navigator.of(dialogContext).pop(); 
-                      },
+                // Scrollable form content
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: ChangeNotifierProvider.value(
+                      value: viewModel,
+                      child: InventoryForm(
+                        existing: item,
+                        onSave: () { 
+                          Navigator.of(dialogContext).pop(); 
+                        },
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -540,44 +543,50 @@ class _InventoryListState extends State<InventoryList> {
       barrierDismissible: false,
       builder: (dialogContext) => Dialog(
         insetPadding: const EdgeInsets.all(16),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
-            maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
-          ),
-          child: Column(
-            children: [
-              // Header with back button
-              Container(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
-                    ),
-                    const Spacer(),
-                  ],
-                ),
-              ),
-              // Scrollable form content
-              Expanded(
-                child: SingleChildScrollView(
-                  child: InventoryForm(
-                    onSave: () {
-                      Navigator.of(dialogContext).pop();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Item saved successfully'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    },
+        child: SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+              maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header with back button
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                      ),
+                      const Spacer(),
+                    ],
                   ),
                 ),
-              ),
-            ],
+                // Scrollable form content
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: ChangeNotifierProvider.value(
+                      value: viewModel,
+                      child: InventoryForm(
+                        onSave: () {
+                          Navigator.of(dialogContext).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Item saved successfully'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
