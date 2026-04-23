@@ -39,6 +39,40 @@ class RentalViewModel extends ChangeNotifier {
   // Stream subscriptions
   StreamSubscription<List<Map<String, dynamic>>>? _rentalItemsSubscription;
 
+  // FIXED: Add ALL controllers for form state persistence (moved from UI)
+  final TextEditingController addressController = TextEditingController();
+  final TextEditingController ownerNameController = TextEditingController();
+  final TextEditingController contactNoController = TextEditingController();
+  final TextEditingController priceController = TextEditingController();
+  final TextEditingController securityController = TextEditingController();
+  final TextEditingController commentsController = TextEditingController();
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController cnicController = TextEditingController();
+  
+  // Form state variables
+  String? selectedStatus;
+  String? selectedPropertyType;
+  String? uploadedImagePath;
+  bool isFormLoading = false;
+  
+  // Status and property type options
+  final List<String> statusOptions = [
+    'Available',
+    'Rented', 
+    'Overdue',
+    'Maintenance'
+  ];
+  
+  final List<String> propertyTypeOptions = [
+    'House',
+    'Shop',
+    'Plaza',
+    'Hall',
+    'Apartment',
+    'Office',
+    'Warehouse'
+  ];
+
   RentalViewModel({
     RentalRepository? repository,
   }) : _repository = repository ?? RentalRepositoryImpl() {
@@ -60,6 +94,22 @@ class RentalViewModel extends ChangeNotifier {
   String? get companyId => _companyId;
   String? get userId => _userId;
   bool get mounted => _mounted;
+
+  // FIXED: Add getters for ALL controllers (no recursion)
+  TextEditingController get addressCtl => addressController;
+  TextEditingController get ownerNameCtl => ownerNameController;
+  TextEditingController get contactNoCtl => contactNoController;
+  TextEditingController get priceCtl => priceController;
+  TextEditingController get securityCtl => securityController;
+  TextEditingController get commentsCtl => commentsController;
+  TextEditingController get nameCtl => nameController;
+  TextEditingController get cnicCtl => cnicController;
+  
+  // Form state getters
+  String? get currentStatus => selectedStatus;
+  String? get currentPropertyType => selectedPropertyType;
+  String? get currentImagePath => uploadedImagePath;
+  bool get formLoading => isFormLoading;
 
   // Permission getters
   bool get canAddRental => PermissionHelper.canAddModule(_currentUser, 'rental_items');
@@ -369,6 +419,106 @@ class RentalViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Initialize form with existing data
+  void initializeForm(Map<String, dynamic>? existing, {bool forceClear = false}) {
+    debugPrint('=== RentalViewModel.initializeForm ===');
+    debugPrint('Existing data: $existing');
+    debugPrint('Force clear: $forceClear');
+    debugPrint('Current address: ${addressController.text}');
+    
+    if (existing != null) {
+      debugPrint('=== LOADING EXISTING DATA ===');
+      addressController.text = existing['location']?.toString() ?? '';
+      ownerNameController.text = existing['owner_name']?.toString() ?? '';
+      contactNoController.text = existing['contact_no']?.toString() ?? '';
+      priceController.text = existing['price']?.toString() ?? '';
+      securityController.text = existing['security']?.toString() ?? '';
+      commentsController.text = existing['remarks']?.toString() ?? '';
+      nameController.text = existing['name']?.toString() ?? '';
+      cnicController.text = existing['cnic']?.toString() ?? '';
+      selectedStatus = existing['sale_status']?.toString() ?? 'Not Sold';
+      final validPropertyTypes = ['House', 'Shop', 'Plaza', 'Hall', 'Apartment', 'Office', 'Warehouse'];
+      final existingPropertyType = existing['name']?.toString() ?? '';
+      selectedPropertyType = validPropertyTypes.contains(existingPropertyType) ? existingPropertyType : 'House';
+    } else if (forceClear) {
+      debugPrint('=== FORCE CLEARING CONTROLLERS ===');
+      // Only clear controllers when explicitly requested (first form open)
+      addressController.clear();
+      ownerNameController.clear();
+      contactNoController.clear();
+      priceController.clear();
+      securityController.clear();
+      commentsController.clear();
+      nameController.clear();
+      cnicController.clear();
+      selectedStatus = 'Not Sold';
+      selectedPropertyType = 'House';
+      uploadedImagePath = null;
+      isFormLoading = false;
+    } else {
+      debugPrint('=== PRESERVING EXISTING DATA ===');
+      // Don't clear controllers - preserve existing data during form rebuilds
+      // This prevents data loss when file picker opens
+    }
+    
+    debugPrint('=== AFTER INITIALIZATION ===');
+    debugPrint('Address: ${addressController.text}');
+    debugPrint('Owner: ${ownerNameController.text}');
+    debugPrint('Contact: ${contactNoController.text}');
+    debugPrint('Price: ${priceController.text}');
+    debugPrint('Security: ${securityController.text}');
+    debugPrint('Comments: ${commentsController.text}');
+    debugPrint('=== END INITIALIZATION ===');
+    
+    // Defer notification to prevent setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
+  }
+
+  /// Clear all form controllers
+  void clearForm({bool notify = true}) {
+    addressController.clear();
+    ownerNameController.clear();
+    contactNoController.clear();
+    priceController.clear();
+    securityController.clear();
+    commentsController.clear();
+    nameController.clear();
+    cnicController.clear();
+    selectedStatus = null;
+    selectedPropertyType = null;
+    uploadedImagePath = null;
+    isFormLoading = false;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  /// Update form status
+  void updateStatus(String? status) {
+    selectedStatus = status;
+    notifyListeners();
+  }
+
+  /// Update form property type
+  void updatePropertyType(String? propertyType) {
+    selectedPropertyType = propertyType;
+    notifyListeners();
+  }
+
+  /// Update uploaded image path
+  void updateImagePath(String? imagePath) {
+    uploadedImagePath = imagePath;
+    notifyListeners();
+  }
+
+  /// Set form loading state
+  void setFormLoading(bool loading) {
+    isFormLoading = loading;
+    notifyListeners();
+  }
+
   // Standard pagination methods (for consistency with other modules)
   void setPage(int page) {
     if (page >= 1 && page <= totalPages) {
@@ -389,6 +539,17 @@ class RentalViewModel extends ChangeNotifier {
   void dispose() {
     _mounted = false;
     _rentalItemsSubscription?.cancel();
+    
+    // FIXED: Dispose ALL controllers to prevent memory leaks
+    addressController.dispose();
+    ownerNameController.dispose();
+    contactNoController.dispose();
+    priceController.dispose();
+    securityController.dispose();
+    commentsController.dispose();
+    nameController.dispose();
+    cnicController.dispose();
+    
     super.dispose();
   }
 }

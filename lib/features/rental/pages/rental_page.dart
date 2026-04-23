@@ -93,8 +93,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   FirestoreSyncState _syncState = FirestoreSyncState();
   String? _currentFilter;
 
-  // FIXED: Move property type state to class level to persist across dialog opens
-  ValueNotifier<String>? _propertyTypeState;
+  // Property type state is now managed by RentalViewModel
 
   // SQLite-only flag
   static const bool _sqliteOnlyMode = true;
@@ -211,13 +210,6 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   void _showAddFormDialog({Map<String, dynamic>? existing}) {
     setState(() {
       _editingRental = existing;
-      
-      // FIXED: Initialize class-level property type state
-      final validPropertyTypes = ['House', 'Shop', 'Plaza', 'Hall', 'Apartment', 'Office', 'Warehouse'];
-      String existingPropertyType = existing?['name']?.toString() ?? '';
-      _propertyTypeState = ValueNotifier<String>(
-        validPropertyTypes.contains(existingPropertyType) ? existingPropertyType : 'House'
-      );
       
       if (existing != null && existing['id'] != null) {
         // Load images from Firestore when editing
@@ -358,22 +350,35 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
 
   Widget _buildAddRentalForm([StateSetter? dialogSetState, BuildContext? dialogContext]) {
     final existing = _editingRental;
+    final viewModel = Provider.of<RentalViewModel>(context, listen: false);
     
-    // Ensure property type state is initialized
-    if (_propertyTypeState == null) {
-      final validPropertyTypes = ['House', 'Shop', 'Plaza', 'Hall', 'Apartment', 'Office', 'Warehouse'];
-      String existingPropertyType = existing?['name']?.toString() ?? '';
-      _propertyTypeState = ValueNotifier<String>(
-        validPropertyTypes.contains(existingPropertyType) ? existingPropertyType : 'House'
-      );
-    }
+    debugPrint('=== RENTAL FORM INITIALIZATION ===');
+    debugPrint('Existing data: $existing');
+    debugPrint('ViewModel initialized: ${viewModel != null}');
+    debugPrint('Current address before init: "${viewModel.addressController.text}"');
+
+    // Property type state is managed by RentalViewModel
     
-    final addressCtl = TextEditingController(text: existing?['location']?.toString() ?? '');
-    final ownerNameCtl = TextEditingController(text: existing?['owner_name']?.toString() ?? '');
-    final contactNoCtl = TextEditingController(text: existing?['contact_no']?.toString() ?? '');
-    final rentCtl = TextEditingController(text: existing?['price']?.toString() ?? '');
-    final securityCtl = TextEditingController(text: existing?['security']?.toString() ?? '');
-    final commentsCtl = TextEditingController(text: existing?['remarks']?.toString() ?? '');
+    // Initialize ViewModel form with existing data
+    // Only force clear on first form open, not on rebuilds
+    // Check if this is the first time opening the form (no existing data and controllers are empty)
+    final isFirstOpen = existing == null && viewModel.addressController.text.isEmpty;
+    debugPrint('Is first open: $isFirstOpen');
+    debugPrint('Existing is null: ${existing == null}');
+    debugPrint('Address is empty: ${viewModel.addressController.text.isEmpty}');
+    viewModel.initializeForm(existing, forceClear: isFirstOpen);
+    
+    debugPrint('=== AFTER INITIALIZATION ===');
+    debugPrint('Property Type: ${viewModel.currentPropertyType}');
+    debugPrint('Address: ${viewModel.addressController.text}');
+    debugPrint('Owner Name: ${viewModel.ownerNameController.text}');
+    debugPrint('Contact No: ${viewModel.contactNoController.text}');
+    debugPrint('Price: ${viewModel.priceController.text}');
+    debugPrint('Security: ${viewModel.securityController.text}');
+    debugPrint('Comments: ${viewModel.commentsController.text}');
+    debugPrint('=== END INITIALIZATION DEBUG ===');
+    
+    // Controllers are now managed by RentalViewModel
 
     // Focus nodes for Tab navigation
     final propertyTypeFocus = FocusNode();
@@ -439,43 +444,28 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                         runSpacing: 16,
                         children: [
                           fieldBox(
-                            ValueListenableBuilder<String>(
-                              valueListenable: _propertyTypeState!,
-                              builder: (context, propertyTypeValue, child) {
-                                debugPrint('=== VALUE LISTENABLE BUILDER ===');
-                                debugPrint('Current propertyTypeValue: $propertyTypeValue');
-                                return DropdownButtonFormField<String>(
-                                  value: propertyTypeValue.isNotEmpty ? propertyTypeValue : 'House', // Set default to first item if null
-                                  focusNode: propertyTypeFocus,
-                                  decoration: _fieldDecoration('Property Type', isRequired: true),
-                                  items: const [
-                                    DropdownMenuItem(value: 'House', child: Text('House')),
-                                    DropdownMenuItem(value: 'Shop', child: Text('Shop')),
-                                    DropdownMenuItem(value: 'Plaza', child: Text('Plaza')),
-                                    DropdownMenuItem(value: 'Hall', child: Text('Hall')),
-                                    DropdownMenuItem(value: 'Apartment', child: Text('Apartment')),
-                                    DropdownMenuItem(value: 'Office', child: Text('Office')),
-                                    DropdownMenuItem(value: 'Warehouse', child: Text('Warehouse')),
-                                  ],
-                                  onChanged: (value) {
-                                    debugPrint('=== DROPDOWN CHANGED ===');
-                                    debugPrint('New value: $value');
-                                    debugPrint('Before update - _propertyTypeState!.value: ${_propertyTypeState!.value}');
-                                    if (value != null) {
-                                      _propertyTypeState!.value = value; // Update ValueNotifier
-                                      debugPrint('After update - _propertyTypeState!.value: ${_propertyTypeState!.value}');
-                                      if (dialogSetState != null) {
-                                        dialogSetState(() {}); // Trigger dialog rebuild
-                                      }
-                                    }
-                                  },
-                                );
+                            DropdownButtonFormField<String>(
+                              value: (viewModel.currentPropertyType ?? 'House'),
+                              decoration: _fieldDecoration('Property Type'),
+                              items: const [
+                                DropdownMenuItem(value: 'House', child: Text('House')),
+                                DropdownMenuItem(value: 'Shop', child: Text('Shop')),
+                                DropdownMenuItem(value: 'Plaza', child: Text('Plaza')),
+                                DropdownMenuItem(value: 'Hall', child: Text('Hall')),
+                                DropdownMenuItem(value: 'Apartment', child: Text('Apartment')),
+                                DropdownMenuItem(value: 'Office', child: Text('Office')),
+                                DropdownMenuItem(value: 'Warehouse', child: Text('Warehouse')),
+                              ],
+                              onChanged: (value) {
+                                if (value != null) {
+                                  viewModel.updatePropertyType(value);
+                                }
                               },
                             ),
                           ),
                           fieldBox(
                             TextField(
-                              controller: addressCtl,
+                              controller: viewModel.addressController,
                               focusNode: addressFocus,
                               textInputAction: TextInputAction.next,
                               onSubmitted: (_) => FocusScope.of(context).requestFocus(ownerNameFocus),
@@ -484,7 +474,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                           ),
                           fieldBox(
                             TextField(
-                              controller: ownerNameCtl,
+                              controller: viewModel.ownerNameController,
                               focusNode: ownerNameFocus,
                               textInputAction: TextInputAction.next,
                               onSubmitted: (_) => FocusScope.of(context).requestFocus(contactNoFocus),
@@ -496,7 +486,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                           ),
                           fieldBox(
                             TextField(
-                              controller: contactNoCtl,
+                              controller: viewModel.contactNoController,
                               focusNode: contactNoFocus,
                               textInputAction: TextInputAction.next,
                               onSubmitted: (_) => FocusScope.of(context).requestFocus(rentFocus),
@@ -514,7 +504,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                         children: [
                           fieldBox(
                             TextField(
-                              controller: rentCtl,
+                              controller: viewModel.priceController,
                               focusNode: rentFocus,
                               textInputAction: TextInputAction.next,
                               onSubmitted: (_) => FocusScope.of(context).requestFocus(securityFocus),
@@ -525,7 +515,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                           ),
                           fieldBox(
                             TextField(
-                              controller: securityCtl,
+                              controller: viewModel.securityController,
                               focusNode: securityFocus,
                               textInputAction: TextInputAction.next,
                               onSubmitted: (_) => FocusScope.of(context).requestFocus(commentsFocus),
@@ -563,7 +553,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                       const SizedBox(height: 16),
                       fieldBox(
                         TextField(
-                          controller: commentsCtl,
+                          controller: viewModel.commentsController,
                           focusNode: commentsFocus,
                           maxLines: 3,
                           decoration: _fieldDecoration('Remarks'),
@@ -607,7 +597,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                           const SizedBox(width: 12),
                           ElevatedButton(
                             onPressed: () async {
-                              if (_propertyTypeState!.value.trim().isEmpty) {
+                              if ((viewModel.currentPropertyType ?? '').trim().isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Please select property type'),
@@ -616,7 +606,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                 );
                                 return;
                               }
-                              if (addressCtl.text.trim().isEmpty) {
+                              if (viewModel.addressController.text.trim().isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Please enter address'),
@@ -625,7 +615,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                 );
                                 return;
                               }
-                              if (ownerNameCtl.text.trim().isEmpty) {
+                              if (viewModel.ownerNameController.text.trim().isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Please enter owner name'),
@@ -634,7 +624,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                 );
                                 return;
                               }
-                              if (contactNoCtl.text.trim().isEmpty) {
+                              if (viewModel.contactNoController.text.trim().isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Please enter contact number'),
@@ -643,7 +633,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                 );
                                 return;
                               }
-                              if (rentCtl.text.trim().isEmpty) {
+                              if (viewModel.priceController.text.trim().isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Please enter rent amount'),
@@ -652,7 +642,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                 );
                                 return;
                               }
-                              final rent = int.tryParse(rentCtl.text.trim());
+                              final rent = int.tryParse(viewModel.priceController.text.trim());
                               if (rent == null || rent <= 0) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
@@ -662,26 +652,44 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                 );
                                 return;
                               }
-                              final security = int.tryParse(securityCtl.text.trim()) ?? 0;
+                              final security = int.tryParse(viewModel.securityController.text.trim()) ?? 0;
 
                               // Save data
                               final now = DateTime.now().toUtc();
                               final data = {
-                                'name': _propertyTypeState!.value.trim(), // FIXED: Use ValueNotifier value
-                                'location': addressCtl.text.trim(),
-                                'owner_name': ownerNameCtl.text.trim(),
-                                'contact_no': contactNoCtl.text.trim(),
+                                'name': (viewModel.currentPropertyType ?? 'House').trim(),
+                                'location': viewModel.addressController.text.trim(),
+                                'owner_name': viewModel.ownerNameController.text.trim(),
+                                'contact_no': viewModel.contactNoController.text.trim(),
                                 'price': rent,
                                 'security': security,
                                 'sale_status': statusState.value,
-                                'remarks': commentsCtl.text.trim(),
+                                'remarks': viewModel.commentsController.text.trim(),
                                 'created_at': now.toIso8601String(),
                                 'updated_at': now.toIso8601String(),
                               };
                               
                               debugPrint('=== RENTAL SAVE DEBUG ===');
-                              debugPrint('Property Type being saved: ${data['name']}');
-                              debugPrint('_propertyTypeState!.value: ${_propertyTypeState!.value}');
+                              debugPrint('=== ALL RENTAL FIELDS ===');
+                              debugPrint('Property Type: ${data['name']}');
+                              debugPrint('Address: ${data['location']}');
+                              debugPrint('Owner Name: ${data['owner_name']}');
+                              debugPrint('Contact No: ${data['contact_no']}');
+                              debugPrint('Price: ${data['price']}');
+                              debugPrint('Security: ${data['security']}');
+                              debugPrint('Status: ${data['sale_status']}');
+                              debugPrint('Remarks: ${data['remarks']}');
+                              debugPrint('Created At: ${data['created_at']}');
+                              debugPrint('Updated At: ${data['updated_at']}');
+                              debugPrint('=== VIEWMODEL STATE ===');
+                              debugPrint('viewModel.currentPropertyType: ${viewModel.currentPropertyType}');
+                              debugPrint('viewModel.addressController.text: ${viewModel.addressController.text}');
+                              debugPrint('viewModel.ownerNameController.text: ${viewModel.ownerNameController.text}');
+                              debugPrint('viewModel.contactNoController.text: ${viewModel.contactNoController.text}');
+                              debugPrint('viewModel.priceController.text: ${viewModel.priceController.text}');
+                              debugPrint('viewModel.securityController.text: ${viewModel.securityController.text}');
+                              debugPrint('viewModel.commentsController.text: ${viewModel.commentsController.text}');
+                              debugPrint('=== END RENTAL DEBUG ===');
 
                               try {
                                 if (existing != null && existing['id'] != null) {
@@ -737,6 +745,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                   _editingRental = null;
                                   _rentalImages = [];
                                 });
+                                viewModel.clearForm();
                                 if (dialogContext != null && dialogContext.mounted) {
                                   Navigator.of(dialogContext).pop();
                                 }

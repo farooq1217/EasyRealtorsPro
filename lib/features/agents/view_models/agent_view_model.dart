@@ -569,13 +569,32 @@ class AgentViewModel extends ChangeNotifier {
     
     debugPrint('AgentViewModel: Permission check passed for agent_working module');
 
-    debugPrint('AgentViewModel: Date validation - _selectedDate: $_selectedDate, dateCtl.text: "${dateCtl.text}"');
-    if (_selectedDate == null && dateCtl.text.isEmpty) {
+    // FIXED: Enhanced date validation for transfer
+    debugPrint('AgentViewModel: Transfer date validation - _selectedDate: $_selectedDate, dateCtl.text: "${dateCtl.text}"');
+    
+    if (_selectedDate == null && dateCtl.text.trim().isEmpty) {
       _error = 'Please select a date';
       notifyListeners();
       debugPrint('AgentViewModel: Validation failed - Date is required');
       return false;
     }
+    
+    // FIXED: If date controller has text but selected date is null, try to parse it
+    if (_selectedDate == null && dateCtl.text.trim().isNotEmpty) {
+      try {
+        // Try to parse date from controller text (format: dd MMM yyyy)
+        final parsedDate = DateFormat('dd MMM yyyy').parse(dateCtl.text.trim());
+        _selectedDate = parsedDate;
+        debugPrint('AgentViewModel: Parsed transfer date from controller: $_selectedDate');
+      } catch (e) {
+        debugPrint('AgentViewModel: Failed to parse transfer date from controller: $e');
+        _error = 'Please select a valid date';
+        notifyListeners();
+        return false;
+      }
+    }
+    
+    debugPrint('AgentViewModel: Transfer date validation passed');
     debugPrint('AgentViewModel: Date validation passed');
 
     // CRITICAL FIX: Enhanced time validation with proper fallback
@@ -602,10 +621,11 @@ class AgentViewModel extends ChangeNotifier {
       }
     }
     
+    // FIXED: Skip time validation for client requirements - this is transfer method only
     if (timeToUse == null) {
       _error = 'Please select a time';
       notifyListeners();
-      debugPrint('AgentViewModel: Validation failed - Time is required');
+      debugPrint('AgentViewModel: Validation failed - Time is required for transfers');
       return false;
     }
     
@@ -744,11 +764,31 @@ class AgentViewModel extends ChangeNotifier {
       return false;
     }
 
-    if (_selectedDate == null && dateCtl.text.isEmpty) {
+    // FIXED: Enhanced date validation for update
+    debugPrint('AgentViewModel: Update date validation - _selectedDate: $_selectedDate, dateCtl.text: "${dateCtl.text}"');
+    
+    if (_selectedDate == null && dateCtl.text.trim().isEmpty) {
       _error = 'Please select a date';
       notifyListeners();
       return false;
     }
+    
+    // FIXED: If date controller has text but selected date is null, try to parse it
+    if (_selectedDate == null && dateCtl.text.trim().isNotEmpty) {
+      try {
+        // Try to parse date from controller text (format: dd MMM yyyy)
+        final parsedDate = DateFormat('dd MMM yyyy').parse(dateCtl.text.trim());
+        _selectedDate = parsedDate;
+        debugPrint('AgentViewModel: Parsed update date from controller: $_selectedDate');
+      } catch (e) {
+        debugPrint('AgentViewModel: Failed to parse update date from controller: $e');
+        _error = 'Please select a valid date';
+        notifyListeners();
+        return false;
+      }
+    }
+    
+    debugPrint('AgentViewModel: Update date validation passed');
 
     // Validate category requirement
     if (_transferCategory == null || _transferCategory!.isEmpty) {
@@ -917,51 +957,56 @@ class AgentViewModel extends ChangeNotifier {
     
     debugPrint('AgentViewModel: Permission check passed for client_working module');
 
-    if (_reqSelectedDate == null && reqDateCtl.text.isEmpty) {
+    // FIXED: Enhanced date validation for client requirement
+    debugPrint('AgentViewModel: Client requirement date validation - _reqSelectedDate: $_reqSelectedDate, reqDateCtl.text: "${reqDateCtl.text}"');
+    
+    if (_reqSelectedDate == null && reqDateCtl.text.trim().isEmpty) {
       _error = 'Please select a date';
       notifyListeners();
       debugPrint('AgentViewModel: Validation failed - Date is required for client requirement');
       return false;
     }
-
-    // CRITICAL FIX: Enhanced time validation for client requirement with proper fallback
-    debugPrint('AgentViewModel: Client requirement time validation - _reqSelectedTime: $_reqSelectedTime, reqTimeCtl.text: "${reqTimeCtl.text}"');
     
-    // Check both selected time and text field - if either has a value, parse it
-    TimeOfDay? timeToUse;
-    if (_reqSelectedTime != null) {
-      timeToUse = _reqSelectedTime;
-    } else if (reqTimeCtl.text.isNotEmpty) {
-      // Parse time from text field (format: HH:MM)
+    // FIXED: If date controller has text but selected date is null, try to parse it
+    if (_reqSelectedDate == null && reqDateCtl.text.trim().isNotEmpty) {
+      try {
+        // Try to parse date from controller text (format: dd MMM yyyy)
+        final parsedDate = DateFormat('dd MMM yyyy').parse(reqDateCtl.text.trim());
+        _reqSelectedDate = parsedDate;
+        debugPrint('AgentViewModel: Parsed client requirement date from controller: $_reqSelectedDate');
+      } catch (e) {
+        debugPrint('AgentViewModel: Failed to parse client requirement date from controller: $e');
+        _error = 'Please select a valid date';
+        notifyListeners();
+        return false;
+      }
+    }
+    
+    debugPrint('AgentViewModel: Client requirement date validation passed');
+
+    // FIXED: Time validation REMOVED for client requirements - only required for transfers
+    debugPrint('AgentViewModel: Client requirement time validation - SKIPPED (time not required for client requirements)');
+    
+    // Client requirements do NOT require time validation - only transfers need time
+    // Set time to null or default if needed, but don't validate it
+    if (_reqSelectedTime == null && reqTimeCtl.text.isNotEmpty) {
+      // Optional: Parse time from text field if provided, but don't require it
       final parts = reqTimeCtl.text.split(':');
       if (parts.length == 2) {
         try {
           final hour = int.parse(parts[0]);
           final minute = int.parse(parts[1]);
           if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-            timeToUse = TimeOfDay(hour: hour, minute: minute);
-            debugPrint('AgentViewModel: Parsed client requirement time from text field: ${timeToUse.hour.toString().padLeft(2, '0')}:${timeToUse.minute.toString().padLeft(2, '0')}');
+            _reqSelectedTime = TimeOfDay(hour: hour, minute: minute);
+            debugPrint('AgentViewModel: Optional client requirement time parsed from text field: ${_reqSelectedTime!.hour.toString().padLeft(2, '0')}:${_reqSelectedTime!.minute.toString().padLeft(2, '0')}');
           }
         } catch (e) {
-          debugPrint('AgentViewModel: Failed to parse client requirement time from text field: $e');
+          debugPrint('AgentViewModel: Failed to parse optional client requirement time from text field: $e');
         }
       }
     }
     
-    if (timeToUse == null) {
-      _error = 'Please select a time';
-      notifyListeners();
-      debugPrint('AgentViewModel: Validation failed - Time is required for client requirement');
-      return false;
-    }
-    
-    // Update selected time if we parsed from text
-    if (_reqSelectedTime == null && timeToUse != null) {
-      _reqSelectedTime = timeToUse;
-      debugPrint('AgentViewModel: Updated _reqSelectedTime from text field: $_reqSelectedTime');
-    }
-    
-    debugPrint('AgentViewModel: Client requirement time validation passed');
+    debugPrint('AgentViewModel: Client requirement time validation SKIPPED (time optional for client requirements)');
 
     if (_requirementSource == null || _requirementSource!.isEmpty) {
       _error = 'Please select a source (Direct, Agent, Website, Social Media, or Referral)';

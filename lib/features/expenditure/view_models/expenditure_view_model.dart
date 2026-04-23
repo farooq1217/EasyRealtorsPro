@@ -169,6 +169,11 @@ class ExpenditureViewModel extends ChangeNotifier {
         const Duration(seconds: 3),
         onTimeout: () {
           debugPrint('ExpenditureViewModel: User loading timed out, proceeding with default values');
+          // FIXED: Wrap setState in postFrameCallback to prevent build phase errors
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _loading = false;
+            notifyListeners();
+          });
         },
       );
       
@@ -198,13 +203,18 @@ class ExpenditureViewModel extends ChangeNotifier {
         const Duration(seconds: 5),
         onTimeout: () {
           debugPrint('ExpenditureViewModel: Stream setup timed out, UI should be visible');
-          _loading = false;
-          notifyListeners();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _loading = false;
+            notifyListeners();
+          });
         },
       );
     } catch (e) {
       debugPrint('Error initializing ExpenditureViewModel: $e');
-      _loading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loading = false;
+        notifyListeners();
+      });
       notifyListeners();
     }
   }
@@ -453,7 +463,7 @@ class ExpenditureViewModel extends ChangeNotifier {
         description: description,
         amount: amount,
         categoryType: type, // 'office' or 'project'
-        category: null, // Category will be set by the page
+        category: type == 'office' ? 'Office Expense' : 'Project Expense', // FIXED: Set proper category based on type
         companyId: companyId,
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
@@ -510,7 +520,7 @@ class ExpenditureViewModel extends ChangeNotifier {
         description: projectName, // Project name as description
         amount: 0.0, // Zero amount - projects are just buckets
         categoryType: 'project_bucket', // New type to distinguish from project expenses
-        category: null, // No category for project buckets
+        category: 'Project Bucket', // FIXED: Set proper category for project buckets
         companyId: companyId,
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,

@@ -508,6 +508,20 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     }
   }
 
+  // Helper method to safely add columns with duplicate error handling
+  Future<void> _addColumnSafely(String columnName, String columnType) async {
+    try {
+      await db.customStatement('ALTER TABLE Expenditures ADD COLUMN $columnName $columnType');
+      debugPrint('ExpenditureRepository: $columnName column added successfully');
+    } catch (e) {
+      if (e.toString().contains('duplicate column name') || e.toString().contains('code 1')) {
+        debugPrint('ExpenditureRepository: $columnName column already exists - ignoring duplicate column error');
+      } else {
+        debugPrint('ExpenditureRepository: $columnName column addition failed: $e');
+      }
+    }
+  }
+
   @override
   Future<void> ensureExpenditureTableColumns() async {
     try {
@@ -516,23 +530,41 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       final columnNames = cols.map((r) => r.data['name']?.toString()).toList();
       debugPrint('ExpenditureRepository: Found existing columns: $columnNames');
       
-      // Batch column additions with minimal error handling
+      // FIXED: Use helper method for all column additions
       final operations = <Future<void>>[];
-      if (!columnNames.contains('category_type')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN category_type TEXT'));
-      if (!columnNames.contains('kind')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN kind TEXT'));
-      if (!columnNames.contains('project_id')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN project_id TEXT'));
-      if (!columnNames.contains('category')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN category TEXT'));
-      if (!columnNames.contains('office_month')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN office_month TEXT'));
-      if (!columnNames.contains('is_active')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN is_active INTEGER DEFAULT 1'));
-      if (!columnNames.contains('is_synced')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN is_synced INTEGER DEFAULT 1'));
-      if (!columnNames.contains('created_at')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN created_at TEXT'));
-      if (!columnNames.contains('updated_at')) operations.add(db.customStatement('ALTER TABLE Expenditures ADD COLUMN updated_at TEXT'));
+      if (!columnNames.contains('category_type')) {
+        operations.add(_addColumnSafely('category_type', 'TEXT'));
+      }
+      if (!columnNames.contains('kind')) {
+        operations.add(_addColumnSafely('kind', 'TEXT'));
+      }
+      if (!columnNames.contains('project_id')) {
+        operations.add(_addColumnSafely('project_id', 'TEXT'));
+      }
+      if (!columnNames.contains('category')) {
+        operations.add(_addColumnSafely('category', 'TEXT'));
+      }
+      if (!columnNames.contains('office_month')) {
+        operations.add(_addColumnSafely('office_month', 'TEXT'));
+      }
+      if (!columnNames.contains('is_active')) {
+        operations.add(_addColumnSafely('is_active', 'INTEGER DEFAULT 1'));
+      }
+      if (!columnNames.contains('is_synced')) {
+        operations.add(_addColumnSafely('is_synced', 'INTEGER DEFAULT 1'));
+      }
+      if (!columnNames.contains('created_at')) {
+        operations.add(_addColumnSafely('created_at', 'TEXT'));
+      }
+      if (!columnNames.contains('updated_at')) {
+        operations.add(_addColumnSafely('updated_at', 'TEXT'));
+      }
       
       // Execute all operations in parallel for speed
       await Future.wait(operations);
       debugPrint('ExpenditureRepository: Table columns optimization completed - ${operations.length} operations processed');
       
-      // FIXED: Category column is now handled in database migration, no need to ensure here
+      // FIXED: Add safe column existence checks to prevent duplicate column errors
     } catch (e) {
       debugPrint('ExpenditureRepository: Failed to ensure expenditure table columns: $e');
       // Don't throw - allow app to continue even if column checks fail
@@ -548,21 +580,31 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   /// CRITICAL: Ensure category column exists in expenditure_sub_items table
   Future<void> ensureExpenditureSubItemsCategoryColumn() async {
     try {
-      debugPrint('ExpenditureRepository: Starting optimized category column check');
+      debugPrint('ExpenditureRepository: Starting safe category column check');
       
-      // OPTIMIZATION: Try to add column directly without verification to reduce database calls
+      // FIXED: Check if column exists before attempting to add it
+      final cols = await db.customSelect('PRAGMA table_info(expenditure_sub_items)').get();
+      final columnNames = cols.map((r) => r.data['name']?.toString()).toList();
+      debugPrint('ExpenditureRepository: Found existing columns in expenditure_sub_items: $columnNames');
+      
+      // FIXED: Try to add column directly and ignore duplicate column errors
       try {
         await db.customStatement('ALTER TABLE expenditure_sub_items ADD COLUMN category TEXT');
         debugPrint('ExpenditureRepository: Category column added successfully');
       } catch (e) {
-        // Column might already exist, which is fine - no need to verify
-        debugPrint('ExpenditureRepository: Category column addition failed (might already exist): $e');
+        // FIXED: Check if error is duplicate column (SQLite code 1) and ignore it
+        if (e.toString().contains('duplicate column name') || e.toString().contains('code 1')) {
+          debugPrint('ExpenditureRepository: Category column already exists - ignoring duplicate column error');
+        } else {
+          debugPrint('ExpenditureRepository: Category column addition failed with unexpected error: $e');
+          // Don't rethrow - allow app to continue
+        }
       }
       
-      debugPrint('ExpenditureRepository: Optimized category column check completed');
+      debugPrint('ExpenditureRepository: Safe category column check completed');
     } catch (e) {
       debugPrint('ExpenditureRepository: Error ensuring category column: $e');
-      // Don't throw - allow the app to continue even if column addition fails
+      // Don't throw - allow app to continue even if column addition fails
     }
   }
 

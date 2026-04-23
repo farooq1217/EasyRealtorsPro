@@ -120,7 +120,7 @@ class ExpenditureItem extends Equatable {
       date: (map['date'] ?? '').toString(),
       description: (map['description'] ?? '').toString(),
       amount: parsedAmount,
-      category: (map['category'] ?? map['expense_category'] ?? map['expenseCategory'])?.toString(),
+      category: (map['category'] ?? map['expense_category'] ?? map['expenseCategory'])?.toString() ?? 'Uncategorized',
       companyId: (map['companyId'] ?? map['company_id'])?.toString(),
       createdBy: (map['createdBy'] ?? map['created_by'])?.toString(),
       kind: (map['kind'] ?? map['type'])?.toString(),
@@ -245,7 +245,7 @@ class ExpenditureSubItem extends Equatable {
       parentId: (map['parent_id'] ?? '').toString(),
       description: (map['description'] ?? '').toString(),
       amount: parsedAmount,
-      category: (map['category'])?.toString(), // New category field
+      category: (map['category'] ?? map['expense_category'] ?? map['expenseCategory'])?.toString() ?? 'Uncategorized', // FIXED: Add fallback for category
       companyId: (map['company_id'])?.toString(),
       createdBy: (map['created_by'])?.toString(),
       isActive: (map['is_active'] is int ? map['is_active'] == 1 : map['is_active'] == true) ?? true,
