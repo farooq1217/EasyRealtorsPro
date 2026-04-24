@@ -441,6 +441,10 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   @override
   Future<void> addExpenditureSubItem(domain.ExpenditureSubItem subItem) async {
     try {
+      // CRITICAL FIX: Ensure category column exists before inserting
+      await ensureExpenditureSubItemsCategoryColumn();
+      
+      // First, insert the basic sub-item without category
       await db.into(db.expenditureSubItems).insert(
         ExpenditureSubItemsCompanion.insert(
           id: subItem.id,
@@ -456,8 +460,19 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
         ),
       );
       
-      // FIXED: Category column is now handled in database schema and companion
-      // No need for separate UPDATE statement - category is included in the insert
+      // CRITICAL FIX: Now update with category to ensure it's properly saved
+      if (subItem.category != null && subItem.category!.isNotEmpty) {
+        try {
+          await db.customStatement(
+            'UPDATE expenditure_sub_items SET category = ? WHERE id = ?',
+            [subItem.category, subItem.id],
+          );
+          debugPrint('ExpenditureRepository: Category "${subItem.category}" saved for sub-item ${subItem.id}');
+        } catch (e) {
+          debugPrint('ExpenditureRepository: Failed to save category for sub-item: $e');
+          // Don't rethrow - the sub-item was still created, just without category
+        }
+      }
     } catch (e) {
       throw Exception('Failed to add expenditure sub-item: $e');
     }
@@ -508,16 +523,22 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     }
   }
 
-  // Helper method to safely add columns with duplicate error handling
-  Future<void> _addColumnSafely(String columnName, String columnType) async {
+  // Helper method to safely add columns with comprehensive duplicate error handling
+  Future<void> _addColumnSafely(String tableName, String columnName, String columnType) async {
     try {
-      await db.customStatement('ALTER TABLE Expenditures ADD COLUMN $columnName $columnType');
-      debugPrint('ExpenditureRepository: $columnName column added successfully');
+      await db.customStatement('ALTER TABLE $tableName ADD COLUMN $columnName $columnType');
+      debugPrint('ExpenditureRepository: $columnName column added successfully to $tableName');
     } catch (e) {
-      if (e.toString().contains('duplicate column name') || e.toString().contains('code 1')) {
-        debugPrint('ExpenditureRepository: $columnName column already exists - ignoring duplicate column error');
+      // CRITICAL: Comprehensive error handling for SQLite duplicate column errors
+      final errorMessage = e.toString().toLowerCase();
+      if (errorMessage.contains('duplicate column name') || 
+          errorMessage.contains('code 1') || 
+          errorMessage.contains('syntax error') ||
+          errorMessage.contains('already exists')) {
+        debugPrint('ExpenditureRepository: $columnName column already exists in $tableName - ignoring duplicate column error');
       } else {
-        debugPrint('ExpenditureRepository: $columnName column addition failed: $e');
+        debugPrint('ExpenditureRepository: $columnName column addition failed for $tableName: $e');
+        // Don't rethrow - allow app to continue even if column addition fails
       }
     }
   }
@@ -530,34 +551,34 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       final columnNames = cols.map((r) => r.data['name']?.toString()).toList();
       debugPrint('ExpenditureRepository: Found existing columns: $columnNames');
       
-      // FIXED: Use helper method for all column additions
+      // FIXED: Use helper method for all column additions with tableName parameter
       final operations = <Future<void>>[];
       if (!columnNames.contains('category_type')) {
-        operations.add(_addColumnSafely('category_type', 'TEXT'));
+        operations.add(_addColumnSafely('Expenditures', 'category_type', 'TEXT'));
       }
       if (!columnNames.contains('kind')) {
-        operations.add(_addColumnSafely('kind', 'TEXT'));
+        operations.add(_addColumnSafely('Expenditures', 'kind', 'TEXT'));
       }
       if (!columnNames.contains('project_id')) {
-        operations.add(_addColumnSafely('project_id', 'TEXT'));
+        operations.add(_addColumnSafely('Expenditures', 'project_id', 'TEXT'));
       }
       if (!columnNames.contains('category')) {
-        operations.add(_addColumnSafely('category', 'TEXT'));
+        operations.add(_addColumnSafely('Expenditures', 'category', 'TEXT'));
       }
       if (!columnNames.contains('office_month')) {
-        operations.add(_addColumnSafely('office_month', 'TEXT'));
+        operations.add(_addColumnSafely('Expenditures', 'office_month', 'TEXT'));
       }
       if (!columnNames.contains('is_active')) {
-        operations.add(_addColumnSafely('is_active', 'INTEGER DEFAULT 1'));
+        operations.add(_addColumnSafely('Expenditures', 'is_active', 'INTEGER DEFAULT 1'));
       }
       if (!columnNames.contains('is_synced')) {
-        operations.add(_addColumnSafely('is_synced', 'INTEGER DEFAULT 1'));
+        operations.add(_addColumnSafely('Expenditures', 'is_synced', 'INTEGER DEFAULT 1'));
       }
       if (!columnNames.contains('created_at')) {
-        operations.add(_addColumnSafely('created_at', 'TEXT'));
+        operations.add(_addColumnSafely('Expenditures', 'created_at', 'TEXT'));
       }
       if (!columnNames.contains('updated_at')) {
-        operations.add(_addColumnSafely('updated_at', 'TEXT'));
+        operations.add(_addColumnSafely('Expenditures', 'updated_at', 'TEXT'));
       }
       
       // Execute all operations in parallel for speed
@@ -577,31 +598,15 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     // Sub-items functionality is disabled
   }
 
-  /// CRITICAL: Ensure category column exists in expenditure_sub_items table
+  /// CRITICAL: Ensure category column exists in expenditure_sub_items table with enhanced safety
   Future<void> ensureExpenditureSubItemsCategoryColumn() async {
     try {
-      debugPrint('ExpenditureRepository: Starting safe category column check');
+      debugPrint('ExpenditureRepository: Starting enhanced safe category column check');
       
-      // FIXED: Check if column exists before attempting to add it
-      final cols = await db.customSelect('PRAGMA table_info(expenditure_sub_items)').get();
-      final columnNames = cols.map((r) => r.data['name']?.toString()).toList();
-      debugPrint('ExpenditureRepository: Found existing columns in expenditure_sub_items: $columnNames');
+      // ENHANCED: Use the safe column addition method
+      await _addColumnSafely('expenditure_sub_items', 'category', 'TEXT');
       
-      // FIXED: Try to add column directly and ignore duplicate column errors
-      try {
-        await db.customStatement('ALTER TABLE expenditure_sub_items ADD COLUMN category TEXT');
-        debugPrint('ExpenditureRepository: Category column added successfully');
-      } catch (e) {
-        // FIXED: Check if error is duplicate column (SQLite code 1) and ignore it
-        if (e.toString().contains('duplicate column name') || e.toString().contains('code 1')) {
-          debugPrint('ExpenditureRepository: Category column already exists - ignoring duplicate column error');
-        } else {
-          debugPrint('ExpenditureRepository: Category column addition failed with unexpected error: $e');
-          // Don't rethrow - allow app to continue
-        }
-      }
-      
-      debugPrint('ExpenditureRepository: Safe category column check completed');
+      debugPrint('ExpenditureRepository: Enhanced safe category column check completed');
     } catch (e) {
       debugPrint('ExpenditureRepository: Error ensuring category column: $e');
       // Don't throw - allow app to continue even if column addition fails
@@ -701,6 +706,63 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       return mainAmount;
     } catch (e) {
       throw Exception('Failed to calculate total expenditure: $e');
+    }
+  }
+
+  @override
+  Future<domain.ExpenditureItem?> findExistingOfficeExpense(String date, String category, String companyId) async {
+    try {
+      debugPrint('ExpenditureRepository: Searching for existing office expense - Date: $date, Category: $category, Company: $companyId');
+      
+      final query = '''SELECT * FROM Expenditures 
+        WHERE date = ? 
+        AND category = ?
+        AND company_id = ? 
+        AND (category_type = ? OR category_type = ? OR kind = ?)
+        AND (is_active IS NULL OR is_active = 1)
+        ORDER BY created_at DESC
+        LIMIT 1''';
+      
+      final variables = <d.Variable<Object>>[
+        d.Variable.withString(date),
+        d.Variable.withString(category),
+        d.Variable.withString(companyId),
+        d.Variable.withString('office_expense'),
+        d.Variable.withString('office'),
+        d.Variable.withString('office'),
+      ];
+      
+      final rows = await db.customSelect(query, variables: variables).get();
+      
+      if (rows.isNotEmpty) {
+        final existingExpense = domain.ExpenditureItem.fromMap(rows.first.data);
+        debugPrint('ExpenditureRepository: Found existing office expense: ${existingExpense.id}');
+        return existingExpense;
+      }
+      
+      debugPrint('ExpenditureRepository: No existing office expense found');
+      return null;
+    } catch (e) {
+      debugPrint('ExpenditureRepository: Error finding existing office expense: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<void> updateExpenditureAmount(String expenditureId, double newAmount) async {
+    try {
+      debugPrint('ExpenditureRepository: Updating expenditure amount - ID: $expenditureId, New Amount: $newAmount');
+      
+      final now = DateTime.now().toIso8601String();
+      await db.customStatement('''UPDATE Expenditures SET
+        amount = ?, 
+        updated_at = ?
+        WHERE id = ?''', [newAmount, now, expenditureId]);
+      
+      debugPrint('ExpenditureRepository: Successfully updated expenditure amount');
+    } catch (e) {
+      debugPrint('ExpenditureRepository: Error updating expenditure amount: $e');
+      throw Exception('Failed to update expenditure amount: $e');
     }
   }
 }

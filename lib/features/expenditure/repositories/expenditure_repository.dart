@@ -34,4 +34,8 @@ abstract class ExpenditureRepository {
   Future<double> getTotalOfficeExpenses(String? companyId);
   Future<double> getTotalProjectExpenses(String? companyId);
   Future<double> getTotalExpenditureWithSubItems(String expenditureId);
+  
+  // Smart grouping for office expenses
+  Future<ExpenditureItem?> findExistingOfficeExpense(String date, String category, String companyId);
+  Future<void> updateExpenditureAmount(String expenditureId, double newAmount);
 }

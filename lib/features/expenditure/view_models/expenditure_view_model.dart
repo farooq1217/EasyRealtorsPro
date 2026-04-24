@@ -1,3 +1,4 @@
+// ignore_for_file: parameter_types
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
@@ -60,6 +61,7 @@ class ExpenditureViewModel extends ChangeNotifier {
   
   // Sub-items functionality
   List<domain.ExpenditureSubItem> _subItems = [];
+  String? _currentExpenseId; // Track current expense ID for sub-item operations
   final TextEditingController _itemDescriptionController = TextEditingController();
   final TextEditingController _itemAmountController = TextEditingController();
   final TextEditingController _itemCategoryController = TextEditingController(); // New category controller
@@ -347,8 +349,11 @@ class ExpenditureViewModel extends ChangeNotifier {
 
   // Tab management
   void setCurrentTab(ExpenditureTab tab) {
-    _currentTab = tab;
-    notifyListeners();
+    // ignore: parameter_types
+    if (tab != null) {
+      _currentTab = tab;
+      notifyListeners();
+    }
   }
 
   // CRITICAL: Manual refresh method for immediate UI updates
@@ -604,23 +609,141 @@ class ExpenditureViewModel extends ChangeNotifier {
         _showSuccessSnackBar('$type expense added successfully');
       }
       
-      // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = local.RoleUtils.getUserCompanyId(_user);
-      if (freshCompanyId != null) {
-        final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
-        final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
-        
-        _officeExpenses = freshOfficeExpenses;
-        _projectExpenses = freshProjectExpenses;
-        _applySearchFilter(); // Apply search filter to fresh data
-        
-        debugPrint('ExpenditureViewModel: Manual refresh completed after expense save - office: ${freshOfficeExpenses.length}, projects: ${freshProjectExpenses.length}');
-        notifyListeners(); // Force UI rebuild immediately
-      }
+      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
+      // The streams will detect the database changes and update the UI instantly
+      debugPrint('ExpenditureViewModel: Expense saved - streams will update UI automatically');
+      
+      // CRITICAL FIX: Force UI trigger after saveExpenseWithCategory completes
+      // Explicitly call notifyListeners() and then refreshData() to force local list sync with DB
+      notifyListeners();
+      await refreshData(); // Force the local list to sync with the DB
+      debugPrint('ExpenditureViewModel: Force UI trigger completed - notifyListeners() and refreshData() called');
       
       return true;
     } catch (e) {
       debugPrint('Error saving expense: $e');
+      _showErrorSnackBar('Failed to save expense');
+      return false;
+    }
+  }
+
+  // Simplified method for instant expense saving from category grid - 1-step process with smart grouping
+  Future<bool> saveInstantExpenseFromCategory(String type, String category, {
+    required String description,
+    required double amount,
+    required DateTime selectedDate,
+  }) async {
+    try {
+      // CRITICAL: Ensure Firebase calls are on main thread for Windows compatibility
+      if (io.Platform.isWindows) {
+        // On Windows, ensure we're on the main thread for Firebase operations
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      
+      final companyId = local.RoleUtils.getUserCompanyId(_user);
+      if (companyId == null) {
+        _showErrorSnackBar('Unable to determine company');
+        return false;
+      }
+      
+      final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
+      
+      // SMART GROUPING: Check if existing expense with same date and category exists
+      if (type == 'office_expense') {
+        debugPrint('ExpenditureViewModel: Smart grouping check for office expense - Date: $dateStr, Category: $category');
+        
+        final existingExpense = await _repository.findExistingOfficeExpense(dateStr, category, companyId);
+        
+        if (existingExpense != null) {
+          // EXISTING EXPENSE: Update amount and add as sub-item
+          debugPrint('ExpenditureViewModel: Found existing expense, updating amount and adding sub-item');
+          
+          final newTotalAmount = existingExpense.amount + amount;
+          
+          // Update the main expense amount
+          await _repository.updateExpenditureAmount(existingExpense.id, newTotalAmount);
+          
+          // Create sub-item for the new expense
+          final subItem = domain.ExpenditureSubItem(
+            id: const Uuid().v4(),
+            parentId: existingExpense.id,
+            description: description,
+            amount: amount,
+            category: category,
+            companyId: companyId,
+            createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
+            isActive: true,
+            isSynced: true,
+            createdAt: DateTime.now().toIso8601String(),
+            updatedAt: DateTime.now().toIso8601String(),
+          );
+          
+          await _repository.addExpenditureSubItem(subItem);
+          
+          _showSuccessSnackBar('Expense added to existing entry');
+          debugPrint('ExpenditureViewModel: Smart grouping completed - updated existing expense: ${existingExpense.id}');
+        } else {
+          // NEW EXPENSE: Create new expenditure entry
+          debugPrint('ExpenditureViewModel: No existing expense found, creating new entry');
+          
+          final expenditure = domain.ExpenditureItem(
+            id: const Uuid().v4(),
+            date: dateStr,
+            description: description, // Use the description as the main detail
+            amount: amount,
+            categoryType: type, // 'office_expense'
+            category: category, // Category from grid selection
+            companyId: companyId,
+            createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
+            isActive: true,
+            isSynced: true,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+          
+          debugPrint('Instant Expense Repository Save: ${expenditure.toMap()}');
+          
+          await _repository.addExpenditure(expenditure);
+          
+          _showSuccessSnackBar('Expense added successfully');
+          debugPrint('ExpenditureViewModel: New expense created: ${expenditure.id}');
+        }
+      } else {
+        // PROJECT EXPENSES: Create new entry as before (no grouping for projects)
+        debugPrint('ExpenditureViewModel: Creating new project expense (no grouping)');
+        
+        final expenditure = domain.ExpenditureItem(
+          id: const Uuid().v4(),
+          date: dateStr,
+          description: description,
+          amount: amount,
+          categoryType: type,
+          category: category,
+          companyId: companyId,
+          createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
+          isActive: true,
+          isSynced: true,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        
+        await _repository.addExpenditure(expenditure);
+        _showSuccessSnackBar('Project expense added successfully');
+      }
+      
+      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
+      // The streams will detect the database changes and update the UI instantly
+      debugPrint('ExpenditureViewModel: Smart grouping completed - streams will update UI automatically');
+      
+      // CRITICAL FIX: Force UI trigger after Smart Grouping logic completes
+      // Explicitly call notifyListeners() and then refreshData() to force local list sync with DB
+      notifyListeners();
+      await refreshData(); // Force the local list to sync with the DB
+      debugPrint('ExpenditureViewModel: Force UI trigger completed - notifyListeners() and refreshData() called');
+      
+      return true;
+    } catch (e) {
+      debugPrint('Error saving instant expense with smart grouping: $e');
       _showErrorSnackBar('Failed to save expense');
       return false;
     }
@@ -631,19 +754,15 @@ class ExpenditureViewModel extends ChangeNotifier {
       await _repository.deleteExpenditure(id);
       _showSuccessSnackBar('Expense deleted successfully');
       
-      // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = local.RoleUtils.getUserCompanyId(_user);
-      if (freshCompanyId != null) {
-        final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
-        final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
-        
-        _officeExpenses = freshOfficeExpenses;
-        _projectExpenses = freshProjectExpenses;
-        _applySearchFilter(); // Apply search filter to fresh data
-        
-        debugPrint('ExpenditureViewModel: Manual refresh completed after deletion - office: ${freshOfficeExpenses.length}, projects: ${freshProjectExpenses.length}');
-        notifyListeners(); // Force UI rebuild immediately
-      }
+      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
+      // The streams will detect the database changes and update the UI instantly
+      debugPrint('ExpenditureViewModel: Expense deleted - streams will update UI automatically');
+      
+      // CRITICAL FIX: Force UI trigger after deleteExpense completes
+      // Explicitly call notifyListeners() and then refreshData() to force local list sync with DB
+      notifyListeners();
+      await refreshData(); // Force the local list to sync with the DB
+      debugPrint('ExpenditureViewModel: Force UI trigger completed - notifyListeners() and refreshData() called');
       
       return true;
     } catch (e) {
@@ -658,19 +777,15 @@ class ExpenditureViewModel extends ChangeNotifier {
       await _repository.updateExpenditure(expense);
       _showSuccessSnackBar('Expense updated successfully');
       
-      // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = local.RoleUtils.getUserCompanyId(_user);
-      if (freshCompanyId != null) {
-        final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
-        final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
-        
-        _officeExpenses = freshOfficeExpenses;
-        _projectExpenses = freshProjectExpenses;
-        _applySearchFilter(); // Apply search filter to fresh data
-        
-        debugPrint('ExpenditureViewModel: Manual refresh completed after update - office: ${freshOfficeExpenses.length}, projects: ${freshProjectExpenses.length}');
-        notifyListeners(); // Force UI rebuild immediately
-      }
+      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
+      // The streams will detect the database changes and update the UI instantly
+      debugPrint('ExpenditureViewModel: Expense updated - streams will update UI automatically');
+      
+      // CRITICAL FIX: Force UI trigger after updateExpense completes
+      // Explicitly call notifyListeners() and then refreshData() to force local list sync with DB
+      notifyListeners();
+      await refreshData(); // Force local list to sync with DB
+      debugPrint('ExpenditureViewModel: Force UI trigger completed - notifyListeners() and refreshData() called');
       
       return true;
     } catch (e) {
@@ -683,6 +798,9 @@ class ExpenditureViewModel extends ChangeNotifier {
   // Sub-items operations
   Future<void> loadSubItems(String parentId) async {
     try {
+      // Set current expense ID for sub-item operations
+      _currentExpenseId = parentId;
+      
       // CRITICAL: Ensure category column exists before loading sub-items
       try {
         await (_repository as ExpenditureRepositoryImpl).ensureExpenditureSubItemsCategoryColumn();
@@ -832,7 +950,32 @@ class ExpenditureViewModel extends ChangeNotifier {
 
   Future<bool> deleteSubItem(String id) async {
     try {
+      if (_currentExpenseId == null) {
+        _showErrorSnackBar('No expense selected');
+        return false;
+      }
+      
+      // First, get the sub-item details to know its amount and parent
+      final subItems = await _repository.getExpenditureSubItems(_currentExpenseId!);
+      final subItemToDelete = subItems.firstWhere((item) => item.id == id);
+      
+      // Get the current main expense
+      final mainExpense = await _repository.getExpenditureById(_currentExpenseId!);
+      if (mainExpense == null) {
+        _showErrorSnackBar('Main expense not found');
+        return false;
+      }
+      
+      // Calculate new amount (subtract sub-item amount from main expense)
+      final newAmount = mainExpense.amount - subItemToDelete.amount;
+      
+      // Update the main expense amount first
+      await _repository.updateExpenditureAmount(_currentExpenseId!, newAmount);
+      
+      // Then delete the sub-item
       await _repository.deleteExpenditureSubItem(id);
+      
+      _showSuccessSnackBar('Sub-item deleted successfully');
       return true;
     } catch (e) {
       debugPrint('Error deleting sub-item: $e');

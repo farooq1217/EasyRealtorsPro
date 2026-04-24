@@ -16,6 +16,7 @@ import '../../../widgets/primary_gradient_button.dart';
 import '../view_models/expenditure_view_model.dart';
 import '../helpers/grouped_expense_logic.dart';
 import '../widgets/category_detail_sheet.dart';
+import '../widgets/category_selection_grid.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/app_storage.dart';
 
@@ -37,7 +38,7 @@ class ExpenditurePage extends StatefulWidget {
   State<ExpenditurePage> createState() => _ExpenditurePageState();
 }
 
-class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProviderStateMixin {
+class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAliveClientMixin, SingleTickerProviderStateMixin {
   late TabController _tabController;
   ExpenditureViewModel? _viewModel; // Make nullable to prevent LateInitializationError
   bool _initialized = false; // Track initialization state
@@ -102,6 +103,9 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
   }
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void dispose() {
     _tabController.dispose();
     _viewModel?.dispose();
@@ -120,6 +124,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // CRITICAL: Call super.build for AutomaticKeepAliveClientMixin
+    
     // AVOID LAZY INITIALIZER ERRORS: Create ViewModel in build method if not yet initialized
     final viewModel = _viewModel ?? ExpenditureViewModel(
       widget.db,
@@ -220,55 +226,74 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                       ),
                     ],
                   ),
-                  body: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(0xFFFF6B35).withOpacity(0.03),
-                          const Color(0xFF4A90E2).withOpacity(0.03),
+                  body: SingleChildScrollView(
+                    child: Container(
+                      constraints: BoxConstraints(
+                        minHeight: MediaQuery.of(context).size.height - 200, // Ensure minimum height for proper layout
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            const Color(0xFFFF6B35).withOpacity(0.03),
+                            const Color(0xFF4A90E2).withOpacity(0.03),
+                          ],
+                        ),
+                        border: Border.all(
+                          color: Colors.grey.shade300.withOpacity(0.5),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          // Tab Content using ViewModel state with proper height
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height - 250, // Fixed height to prevent overflow
+                            child: TabBarView(
+                              controller: _tabController,
+                              children: [
+                                // Office Expenses Tab with Selector for better performance
+                                Selector<ExpenditureViewModel, List<domain.ExpenditureItem>>(
+                                  selector: (context, viewModel) => viewModel.filteredOfficeExpenses,
+                                  builder: (context, officeExpenses, child) {
+                                    return SingleChildScrollView(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          // Category Grid for Office Expense Tab
+                                          CategorySelectionGrid(
+                                            onCategorySelected: (category) => _showInstantExpenseDialog(context, viewModel, category),
+                                            enabled: viewModel.canAdd,
+                                          ),
+                                          const SizedBox(height: 16),
+                                          
+                                          // Expense List
+                                          _buildListView(context, officeExpenses, "Office"),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                                // Project Expenses Tab using Selector for better performance
+                                Selector<ExpenditureViewModel, List<domain.ExpenditureItem>>(
+                                  selector: (context, viewModel) => viewModel.filteredProjectExpenses,
+                                  builder: (context, projectExpenses, child) {
+                                    return SingleChildScrollView(
+                                      padding: const EdgeInsets.all(16),
+                                      child: _buildListView(context, projectExpenses, "Project"),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
-                      border: Border.all(
-                        color: Colors.grey.shade300.withOpacity(0.5),
-                        width: 1,
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        // Tab Content using ViewModel state
-                        Expanded(
-                          child: TabBarView(
-                            controller: _tabController,
-                            children: [
-                              // Office Expenses Tab using ViewModel state
-                              Consumer<ExpenditureViewModel>(
-                                builder: (context, viewModel, child) {
-                                  return _buildListView(context, viewModel.filteredOfficeExpenses, "Office");
-                                },
-                              ),
-                              // Project Expenses Tab using ViewModel state
-                              Consumer<ExpenditureViewModel>(
-                                builder: (context, viewModel, child) {
-                                  return _buildListView(context, viewModel.filteredProjectExpenses, "Project");
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ),
                   ),
-                  floatingActionButton: FloatingActionButton.extended(
-                    onPressed: () => _tabController.index == 0 
-                        ? _showExpenseDialog(context, viewModel, 'office')
-                        : _showAddProjectDialog(context, viewModel), // New project dialog
-                    label: Text('ADD'),
-                    icon: const Icon(Icons.add),
-                    backgroundColor: const Color(0xFFFF6B35),
-                    foregroundColor: Colors.white,
-                  ),
+                  // Removed FloatingActionButton - using Category Grid instead
                 ),
               ),
             ],
@@ -297,6 +322,29 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
         color: Colors.black87,
       ),
     );
+  }
+
+  // Helper method to build description widget with conditional display
+  Widget _buildDescriptionWidget(domain.ExpenditureItem item) {
+    if (item.description.isNotEmpty && 
+        item.description.toLowerCase() != (item.category ?? '').toLowerCase()) {
+      return Column(
+        children: [
+          Text(
+            item.description,
+            style: AppFonts.poppins(
+              fontSize: 13,
+              color: Colors.grey.shade700,
+              fontStyle: FontStyle.italic,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+        ],
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildListView(BuildContext context, List<domain.ExpenditureItem> list, String type) {
@@ -402,11 +450,12 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
           ),
         ),
         // Expense List
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: list.length,
-            itemBuilder: (context, i) {
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          itemCount: list.length,
+          itemBuilder: (context, i) {
               final item = list[i];
               
               return InkWell(
@@ -505,6 +554,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
                         // CRITICAL: Category Name as main title with enhanced styling
                         _buildCategoryTitle(item, type),
                         const SizedBox(height: 4),
+                        // Show description if it exists and is different from category
+                        _buildDescriptionWidget(item),
                         Text(
                           item.date,
                           style: AppFonts.poppins(
@@ -519,7 +570,6 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
               );
             },
           ),
-        ),
       ],
     );
   }
@@ -688,14 +738,91 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     }
   }
 
+  // Simplified instant expense save method - 1-step process
+  Future<bool> _saveInstantExpense(ExpenditureViewModel viewModel, String category, TimeOfDay selectedTime) async {
+    try {
+      final amountText = _amountController.text.trim();
+      final description = _categoryController.text.trim();
+      
+      // Validation
+      if (amountText.isEmpty) {
+        _showErrorSnackBar('Please enter an amount');
+        return false;
+      }
+      
+      final amount = double.tryParse(amountText);
+      if (amount == null || amount <= 0) {
+        _showErrorSnackBar('Please enter a valid amount');
+        return false;
+      }
+      
+      if (_selectedDate == null) {
+        _showErrorSnackBar('Please select a date');
+        return false;
+      }
+      
+      // Create final description - use user description if provided, otherwise use category
+      final finalDescription = description.isNotEmpty ? description : category;
+      
+      // Combine date and time for precise timestamp
+      final finalDateTime = DateTime(
+        _selectedDate!.year,
+        _selectedDate!.month,
+        _selectedDate!.day,
+        selectedTime.hour,
+        selectedTime.minute,
+      );
+      
+      debugPrint('Instant Expense Save: Category=$category, Amount=$amount, Description=$finalDescription, DateTime=$finalDateTime');
+      
+      // Save directly using ViewModel's saveExpenseWithCategory method
+      final success = await viewModel.saveInstantExpenseFromCategory(
+        'office_expense', // Always office expense for category grid
+        category,
+        description: finalDescription,
+        amount: amount,
+        selectedDate: finalDateTime,
+      );
+      
+      if (success) {
+        // Clear form controllers
+        _amountController.clear();
+        _categoryController.clear();
+        _selectedDate = null;
+        
+        _showSuccessSnackBar('Expense added successfully');
+      }
+      
+      return success;
+    } catch (e) {
+      debugPrint('Error saving instant expense: $e');
+      _showErrorSnackBar('Failed to save expense');
+      return false;
+    }
+  }
+
   void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red.shade600,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _showSuccessSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green.shade600,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   // Dynamic Expense Dialog with Category Selection
@@ -1295,6 +1422,318 @@ class _ExpenditurePageState extends State<ExpenditurePage> with SingleTickerProv
     );
   }
 
+  // Simplified Instant Expense Dialog - 1-Step Process
+  void _showInstantExpenseDialog(BuildContext context, ExpenditureViewModel viewModel, String category) {
+    // Reset form controllers
+    _amountController.clear();
+    _categoryController.clear();
+    _selectedDate = DateTime.now();
+    TimeOfDay _selectedTime = TimeOfDay.now();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setStateDialog) {
+            return Dialog(
+              insetPadding: const EdgeInsets.all(16),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+                  maxHeight: MediaQuery.of(dialogContext).size.height * 0.8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header with gradient background
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(16),
+                          topRight: Radius.circular(16),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.business_center,
+                              color: Colors.orange.shade600,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "Quick Add Expense",
+                                  style: AppFonts.poppins(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                Text(
+                                  category,
+                                  style: AppFonts.poppins(
+                                    fontSize: 14,
+                                    color: Colors.white.withOpacity(0.9),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Form Content
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Amount Field
+                            Text(
+                              "Amount*",
+                              style: AppFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _amountController,
+                              keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              decoration: InputDecoration(
+                                prefixText: 'Rs ',
+                                prefixStyle: AppFonts.poppins(
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                hintText: '0.00',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: Colors.grey.shade300),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: Colors.orange.shade400),
+                                ),
+                                contentPadding: const EdgeInsets.all(16),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Description Field
+                            Text(
+                              "Description",
+                              style: AppFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _categoryController,
+                              decoration: InputDecoration(
+                                hintText: 'Enter expense details',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: Colors.grey.shade300),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(color: Colors.orange.shade400),
+                                ),
+                                contentPadding: const EdgeInsets.all(16),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Date Field
+                            Text(
+                              "Date*",
+                              style: AppFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            InkWell(
+                              onTap: () => _selectDate(dialogContext, viewModel),
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.grey.shade300),
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: Colors.grey.shade50,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.calendar_today, color: Colors.orange.shade600),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        _selectedDate != null 
+                                            ? DateFormat('dd MMM yyyy').format(_selectedDate!)
+                                            : 'Select date',
+                                        style: AppFonts.poppins(
+                                          color: _selectedDate != null 
+                                              ? Colors.black87 
+                                              : Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Time Field
+                            Text(
+                              "Time",
+                              style: AppFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            InkWell(
+                              onTap: () async {
+                                final TimeOfDay? picked = await showTimePicker(
+                                  context: dialogContext,
+                                  initialTime: _selectedTime,
+                                );
+                                if (picked != null) {
+                                  setStateDialog(() {
+                                    _selectedTime = picked;
+                                  });
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.grey.shade300),
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: Colors.grey.shade50,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.access_time, color: Colors.orange.shade600),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        _selectedTime.format(context),
+                                        style: AppFonts.poppins(
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    // Action Buttons
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(16),
+                          bottomRight: Radius.circular(16),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () => Navigator.of(dialogContext).pop(),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: Text(
+                                'Cancel',
+                                style: AppFonts.poppins(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                // Save expense directly without breakdown step
+                                final success = await _saveInstantExpense(viewModel, category, _selectedTime);
+                                if (success && dialogContext.mounted) {
+                                  Navigator.of(dialogContext).pop();
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFFF6B35),
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: Text(
+                                'Save Expense',
+                                style: AppFonts.poppins(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _handleDelete(BuildContext context, domain.ExpenditureItem expense) async {
     final confirm = await showDialog(
       context: context,
@@ -1385,7 +1824,10 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
   }
   
   Future<void> _setup() async {
+    // Load sub-items for both office and project expenses
+    // Office expenses now have sub-items due to smart grouping
     await widget.viewModel.loadSubItems(widget.expense.id);
+    
     if (mounted) setState(() => _loading = false);
   }
   
@@ -1404,6 +1846,9 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
             );
           }
               
+          // Check if this is an office expense
+          final isOfficeExpense = widget.expense.categoryType == 'office_expense' || 
+                                widget.expense.kind == 'office';
           final subItemsTotal = viewModel.subItemsTotal;
               
           return Scaffold(
@@ -1419,8 +1864,8 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                   onPressed: () => _generateProfessionalReceipt(viewModel),
                   tooltip: 'Generate Professional Receipt',
                 ),
-                // Add button for sub-items
-                if (viewModel.canAdd)
+                // Add button for sub-items - ONLY for Project expenses
+                if (!isOfficeExpense && viewModel.canAdd)
                   IconButton(
                     icon: const Icon(Icons.add),
                     onPressed: () => _showAddSubItemDialog(context, viewModel),
@@ -1430,7 +1875,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
             ),
             body: Column(
               children: [
-                // Summary Card
+                // Summary Card - Simplified for Office Expenses
                 Container(
                   margin: const EdgeInsets.all(16),
                   padding: const EdgeInsets.all(20),
@@ -1452,15 +1897,34 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Category Name as Title
                       Text(
-                        widget.expense.category ?? widget.expense.description,
+                        widget.expense.category ?? 'Uncategorized',
                         style: AppFonts.poppins(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
+                      
+                      // Description as main detail
+                      if (widget.expense.description.isNotEmpty && 
+                          widget.expense.description != (widget.expense.category ?? '')) ...[
+                        Text(
+                          widget.expense.description,
+                          style: AppFonts.poppins(
+                            fontSize: 16,
+                            color: Colors.white.withOpacity(0.9),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      
+                      // Date
                       Row(
                         children: [
                           Icon(
@@ -1479,118 +1943,146 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Main Amount',
-                                style: AppFonts.poppins(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                ),
+                      
+                      // Amount Display - Different for Office vs Project
+                      if (isOfficeExpense) ...[
+                        // Office Expense: Show single amount
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Amount',
+                              style: AppFonts.poppins(
+                                color: Colors.white70,
+                                fontSize: 14,
                               ),
-                              Text(
-                                f.format(widget.expense.amount),
-                                style: AppFonts.poppins(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                'Sub-Items Total',
-                                style: AppFonts.poppins(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              Text(
-                                f.format(subItemsTotal),
-                                style: AppFonts.poppins(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        height: 1,
-                        color: Colors.white30,
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Total Expense',
-                            style: AppFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
                             ),
-                          ),
-                          Text(
-                            f.format(widget.expense.amount + subItemsTotal),
-                            style: AppFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                            Text(
+                              f.format(widget.expense.amount),
+                              style: AppFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ] else ...[
+                        // Project Expense: Show main amount + sub-items total
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Main Amount',
+                                  style: AppFonts.poppins(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  f.format(widget.expense.amount),
+                                  style: AppFonts.poppins(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  'Sub-Items Total',
+                                  style: AppFonts.poppins(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  f.format(subItemsTotal),
+                                  style: AppFonts.poppins(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          height: 1,
+                          color: Colors.white30,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Total Expense',
+                              style: AppFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              f.format(widget.expense.amount + subItemsTotal),
+                              style: AppFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
                 
-                // Sub-Items Section - REACTIVE PART
-                Expanded(
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Expense Breakdown',
-                              style: AppFonts.poppins(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
+                // Sub-Items Section - Show for both Office and Project expenses when they have sub-items
+                if (viewModel.subItems.isNotEmpty) ...[
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Expense Breakdown',
+                                style: AppFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                            if (viewModel.canAdd)
-                              IconButton(
-                                icon: const Icon(Icons.add_circle),
-                                onPressed: () => _showAddSubItemDialog(context, viewModel),
-                                tooltip: 'Add Sub-Item',
-                              ),
-                          ],
+                              // Only show add button for project expenses
+                              if (!isOfficeExpense && viewModel.canAdd)
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle),
+                                  onPressed: () => _showAddSubItemDialog(context, viewModel),
+                                  tooltip: 'Add Sub-Item',
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                       
-                      // Category Summary Section - REACTIVE PART
-                      if (viewModel.subItems.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                         
+                        // Category Summary Section
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16.0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Category Summary',
+                                'Expense Details',
                                 style: AppFonts.poppins(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
@@ -1603,15 +2095,63 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                         
+                        // Grouped Category Cards
+                        Expanded(
+                          child: _buildGroupedCategoryView(viewModel.subItems),
+                        ),
                       ],
-                       
-                      // Grouped Category Cards - REACTIVE PART
-                      Expanded(
-                        child: _buildGroupedCategoryView(viewModel.subItems),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                ] else ...[
+                  // Show completion message when no sub-items
+                  Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: isOfficeExpense ? Colors.green.shade50 : Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isOfficeExpense ? Colors.green.shade200 : Colors.blue.shade200,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  color: isOfficeExpense ? Colors.green.shade600 : Colors.blue.shade600,
+                                  size: 48,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  '${isOfficeExpense ? 'Office' : 'Project'} Expense Complete',
+                                  style: AppFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: isOfficeExpense ? Colors.green.shade800 : Colors.blue.shade800,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'This expense has been recorded\nwithout sub-item breakdown',
+                                  style: AppFonts.poppins(
+                                    fontSize: 14,
+                                    color: isOfficeExpense ? Colors.green.shade600 : Colors.blue.shade600,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           );
