@@ -413,12 +413,10 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
   }
 
   Widget fieldBox(Widget child, {int span = 1}) {
-    return span > 1
-        ? child
-        : Container(
-            constraints: const BoxConstraints(minHeight: 56),
-            child: child,
-          );
+    return Container(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: child,
+      );
   }
 
   Widget _buildSectionHeader(String title, IconData icon) {
@@ -1032,233 +1030,292 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
     );
   }
 
-  void _showClientRequirementDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.9,
-            maxHeight: MediaQuery.of(context).size.height * 0.9,
-          ),
-          child: StatefulBuilder(
-            builder: (dialogContext, dialogSetState) {
-              return Column(
-                children: [
-                  // Header
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.purple.shade600,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(12),
-                        topRight: Radius.circular(12),
+ void _showClientRequirementDialog() {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.9,
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
+        child: StatefulBuilder(
+          builder: (dialogContext, dialogSetState) {
+            return Column(
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.shade600,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(12),
+                      topRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'Add Client Requirement',
+                        style: AppFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const Spacer(),
+                      const SizedBox(width: 48),
+                    ],
+                  ),
+                ),
+                
+                // Form content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Form(
+                      key: _clientRequirementFormKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Section 1: Property Preferences
+                          _buildSectionHeader('Property Preferences', Icons.home),
+                          const SizedBox(height: 8),
+                          
+                          // Row 1: Category | Preferred Size
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            children: [
+                              fieldBox(
+                                DropdownButtonFormField<String>(
+                                  value: _viewModel.reqCategory,
+                                  decoration: _fieldDecoration('Category'),
+                                  items: const [
+                                    DropdownMenuItem(value: '2 Marla', child: Text('2 Marla')),
+                                    DropdownMenuItem(value: '3 Marla', child: Text('3 Marla')),
+                                    DropdownMenuItem(value: '5 Marla', child: Text('5 Marla')),
+                                    DropdownMenuItem(value: '8 Marla', child: Text('8 Marla')),
+                                    DropdownMenuItem(value: '10 Marla', child: Text('10 Marla')),
+                                    DropdownMenuItem(value: 'Other', child: Text('Other')),
+                                  ],
+                                  onChanged: (value) {
+                                    _viewModel.setReqCategory(value);
+                                  },
+                                ),
+                              ),
+                              fieldBox(
+                                TextFormField(
+                                  controller: _viewModel.reqPlotCtl,
+                                  decoration: _fieldDecoration('Preferred Size'),
+                                  maxLength: 50,
+                                  buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Row 2: Preferred Location/Society | [Empty]
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            children: [
+                              fieldBox(
+                                TextFormField(
+                                  controller: _viewModel.reqLocationCtl,
+                                  decoration: _fieldDecoration('Preferred Location/Society'),
+                                  maxLength: 100,
+                                  buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                                  onChanged: (value) => _viewModel.setReqLocation(value),
+                                ),
+                              ),
+                              // Empty right column for alignment
+                              const SizedBox(),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Section 2: Client Information
+                          _buildSectionHeader('Client Information', Icons.person),
+                          const SizedBox(height: 8),
+                          
+                          // Row 3: Client Name | Client Mobile No
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            children: [
+                              fieldBox(
+                                TextFormField(
+                                  controller: _viewModel.reqClientNameCtl,
+                                  decoration: _fieldDecoration('Client Name'),
+                                  maxLength: 100,
+                                  buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) return 'Enter client name';
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              fieldBox(
+                                TextFormField(
+                                  controller: _viewModel.reqClientMobileCtl,
+                                  keyboardType: TextInputType.phone,
+                                  decoration: _fieldDecoration('Client Mobile No.', hint: '03XX-XXXXXXX'),
+                                  maxLength: 11,
+                                  buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Row 4: Budget Min | Budget Max
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            children: [
+                              fieldBox(
+                                TextFormField(
+                                  controller: _viewModel.reqBudgetMinCtl,
+                                  keyboardType: TextInputType.number,
+                                  decoration: _fieldDecoration('Budget Min'),
+                                  maxLength: 15,
+                                  buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                                ),
+                              ),
+                              fieldBox(
+                                TextFormField(
+                                  controller: _viewModel.reqBudgetMaxCtl,
+                                  keyboardType: TextInputType.number,
+                                  decoration: _fieldDecoration('Budget Max'),
+                                  maxLength: 15,
+                                  buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Row 5: Date (full width)
+                          fieldBox(
+                            TextFormField(
+                              controller: _viewModel.reqDateCtl,
+                              readOnly: true,
+                              onTap: _pickRequirementDate,
+                              decoration: _fieldDecoration(
+                                'Date',
+                                icon: Icons.calendar_today,
+                                suffixIcon: const Icon(Icons.calendar_today),
+                                isRequired: true,
+                              ),
+                              validator: (value) => value == null || value.isEmpty ? 'Select a date' : null,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Section 3: Timeline & Follow-up
+                          _buildSectionHeader('Timeline & Follow-up', Icons.schedule),
+                          const SizedBox(height: 8),
+                          
+                          // Next Working Date (full width for clarity)
+                          fieldBox(
+                            TextFormField(
+                              controller: _viewModel.reqNextWorkingDateCtl,
+                              readOnly: true,
+                              onTap: _pickReqNextWorkingDate,
+                              decoration: _fieldDecoration(
+                                'Next Working Date',
+                                suffixIcon: const Icon(Icons.calendar_today),
+                                hint: 'Select next working date for reminder',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Section 4: Attachments & Notes
+                          _buildSectionHeader('Attachments & Notes', Icons.attach_file),
+                          const SizedBox(height: 8),
+                          
+                          // Image Upload (full width)
+                          fieldBox(
+                            ImageUploadWidget(
+                              imagePaths: _viewModel.clientRequirementImages,
+                              onImagesChanged: (images) {
+                                _viewModel.setClientRequirementImages(images);
+                              },
+                              maxImages: 3,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Remarks (full width - spans both columns)
+                          fieldBox(
+                            TextFormField(
+                              controller: _viewModel.reqCommentsCtl,
+                              decoration: _fieldDecoration('Remarks'),
+                              maxLines: 5,
+                              minLines: 3,
+                              maxLength: 200,
+                              buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  ),
+                ),
+                
+                // Footer buttons
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
                           onPressed: () => Navigator.of(dialogContext).pop(),
-                        ),
-                        const Spacer(),
-                        Text(
-                          'Add Client Requirement',
-                          style: AppFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: BorderSide(color: Colors.grey.shade400),
                           ),
-                        ),
-                        const Spacer(),
-                        const SizedBox(width: 48), // Balance the back button
-                      ],
-                    ),
-                  ),
-                  
-                  // Form content
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
-                      child: Form(
-                        key: _clientRequirementFormKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Section 1: Requirement Details
-                            _buildSectionHeader('Requirement Details', Icons.home),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
-                              children: [
-                                fieldBox(
-                                  TextFormField(
-                                    controller: _viewModel.reqPlotCtl,
-                                    decoration: _fieldDecoration('Plot Number'),
-                                    maxLength: 50,
-                                    buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
-                                  ),
-                                ),
-                                fieldBox(
-                                  DropdownButtonFormField<String>(
-                                    value: _viewModel.requirementSource,
-                                    decoration: _fieldDecoration('Source'),
-                                    items: const [
-                                      DropdownMenuItem(value: 'Direct', child: Text('Direct')),
-                                      DropdownMenuItem(value: 'Referral', child: Text('Referral')),
-                                      DropdownMenuItem(value: 'Website', child: Text('Website')),
-                                      DropdownMenuItem(value: 'Social Media', child: Text('Social Media')),
-                                      DropdownMenuItem(value: 'Other', child: Text('Other')),
-                                    ],
-                                    onChanged: (value) {
-                                      _viewModel.setRequirementSource(value);
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            // Section 2: Client Information
-                            _buildSectionHeader('Client Information', Icons.person),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
-                              children: [
-                                fieldBox(
-                                  TextFormField(
-                                    controller: _viewModel.reqClientNameCtl,
-                                    decoration: _fieldDecoration('Client Name'),
-                                    maxLength: 100,
-                                    buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) return 'Enter client name';
-                                      return null;
-                                    },
-                                  ),
-                                ),
-                                fieldBox(
-                                  TextFormField(
-                                    controller: _viewModel.reqClientMobileCtl,
-                                    keyboardType: TextInputType.phone,
-                                    decoration: _fieldDecoration('Client Mobile No.', hint: '03XX-XXXXXXX'),
-                                    maxLength: 11,
-                                    buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            // Section 3: Timeline & Follow-up
-                            _buildSectionHeader('Timeline & Follow-up', Icons.schedule),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
-                              children: [
-                                fieldBox(
-                                  TextFormField(
-                                    controller: _viewModel.reqDateCtl,
-                                    readOnly: true,
-                                    onTap: _pickRequirementDate,
-                                    decoration: _fieldDecoration('Date', icon: Icons.calendar_today, suffixIcon: const Icon(Icons.calendar_today), isRequired: true),
-                                    validator: (value) => value == null || value.isEmpty ? 'Select a date' : null,
-                                  ),
-                                ),
-                                fieldBox(
-                                  TextFormField(
-                                    controller: _viewModel.reqTimeCtl,
-                                    readOnly: true,
-                                    onTap: _pickRequirementTime,
-                                    decoration: _fieldDecoration('Time', icon: Icons.schedule, suffixIcon: const Icon(Icons.schedule), isRequired: true),
-                                    validator: (value) => value == null || value.isEmpty ? 'Select time' : null,
-                                  ),
-                                ),
-                                fieldBox(
-                                  TextFormField(
-                                    controller: _viewModel.reqNextWorkingDateCtl,
-                                    readOnly: true,
-                                    onTap: _pickReqNextWorkingDate,
-                                    decoration: _fieldDecoration('Next Working Date', suffixIcon: const Icon(Icons.calendar_today), hint: 'Select next working date for reminder'),
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            // Section 4: Attachments & Notes
-                            _buildSectionHeader('Attachments & Notes', Icons.attach_file),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
-                              children: [
-                                fieldBox(
-                                  ImageUploadWidget(
-                                    imagePaths: _viewModel.clientRequirementImages,
-                                    onImagesChanged: (images) {
-                                      _viewModel.setClientRequirementImages(images);
-                                    },
-                                    maxImages: 3,
-                                  ),
-                                ),
-                                fieldBox(
-                                  TextFormField(
-                                    controller: _viewModel.reqCommentsCtl,
-                                    decoration: _fieldDecoration('Remarks'),
-                                    maxLines: 5,
-                                    minLines: 3,
-                                    maxLength: 200,
-                                    buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                          child: Text(
+                            'Cancel',
+                            style: AppFonts.poppins(fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  
-                  // Footer buttons
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(12),
-                        bottomRight: Radius.circular(12),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: PrimaryGradientButton(
+                          text: 'Save Requirement',
+                          onPressed: () => _submitClientRequirement(action: 'save', dialogContext: dialogContext),
+                        ),
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(dialogContext).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              side: BorderSide(color: Colors.grey.shade400),
-                            ),
-                            child: Text(
-                              'Cancel',
-                              style: AppFonts.poppins(fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: PrimaryGradientButton(
-                            text: 'Save Requirement',
-                            onPressed: () => _submitClientRequirement(action: 'save', dialogContext: dialogContext),
-                          ),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
-                ],
-              );
-            },
-          ),
+                ),
+              ],
+            );
+          },
         ),
       ),
-    );
-  }
+    ),
+  );
 }
+    
+  }
+

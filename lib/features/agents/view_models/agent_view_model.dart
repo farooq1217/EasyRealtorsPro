@@ -67,6 +67,7 @@ class AgentViewModel extends ChangeNotifier {
   // New controllers for client requirement form
   final TextEditingController reqBudgetMinCtl = TextEditingController();
   final TextEditingController reqBudgetMaxCtl = TextEditingController();
+  final TextEditingController reqLocationCtl = TextEditingController();
 
   // Form state
   String? _transferCategory;
@@ -453,6 +454,7 @@ class AgentViewModel extends ChangeNotifier {
     transferOtherSizeCtl.dispose();
     reqBudgetMinCtl.dispose();
     reqBudgetMaxCtl.dispose();
+    reqLocationCtl.dispose();
     
     super.dispose();
   }
@@ -551,6 +553,9 @@ class AgentViewModel extends ChangeNotifier {
 
   void setReqLocation(String? location) {
     _reqLocation = location;
+    if (location != null) {
+      reqLocationCtl.text = location;
+    }
     notifyListeners();
   }
 
@@ -1302,6 +1307,7 @@ class AgentViewModel extends ChangeNotifier {
     reqNextWorkingDateCtl.clear();
     reqBudgetMinCtl.clear();
     reqBudgetMaxCtl.clear();
+    reqLocationCtl.clear();
     
     // Reset state variables
     _reqSelectedDate = null;
