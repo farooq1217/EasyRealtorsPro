@@ -819,7 +819,7 @@ class AgentViewModel extends ChangeNotifier {
     }
 
     print("AgentViewModel: Validation passed. Proceeding with update...");
-    _loading = true;
+    _isSaving = true;
     _error = null;
     notifyListeners();
 
@@ -876,7 +876,7 @@ class AgentViewModel extends ChangeNotifier {
       debugPrint('Error updating transfer: $e');
       return false;
     } finally {
-      _loading = false;
+      _isSaving = false;
       notifyListeners();
     }
   }
@@ -941,99 +941,97 @@ class AgentViewModel extends ChangeNotifier {
     _isSaving = true;
     notifyListeners();
     
-    print("AgentViewModel: addClientRequirement() called. Starting validation...");
-    
-    // CRITICAL FIX: Ensure user is loaded with permissions before proceeding
-    if (_currentUser == null) {
-      print("AgentViewModel: Current user is null, reloading...");
-      try {
-        await _loadCurrentUser();
-        // If still null after reload, fail early
-        if (_currentUser == null) {
-          _error = 'User authentication failed - please log in again';
+    try {
+      print("AgentViewModel: addClientRequirement() called. Starting validation...");
+      
+      // CRITICAL FIX: Ensure user is loaded with permissions before proceeding
+      if (_currentUser == null) {
+        print("AgentViewModel: Current user is null, reloading...");
+        try {
+          await _loadCurrentUser();
+          // If still null after reload, fail early
+          if (_currentUser == null) {
+            _error = 'User authentication failed - please log in again';
+            notifyListeners();
+            return false;
+          }
+        } catch (e) {
+          _error = 'Failed to load user: $e';
           notifyListeners();
           return false;
         }
-      } catch (e) {
-        _error = 'Failed to load user: $e';
+      }
+      
+      debugPrint('AgentViewModel: Permission check - User: ${_currentUser?["email"]}, Role: ${_currentUser?["role"]}');
+      debugPrint('AgentViewModel: Permission check - User permissions: ${_currentUser?["permissions"]}');
+      
+      if (!PermissionHelper.canAddModule(_currentUser, 'agent_working')) {
+        _error = 'Permission Denied: Cannot add client requirement entries';
         notifyListeners();
+        debugPrint('AgentViewModel: Permission denied for client_working module');
         return false;
       }
-    }
-    
-    debugPrint('AgentViewModel: Permission check - User: ${_currentUser?['email']}, Role: ${_currentUser?['role']}');
-    debugPrint('AgentViewModel: Permission check - User permissions: ${_currentUser?['permissions']}');
-    
-    if (!PermissionHelper.canAddModule(_currentUser, 'agent_working')) {
-      _error = 'Permission Denied: Cannot add client requirement entries';
-      notifyListeners();
-      debugPrint('AgentViewModel: Permission denied for client_working module');
-      return false;
-    }
-    
-    debugPrint('AgentViewModel: Permission check passed for client_working module');
+      
+      debugPrint('AgentViewModel: Permission check passed for client_working module');
 
-    // FIXED: Enhanced date validation for client requirement
-    debugPrint('AgentViewModel: Client requirement date validation - _reqSelectedDate: $_reqSelectedDate, reqDateCtl.text: "${reqDateCtl.text}"');
-    
-    if (_reqSelectedDate == null && reqDateCtl.text.trim().isEmpty) {
-      _error = 'Please select a date';
-      notifyListeners();
-      debugPrint('AgentViewModel: Validation failed - Date is required for client requirement');
-      return false;
-    }
-    
-    // FIXED: If date controller has text but selected date is null, try to parse it
-    if (_reqSelectedDate == null && reqDateCtl.text.trim().isNotEmpty) {
-      try {
-        // Try to parse date from controller text (format: dd MMM yyyy)
-        final parsedDate = DateFormat('dd MMM yyyy').parse(reqDateCtl.text.trim());
-        _reqSelectedDate = parsedDate;
-        debugPrint('AgentViewModel: Parsed client requirement date from controller: $_reqSelectedDate');
-      } catch (e) {
-        debugPrint('AgentViewModel: Failed to parse client requirement date from controller: $e');
-        _error = 'Please select a valid date';
+      // FIXED: Enhanced date validation for client requirement
+      debugPrint('AgentViewModel: Client requirement date validation - _reqSelectedDate: $_reqSelectedDate, reqDateCtl.text: "${reqDateCtl.text}"');
+      
+      if (_reqSelectedDate == null && reqDateCtl.text.trim().isEmpty) {
+        _error = 'Please select a date';
         notifyListeners();
+        debugPrint('AgentViewModel: Validation failed - Date is required for client requirement');
         return false;
       }
-    }
-    
-    debugPrint('AgentViewModel: Client requirement date validation passed');
-
-    // FIXED: Time validation REMOVED for client requirements - only required for transfers
-    debugPrint('AgentViewModel: Client requirement time validation - SKIPPED (time not required for client requirements)');
-    
-    // Client requirements do NOT require time validation - only transfers need time
-    // Set time to null or default if needed, but don't validate it
-    if (_reqSelectedTime == null && reqTimeCtl.text.isNotEmpty) {
-      // Optional: Parse time from text field if provided, but don't require it
-      final parts = reqTimeCtl.text.split(':');
-      if (parts.length == 2) {
+      
+      // FIXED: If date controller has text but selected date is null, try to parse it
+      if (_reqSelectedDate == null && reqDateCtl.text.trim().isNotEmpty) {
         try {
-          final hour = int.parse(parts[0]);
-          final minute = int.parse(parts[1]);
-          if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-            _reqSelectedTime = TimeOfDay(hour: hour, minute: minute);
-            debugPrint('AgentViewModel: Optional client requirement time parsed from text field: ${_reqSelectedTime!.hour.toString().padLeft(2, '0')}:${_reqSelectedTime!.minute.toString().padLeft(2, '0')}');
-          }
+          // Try to parse date from controller text (format: dd MMM yyyy)
+          final parsedDate = DateFormat('dd MMM yyyy').parse(reqDateCtl.text.trim());
+          _reqSelectedDate = parsedDate;
+          debugPrint('AgentViewModel: Parsed client requirement date from controller: $_reqSelectedDate');
         } catch (e) {
-          debugPrint('AgentViewModel: Failed to parse optional client requirement time from text field: $e');
+          debugPrint('AgentViewModel: Failed to parse client requirement date from controller: $e');
+          _error = 'Please select a valid date';
+          notifyListeners();
+          return false;
         }
       }
-    }
+      
+      debugPrint('AgentViewModel: Client requirement date validation passed');
 
-     // Validate source requirement
-    if (_requirementSource == null || _requirementSource!.isEmpty) {
-      _error = 'Please select a source (Direct, Agent, Website, Social Media, or Referral)';
-      notifyListeners();
-      return false;
-    }
+      // FIXED: Time validation REMOVED for client requirements - only required for transfers
+      debugPrint('AgentViewModel: Client requirement time validation - SKIPPED (time not required for client requirements)');
+      
+      // Client requirements do NOT require time validation - only transfers need time
+      // Set time to null or default if needed, but don't validate it
+      if (_reqSelectedTime == null && reqTimeCtl.text.isNotEmpty) {
+        // Optional: Parse time from text field if provided, but don't require it
+        final parts = reqTimeCtl.text.split(':');
+        if (parts.length == 2) {
+          try {
+            final hour = int.parse(parts[0]);
+            final minute = int.parse(parts[1]);
+            if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+              _reqSelectedTime = TimeOfDay(hour: hour, minute: minute);
+              debugPrint('AgentViewModel: Optional client requirement time parsed from text field: ${_reqSelectedTime!.hour.toString().padLeft(2, "0")}:${_reqSelectedTime!.minute.toString().padLeft(2, "0")}');
+            }
+          } catch (e) {
+            debugPrint('AgentViewModel: Failed to parse optional client requirement time from text field: $e');
+          }
+        }
+      }
 
-    print("AgentViewModel: Validation passed. Proceeding with save...");
-    
-   
+       // Validate source requirement
+      if (_requirementSource == null || _requirementSource!.isEmpty) {
+        _error = 'Please select a source (Direct, Agent, Website, Social Media, or Referral)';
+        notifyListeners();
+        return false;
+      }
 
-    try {
+      print("AgentViewModel: Validation passed. Proceeding with save...");
+      
       final emailKey = (_currentUser?['email'] ?? _currentUser?['username'] ?? '').toString().trim().toLowerCase();
       final safeEmail = emailKey.replaceAll('/', '_');
       final ts = DateTime.now().millisecondsSinceEpoch.toString();
@@ -1068,6 +1066,7 @@ class AgentViewModel extends ChangeNotifier {
       debugPrint('Error adding client requirement: $e');
       return false;
     } finally {
+      // CRITICAL FIX: Always reset saving state, even when validation fails early
       _isSaving = false;
       notifyListeners();
     }
@@ -1096,7 +1095,7 @@ class AgentViewModel extends ChangeNotifier {
     }
 
     print("AgentViewModel: Validation passed. Proceeding with update...");
-    _loading = true;
+    _isSaving = true;
     _error = null;
     notifyListeners();
 
@@ -1134,7 +1133,7 @@ class AgentViewModel extends ChangeNotifier {
       debugPrint('Error updating client requirement: $e');
       return false;
     } finally {
-      _loading = false;
+      _isSaving = false;
       notifyListeners();
     }
   }

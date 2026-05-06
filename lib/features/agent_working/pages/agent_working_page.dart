@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:io';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
@@ -18,7 +17,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
 import '../../../core/role_utils.dart' as local;
-import '../../../core/font_utils.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../../core/services/app_storage.dart' show AppStorage;
@@ -1101,7 +1099,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: _buildDropdownField('Category *', context.read<AgentViewModel>().transferCategory, [
+                  child: _buildDropdownField('Category', context.read<AgentViewModel>().transferCategory, [
                     'Residential',
                     'Commercial', 
                     'Plot',
@@ -1378,22 +1376,17 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             // Attachments & Notes Section
             _buildFormSection('Attachments & Notes', []),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: ImageUploadWidget(
-                    imagePaths: context.read<AgentViewModel>().requirementImages,
-                    onImagesChanged: (images) => context.read<AgentViewModel>().setRequirementImages(images),
-                    maxImages: 3,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 3,
-                  child: _buildTextFieldWithIcon('Remarks', context.read<AgentViewModel>().reqCommentsCtl, Icons.edit, maxLines: 3),
-                ),
-              ],
+            
+            // Remarks field - Full width
+            _buildTextFieldWithIcon('Remarks', context.read<AgentViewModel>().reqCommentsCtl, Icons.edit, maxLines: 3),
+            
+            const SizedBox(height: 16),
+            
+            // Upload Image - Separate row below Remarks
+            ImageUploadWidget(
+              imagePaths: context.read<AgentViewModel>().requirementImages,
+              onImagesChanged: (images) => context.read<AgentViewModel>().setRequirementImages(images),
+              maxImages: 3,
             ),
             
             const SizedBox(height: 32),
@@ -1467,147 +1460,82 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   
   // Helper widget for text fields with icons
   Widget _buildTextFieldWithIcon(String label, TextEditingController controller, IconData icon, {int maxLines = 1}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Colors.black87,
-          ),
+    return TextFormField(
+      controller: controller,
+      maxLines: maxLines,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: AppFonts.poppins(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: Colors.black87,
         ),
-        const SizedBox(height: 4),
-        TextFormField(
-          controller: controller,
-          maxLines: maxLines,
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, size: 18, color: Colors.grey.shade600),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            filled: true,
-            fillColor: Colors.white,
-          ),
-          style: AppFonts.poppins(fontSize: 12),
+        prefixIcon: Icon(icon, size: 18, color: Colors.grey.shade600),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
         ),
-      ],
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        filled: true,
+        fillColor: Colors.white,
+      ),
+      style: AppFonts.poppins(fontSize: 12),
     );
   }
   
   // Helper widget for dropdown fields with icons
-  Widget _buildDropdownField(String label, String? value, List<String> items, IconData icon, Function(String?) onChanged) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 4),
-        DropdownButtonFormField<String>(
-          value: value,
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, size: 18, color: Colors.grey.shade600),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            filled: true,
-            fillColor: Colors.white,
-          ),
-          items: items.map((String item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(item, style: AppFonts.poppins(fontSize: 12)),
-            );
-          }).toList(),
-          onChanged: onChanged,
-        ),
-        // Show other field if 'other' is selected
-        if (value == 'other' && (label.contains('Category') || label.contains('Size'))) ...[
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: label.contains('Category') ? context.read<AgentViewModel>().transferOtherCategoryCtl : context.read<AgentViewModel>().transferOtherSizeCtl,
-            decoration: InputDecoration(
-              labelText: label.contains('Category') ? 'Specify Category' : 'Specify Size',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              filled: true,
-              fillColor: Colors.white,
-            ),
-            style: AppFonts.poppins(fontSize: 12),
-          ),
-        ],
-      ],
-    );
-  }
+ Widget _buildDropdownField(String label, String? value, List<String> items, IconData icon, Function(String?) onChanged) {
+  return DropdownButtonFormField<String>(
+    value: value,
+    decoration: InputDecoration(
+      labelText: label,
+      labelStyle: AppFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.black87),
+      prefixIcon: Icon(icon, size: 18, color: Colors.grey.shade600),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      filled: true,
+      fillColor: Colors.white,
+    ),
+    style: AppFonts.poppins(fontSize: 12),
+    items: items.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+    onChanged: onChanged,
+  );
+}
   
   // Helper widget for date fields with icons
   Widget _buildDateFieldWithIcon(String label, TextEditingController controller, VoidCallback onTap) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppFonts.poppins(
+    return InkWell(
+      onTap: onTap,
+      child: TextFormField(
+        controller: controller,
+        readOnly: true,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: AppFonts.poppins(
             fontSize: 12,
             fontWeight: FontWeight.w500,
             color: Colors.black87,
           ),
-        ),
-        const SizedBox(height: 4),
-        InkWell(
-          onTap: onTap,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(8),
-              color: Colors.white,
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.calendar_today, size: 18, color: Colors.grey.shade600),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    controller.text.isEmpty ? 'Select date' : controller.text,
-                    style: AppFonts.poppins(
-                      fontSize: 12,
-                      color: controller.text.isEmpty ? Colors.grey.shade500 : Colors.black87,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          suffixIcon: Icon(Icons.calendar_today, size: 18, color: Colors.grey.shade600),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: Colors.grey.shade300),
           ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          filled: true,
+          fillColor: Colors.white,
         ),
-      ],
+        style: AppFonts.poppins(fontSize: 12),
+      ),
     );
   }
   

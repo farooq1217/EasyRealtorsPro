@@ -413,10 +413,14 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
   }
 
   Widget fieldBox(Widget child, {int span = 1}) {
-    return Container(
-        constraints: const BoxConstraints(minHeight: 56),
-        child: child,
-      );
+    return Expanded(
+      flex: span,
+      child: child,
+    );
+  }
+
+  Widget fullWidthFieldBox(Widget child) {
+    return child;
   }
 
   Widget _buildSectionHeader(String title, IconData icon) {
@@ -847,9 +851,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                           children: [
                             // Section 1: Property Details
                             _buildSectionHeader('Property Details', Icons.home),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
+                            Row(
                               children: [
                                 fieldBox(
                                   TextFormField(
@@ -859,16 +861,15 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                                     buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
                                   ),
                                 ),
+                                const SizedBox(width: 16),
                                 fieldBox(
                                   DropdownButtonFormField<String>(
                                     value: _viewModel.transferCategory,
                                     decoration: _fieldDecoration('Category'),
                                     items: const [
-                                      DropdownMenuItem(value: '2 Marla', child: Text('2 Marla')),
-                                      DropdownMenuItem(value: '3 Marla', child: Text('3 Marla')),
-                                      DropdownMenuItem(value: '5 Marla', child: Text('5 Marla')),
-                                      DropdownMenuItem(value: '8 Marla', child: Text('8 Marla')),
-                                      DropdownMenuItem(value: '10 Marla', child: Text('10 Marla')),
+                                      DropdownMenuItem(value: 'Residential', child: Text('Residential')),
+                                      DropdownMenuItem(value: 'Commercial', child: Text('Commercial')),
+                                      DropdownMenuItem(value: 'Plot', child: Text('Plot')),
                                       DropdownMenuItem(value: 'Other', child: Text('Other')),
                                     ],
                                     onChanged: (value) {
@@ -876,23 +877,23 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                                     },
                                   ),
                                 ),
-                                if (_viewModel.transferCategory == 'Other')
-                                  fieldBox(
-                                    TextFormField(
-                                      controller: _viewModel.transferOtherCategoryCtl,
-                                      decoration: _fieldDecoration('Custom Category'),
-                                      maxLength: 50,
-                                      buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
-                                    ),
-                                  ),
                               ],
                             ),
+                            if (_viewModel.transferCategory == 'Other') ...[
+                              const SizedBox(height: 16),
+                              fullWidthFieldBox(
+                                TextFormField(
+                                  controller: _viewModel.transferOtherCategoryCtl,
+                                  decoration: _fieldDecoration('Custom Category'),
+                                  maxLength: 50,
+                                  buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                                ),
+                              ),
+                            ],
 
                             // Section 2: Client Information
                             _buildSectionHeader('Client Information', Icons.person),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
+                            Row(
                               children: [
                                 fieldBox(
                                   TextFormField(
@@ -906,6 +907,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                                     },
                                   ),
                                 ),
+                                const SizedBox(width: 16),
                                 fieldBox(
                                   TextFormField(
                                     controller: _viewModel.clientMobileCtl,
@@ -920,29 +922,33 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
 
                             // Section 3: Timeline & Follow-up
                             _buildSectionHeader('Timeline & Follow-up', Icons.schedule),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
+                            Column(
                               children: [
-                                fieldBox(
-                                  TextFormField(
-                                    controller: _viewModel.dateCtl,
-                                    readOnly: true,
-                                    onTap: _pickDate,
-                                    decoration: _fieldDecoration('Date', icon: Icons.calendar_today, suffixIcon: const Icon(Icons.calendar_today), isRequired: true),
-                                    validator: (value) => value == null || value.isEmpty ? 'Select a date' : null,
-                                  ),
+                                Row(
+                                  children: [
+                                    fieldBox(
+                                      TextFormField(
+                                        controller: _viewModel.dateCtl,
+                                        readOnly: true,
+                                        onTap: _pickDate,
+                                        decoration: _fieldDecoration('Date', icon: Icons.calendar_today, suffixIcon: const Icon(Icons.calendar_today), isRequired: true),
+                                        validator: (value) => value == null || value.isEmpty ? 'Select a date' : null,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    fieldBox(
+                                      TextFormField(
+                                        controller: _viewModel.timeCtl,
+                                        readOnly: true,
+                                        onTap: _pickTime,
+                                        decoration: _fieldDecoration('Time', icon: Icons.access_time, suffixIcon: const Icon(Icons.access_time), isRequired: true),
+                                        validator: (value) => value == null || value.isEmpty ? 'Select time' : null,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                fieldBox(
-                                  TextFormField(
-                                    controller: _viewModel.timeCtl,
-                                    readOnly: true,
-                                    onTap: _pickTime,
-                                    decoration: _fieldDecoration('Time', icon: Icons.schedule, suffixIcon: const Icon(Icons.schedule), isRequired: true),
-                                    validator: (value) => value == null || value.isEmpty ? 'Select time' : null,
-                                  ),
-                                ),
-                                fieldBox(
+                                const SizedBox(height: 16),
+                                fullWidthFieldBox(
                                   TextFormField(
                                     controller: _viewModel.nextWorkingDateCtl,
                                     readOnly: true,
@@ -955,11 +961,9 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
 
                             // Section 4: Attachments & Notes
                             _buildSectionHeader('Attachments & Notes', Icons.attach_file),
-                            Wrap(
-                              spacing: 16,
-                              runSpacing: 16,
+                            Column(
                               children: [
-                                fieldBox(
+                                fullWidthFieldBox(
                                   ImageUploadWidget(
                                     imagePaths: _viewModel.transferImages,
                                     onImagesChanged: (images) {
@@ -968,7 +972,8 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                                     maxImages: 3,
                                   ),
                                 ),
-                                fieldBox(
+                                const SizedBox(height: 16),
+                                fullWidthFieldBox(
                                   TextFormField(
                                     controller: _viewModel.commentsCtl,
                                     decoration: _fieldDecoration('Remarks'),
@@ -1090,9 +1095,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                           const SizedBox(height: 8),
                           
                           // Row 1: Category | Preferred Size
-                          Wrap(
-                            spacing: 16,
-                            runSpacing: 16,
+                          Row(
                             children: [
                               fieldBox(
                                 DropdownButtonFormField<String>(
@@ -1111,6 +1114,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                                   },
                                 ),
                               ),
+                              const SizedBox(width: 16),
                               fieldBox(
                                 TextFormField(
                                   controller: _viewModel.reqPlotCtl,
@@ -1124,9 +1128,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                           const SizedBox(height: 16),
                           
                           // Row 2: Preferred Location/Society | [Empty]
-                          Wrap(
-                            spacing: 16,
-                            runSpacing: 16,
+                          Row(
                             children: [
                               fieldBox(
                                 TextFormField(
@@ -1137,8 +1139,8 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                                   onChanged: (value) => _viewModel.setReqLocation(value),
                                 ),
                               ),
-                              // Empty right column for alignment
-                              const SizedBox(),
+                              const SizedBox(width: 16),
+                              const Expanded(child: SizedBox()), // Empty space for alignment
                             ],
                           ),
                           const SizedBox(height: 16),
@@ -1148,9 +1150,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                           const SizedBox(height: 8),
                           
                           // Row 3: Client Name | Client Mobile No
-                          Wrap(
-                            spacing: 16,
-                            runSpacing: 16,
+                          Row(
                             children: [
                               fieldBox(
                                 TextFormField(
@@ -1164,6 +1164,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                                   },
                                 ),
                               ),
+                              const SizedBox(width: 16),
                               fieldBox(
                                 TextFormField(
                                   controller: _viewModel.reqClientMobileCtl,
@@ -1178,9 +1179,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                           const SizedBox(height: 16),
                           
                           // Row 4: Budget Min | Budget Max
-                          Wrap(
-                            spacing: 16,
-                            runSpacing: 16,
+                          Row(
                             children: [
                               fieldBox(
                                 TextFormField(
@@ -1191,6 +1190,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                                   buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
                                 ),
                               ),
+                              const SizedBox(width: 16),
                               fieldBox(
                                 TextFormField(
                                   controller: _viewModel.reqBudgetMaxCtl,
@@ -1205,7 +1205,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                           const SizedBox(height: 16),
                           
                           // Row 5: Date (full width)
-                          fieldBox(
+                          fullWidthFieldBox(
                             TextFormField(
                               controller: _viewModel.reqDateCtl,
                               readOnly: true,
@@ -1226,7 +1226,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                           const SizedBox(height: 8),
                           
                           // Next Working Date (full width for clarity)
-                          fieldBox(
+                          fullWidthFieldBox(
                             TextFormField(
                               controller: _viewModel.reqNextWorkingDateCtl,
                               readOnly: true,
@@ -1245,7 +1245,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                           const SizedBox(height: 8),
                           
                           // Image Upload (full width)
-                          fieldBox(
+                          fullWidthFieldBox(
                             ImageUploadWidget(
                               imagePaths: _viewModel.clientRequirementImages,
                               onImagesChanged: (images) {
@@ -1257,7 +1257,7 @@ class _AgentWorkingPageCleanState extends State<AgentWorkingPageClean> {
                           const SizedBox(height: 16),
                           
                           // Remarks (full width - spans both columns)
-                          fieldBox(
+                          fullWidthFieldBox(
                             TextFormField(
                               controller: _viewModel.reqCommentsCtl,
                               decoration: _fieldDecoration('Remarks'),
