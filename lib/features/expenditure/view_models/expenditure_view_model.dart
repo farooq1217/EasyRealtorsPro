@@ -14,6 +14,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/services/permission_helper.dart';
 import '../../../core/services/firebase_threading_handler.dart';
+import '../../../core/windows_platform_fix.dart';
 import '../../../core/role_utils.dart' as local;
 import 'package:shared/shared.dart';
 
@@ -179,6 +180,9 @@ class ExpenditureViewModel extends ChangeNotifier {
   // Initialization
   Future<void> initialize() async {
     try {
+      // CRITICAL: Initialize Windows platform fixes to prevent stream interference
+      WindowsPlatformFix.initialize();
+      
       _loading = true;
       // OPTIMIZATION: Initialize from cache first to prevent initial null state
       _initializeUserFromCache();
@@ -498,19 +502,12 @@ class ExpenditureViewModel extends ChangeNotifier {
       clearForm();
       _showSuccessSnackBar('$type expense added successfully');
       
-      // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = local.RoleUtils.getUserCompanyId(_user);
-      if (freshCompanyId != null) {
-        final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
-        final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
-        
-        _officeExpenses = freshOfficeExpenses;
-        _projectExpenses = freshProjectExpenses;
-        _applySearchFilter(); // Apply search filter to fresh data
-        
-        debugPrint('ExpenditureViewModel: Manual refresh completed - office: ${freshOfficeExpenses.length}, projects: ${freshProjectExpenses.length}');
-        notifyListeners(); // Force UI rebuild immediately
-      }
+      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
+      // The streams will detect the database changes and update the UI instantly
+      debugPrint('ExpenditureViewModel: Expense saved - streams will update UI automatically');
+      
+      // No need for manual refresh - streams will handle the update
+      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -558,19 +555,12 @@ class ExpenditureViewModel extends ChangeNotifier {
       // Show success message
       _showSuccessSnackBar('Project "$projectName" created successfully');
       
-      // FOOLPROOF FIX: Manually fetch fresh data and update state
-      final freshCompanyId = local.RoleUtils.getUserCompanyId(_user);
-      if (freshCompanyId != null) {
-        final freshOfficeExpenses = await _repository.getOfficeExpenses(freshCompanyId);
-        final freshProjectExpenses = await _repository.getProjectExpenses(freshCompanyId);
-        
-        _officeExpenses = freshOfficeExpenses;
-        _projectExpenses = freshProjectExpenses;
-        _applySearchFilter(); // Apply search filter to fresh data
-        
-        debugPrint('ExpenditureViewModel: Manual refresh completed after project creation - office: ${freshOfficeExpenses.length}, projects: ${freshProjectExpenses.length}');
-        notifyListeners(); // Force UI rebuild immediately
-      }
+      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
+      // The streams will detect the database changes and update the UI instantly
+      debugPrint('ExpenditureViewModel: Project created - streams will update UI automatically');
+      
+      // No need for manual refresh - streams will handle the update
+      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -628,13 +618,10 @@ class ExpenditureViewModel extends ChangeNotifier {
       
       // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
       // The streams will detect the database changes and update the UI instantly
-      debugPrint('ExpenditureViewModel: Expense saved - streams will update UI automatically');
+      debugPrint('ExpenditureViewModel: Expense saved with category - streams will update UI automatically');
       
-      // CRITICAL FIX: Force UI trigger after saveExpenseWithCategory completes
-      // Explicitly call notifyListeners() and then refreshData() to force local list sync with DB
-      notifyListeners();
-      await refreshData(); // Force the local list to sync with the DB
-      debugPrint('ExpenditureViewModel: Force UI trigger completed - notifyListeners() and refreshData() called');
+      // No need for manual refresh - streams will handle the update
+      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -752,11 +739,8 @@ class ExpenditureViewModel extends ChangeNotifier {
       // The streams will detect the database changes and update the UI instantly
       debugPrint('ExpenditureViewModel: Smart grouping completed - streams will update UI automatically');
       
-      // CRITICAL FIX: Force UI trigger after Smart Grouping logic completes
-      // Explicitly call notifyListeners() and then refreshData() to force local list sync with DB
-      notifyListeners();
-      await refreshData(); // Force the local list to sync with the DB
-      debugPrint('ExpenditureViewModel: Force UI trigger completed - notifyListeners() and refreshData() called');
+      // No need for manual refresh - streams will handle the update
+      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -775,11 +759,8 @@ class ExpenditureViewModel extends ChangeNotifier {
       // The streams will detect the database changes and update the UI instantly
       debugPrint('ExpenditureViewModel: Expense deleted - streams will update UI automatically');
       
-      // CRITICAL FIX: Force UI trigger after deleteExpense completes
-      // Explicitly call notifyListeners() and then refreshData() to force local list sync with DB
-      notifyListeners();
-      await refreshData(); // Force the local list to sync with the DB
-      debugPrint('ExpenditureViewModel: Force UI trigger completed - notifyListeners() and refreshData() called');
+      // No need for manual refresh - streams will handle the update
+      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -798,11 +779,8 @@ class ExpenditureViewModel extends ChangeNotifier {
       // The streams will detect the database changes and update the UI instantly
       debugPrint('ExpenditureViewModel: Expense updated - streams will update UI automatically');
       
-      // CRITICAL FIX: Force UI trigger after updateExpense completes
-      // Explicitly call notifyListeners() and then refreshData() to force local list sync with DB
-      notifyListeners();
-      await refreshData(); // Force local list to sync with DB
-      debugPrint('ExpenditureViewModel: Force UI trigger completed - notifyListeners() and refreshData() called');
+      // No need for manual refresh - streams will handle the update
+      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {

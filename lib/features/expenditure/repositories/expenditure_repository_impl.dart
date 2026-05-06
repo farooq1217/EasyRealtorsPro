@@ -339,7 +339,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     query += ' ORDER BY date DESC';
     
     return db
-        .customSelect(query, variables: variables)
+        .customSelect(query, variables: variables, readsFrom: {db.expenditures})
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
   }
@@ -372,7 +372,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     query += ' ORDER BY date DESC';
     
     return db
-        .customSelect(query, variables: variables)
+        .customSelect(query, variables: variables, readsFrom: {db.expenditures})
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
   }
@@ -406,7 +406,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     query += ' ORDER BY date DESC';
     
     return db
-        .customSelect(query, variables: variables)
+        .customSelect(query, variables: variables, readsFrom: {db.expenditures})
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
   }
@@ -475,7 +475,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     sqlQuery += ' AND (LOWER(description) LIKE LOWER(?) OR LOWER(amount) LIKE LOWER(?) OR LOWER(date) LIKE LOWER(?)) ORDER BY date DESC';
     
     return db
-        .customSelect(sqlQuery, variables: variables)
+        .customSelect(sqlQuery, variables: variables, readsFrom: {db.expenditures})
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
   }
@@ -576,6 +576,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
           'WHERE parent_id = ? AND (is_active IS NULL OR is_active = 1) '
           'ORDER BY created_at DESC',
           variables: [d.Variable.withString(parentId)],
+          readsFrom: {db.expenditureSubItems},
         )
         .watch()
         .map((rows) => rows.map((row) => domain.ExpenditureSubItem.fromMap(row.data)).toList());
@@ -588,6 +589,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
           'WHERE parent_id = ? AND (is_active IS NULL OR is_active = 1) '
           'ORDER BY created_at DESC',
           variables: [d.Variable.withString(parentId)],
+          readsFrom: {db.expenditureSubItems},
         )
         .watch()
         .map((rows) => rows.map((row) {
@@ -831,16 +833,28 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     try {
       debugPrint('ExpenditureRepository: Updating expenditure amount - ID: $expenditureId, New Amount: $newAmount');
       
-      final now = DateTime.now().toIso8601String();
-      await db.customStatement('''UPDATE Expenditures SET
-        amount = ?, 
-        updated_at = ?
-        WHERE id = ?''', [newAmount, now, expenditureId]);
+      // CRITICAL FIX: Use Drift's high-level API for proper stream notifications
+      await (db.update(db.expenditures)..where((tbl) => tbl.id.equals(expenditureId)))
+          .write(ExpendituresCompanion(
+        amount: d.Value(newAmount),
+        updatedAt: d.Value(DateTime.now().toIso8601String()),
+      ));
       
-      debugPrint('ExpenditureRepository: Successfully updated expenditure amount');
+      debugPrint('ExpenditureRepository: Successfully updated expenditure amount with stream notification');
     } catch (e) {
       debugPrint('ExpenditureRepository: Error updating expenditure amount: $e');
-      throw Exception('Failed to update expenditure amount: $e');
+      // Fallback to customStatement if Drift fails
+      try {
+        final now = DateTime.now().toIso8601String();
+        await db.customStatement('''UPDATE Expenditures SET
+          amount = ?, 
+          updated_at = ?
+          WHERE id = ?''', [newAmount, now, expenditureId]);
+        debugPrint('ExpenditureRepository: Fallback update successful for expenditure amount');
+      } catch (fallbackError) {
+        debugPrint('ExpenditureRepository: Fallback update also failed: $fallbackError');
+        throw Exception('Failed to update expenditure amount: $e (Fallback: $fallbackError)');
+      }
     }
   }
 }

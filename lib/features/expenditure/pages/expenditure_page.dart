@@ -126,20 +126,28 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
   Widget build(BuildContext context) {
     super.build(context); // CRITICAL: Call super.build for AutomaticKeepAliveClientMixin
     
-    // AVOID LAZY INITIALIZER ERRORS: Create ViewModel in build method if not yet initialized
-    final viewModel = _viewModel ?? ExpenditureViewModel(
-      widget.db,
-      companyId: widget.companyId,
-      isSuperAdmin: widget.isSuperAdmin ?? false,
-      userId: widget.userId,
-    );
-    
-    // Initialize ViewModel if not yet done (fallback for edge cases)
-    if (!_initialized && _viewModel == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _initializeViewModel();
+    // CRITICAL FIX: Ensure ViewModel is created and initialized in build method
+    // This prevents the UI from using a different ViewModel instance than the one with streams
+    if (_viewModel == null) {
+      debugPrint('ExpenditurePage: Creating and initializing ViewModel in build method');
+      _viewModel = ExpenditureViewModel(
+        widget.db,
+        companyId: widget.companyId,
+        isSuperAdmin: widget.isSuperAdmin ?? false,
+        userId: widget.userId,
+      );
+      
+      // Initialize ViewModel immediately and set up streams
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _viewModel!.initialize();
+        if (mounted) {
+          _initialized = true;
+          setState(() {}); // Trigger rebuild with initialized ViewModel
+        }
       });
     }
+    
+    final viewModel = _viewModel!;
     
     return ChangeNotifierProvider<ExpenditureViewModel>.value(
       value: viewModel,
