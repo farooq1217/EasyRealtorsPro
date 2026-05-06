@@ -9,6 +9,9 @@ import '../../../core/windows_platform_fix.dart'; // ✨ CRITICAL FIX: Windows p
 class SettingsViewModel extends ChangeNotifier {
   final SettingsRepository _repository;
   
+  // Initialization guard to prevent duplicates
+  static bool _isInitializing = false;
+  
   SettingsViewModel(this._repository);
 
   // State
@@ -57,9 +60,17 @@ class SettingsViewModel extends ChangeNotifier {
 
   // Initialize
   Future<void> initialize() async {
+    // Prevent duplicate initialization
+    if (_isInitializing) {
+      debugPrint('SettingsViewModel: Already initializing, skipping duplicate call');
+      return;
+    }
+    
     // ✨ CRITICAL FIX: Initialize Windows platform fixes (only once)
     WindowsPlatformFix.initialize();
     debugPrint('SettingsViewModel: Starting initialization');
+    
+    _isInitializing = true;
     
     // Set loading to true initially
     _loading = true;
@@ -112,6 +123,7 @@ class SettingsViewModel extends ChangeNotifier {
     } finally {
       // CRITICAL FIX: Always ensure loading is set to false
       _loading = false;
+      _isInitializing = false; // Reset initialization flag
       debugPrint('SettingsViewModel: Loading set to false, notifying listeners');
       safeNotifyListeners();
     }

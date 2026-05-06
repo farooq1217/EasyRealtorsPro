@@ -170,70 +170,148 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
 
   @override
   Future<void> addExpenditure(domain.ExpenditureItem expenditure) async {
+    final now = DateTime.now();
+    final expenditureWithTimestamp = expenditure.copyWith(
+      id: expenditure.id.isEmpty ? const Uuid().v4() : expenditure.id,
+      createdAt: now,
+      updatedAt: now,
+    );
+    
     try {
-      final now = DateTime.now();
-      final expenditureWithTimestamp = expenditure.copyWith(
-        id: expenditure.id.isEmpty ? const Uuid().v4() : expenditure.id,
-        createdAt: now,
-        updatedAt: now,
+      // CRITICAL FIX: Use Drift's high-level API for proper stream notifications
+      await db.into(db.expenditures).insert(
+        ExpendituresCompanion.insert(
+          id: expenditureWithTimestamp.id,
+          date: expenditureWithTimestamp.date,
+          description: expenditureWithTimestamp.description,
+          amount: expenditureWithTimestamp.amount,
+          category: d.Value(expenditureWithTimestamp.category),
+          categoryType: d.Value(expenditureWithTimestamp.categoryType ?? 'office'),
+          companyId: expenditureWithTimestamp.companyId == null 
+              ? const d.Value.absent() 
+              : d.Value(expenditureWithTimestamp.companyId!),
+          createdBy: expenditureWithTimestamp.createdBy == null 
+              ? const d.Value.absent() 
+              : d.Value(expenditureWithTimestamp.createdBy!),
+          createdAt: d.Value(expenditureWithTimestamp.createdAt.toIso8601String()),
+          updatedAt: expenditureWithTimestamp.updatedAt.toIso8601String(),
+          isActive: d.Value(expenditureWithTimestamp.isActive),
+        ),
       );
       
-      await db.customStatement(
-        '''INSERT INTO Expenditures 
-           (id, date, description, amount, category, category_type, company_id, created_by, created_at, updated_at, is_active)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-        [
-          expenditureWithTimestamp.id,
-          expenditureWithTimestamp.date,
-          expenditureWithTimestamp.description,
-          expenditureWithTimestamp.amount,
-          expenditureWithTimestamp.category,
-          expenditureWithTimestamp.categoryType ?? 'office',
-          expenditureWithTimestamp.companyId,
-          expenditureWithTimestamp.createdBy,
-          expenditureWithTimestamp.createdAt.toIso8601String(), // CRITICAL: Convert DateTime to string
-          expenditureWithTimestamp.updatedAt.toIso8601String(), // CRITICAL: Convert DateTime to string
-          expenditureWithTimestamp.isActive ? 1 : 0,
-        ],
-      );
+      debugPrint('ExpenditureRepository: Successfully inserted expenditure: ${expenditureWithTimestamp.id}');
     } catch (e) {
-      throw Exception('Failed to add expenditure: $e');
+      debugPrint('ExpenditureRepository: Error inserting expenditure: $e');
+      // Fallback to customStatement if Drift fails - use the same timestamped variable
+      try {
+        await db.customStatement(
+          '''INSERT INTO Expenditures 
+             (id, date, description, amount, category, category_type, company_id, created_by, created_at, updated_at, is_active)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+          [
+            expenditureWithTimestamp.id,
+            expenditureWithTimestamp.date,
+            expenditureWithTimestamp.description,
+            expenditureWithTimestamp.amount,
+            expenditureWithTimestamp.category,
+            expenditureWithTimestamp.categoryType ?? 'office',
+            expenditureWithTimestamp.companyId,
+            expenditureWithTimestamp.createdBy,
+            expenditureWithTimestamp.createdAt.toIso8601String(),
+            expenditureWithTimestamp.updatedAt.toIso8601String(),
+            expenditureWithTimestamp.isActive ? 1 : 0,
+          ],
+        );
+        debugPrint('ExpenditureRepository: Fallback insert successful for expenditure: ${expenditureWithTimestamp.id}');
+      } catch (fallbackError) {
+        debugPrint('ExpenditureRepository: Fallback insert also failed: $fallbackError');
+        throw Exception('Failed to add expenditure: $e (Fallback: $fallbackError)');
+      }
     }
   }
 
   @override
   Future<void> updateExpenditure(domain.ExpenditureItem expenditure) async {
+    final now = DateTime.now();
+    final updatedExpenditure = expenditure.copyWith(updatedAt: now);
+    
     try {
-      final now = DateTime.now();
-      final updatedExpenditure = expenditure.copyWith(updatedAt: now);
+      // CRITICAL FIX: Use Drift's high-level API for proper stream notifications
+      await (db.update(db.expenditures)..where((tbl) => tbl.id.equals(updatedExpenditure.id)))
+          .write(ExpendituresCompanion(
+        date: d.Value(updatedExpenditure.date),
+        description: d.Value(updatedExpenditure.description),
+        amount: d.Value(updatedExpenditure.amount),
+        category: d.Value(updatedExpenditure.category),
+        categoryType: d.Value(updatedExpenditure.categoryType),
+        updatedAt: d.Value(updatedExpenditure.updatedAt.toIso8601String()),
+        isActive: d.Value(updatedExpenditure.isActive),
+      ));
       
-      await db.customStatement(
-        '''UPDATE Expenditures SET 
-           date = ?, description = ?, amount = ?, category = ?, category_type = ?, 
-           updated_at = ?, is_active = ? 
-           WHERE id = ?''',
-        [
-          updatedExpenditure.date,
-          updatedExpenditure.description,
-          updatedExpenditure.amount,
-          updatedExpenditure.category,
-          updatedExpenditure.categoryType,
-          updatedExpenditure.updatedAt.toIso8601String(), // CRITICAL: Convert DateTime to string
-          updatedExpenditure.isActive ? 1 : 0,
-          updatedExpenditure.id,
-        ],
-      );
+      debugPrint('ExpenditureRepository: Successfully updated expenditure: ${updatedExpenditure.id}');
     } catch (e) {
-      throw Exception('Failed to update expenditure: $e');
+      debugPrint('ExpenditureRepository: Error updating expenditure: $e');
+      // Fallback to customStatement if Drift fails
+      try {
+        await db.customStatement(
+          '''UPDATE Expenditures SET 
+             date = ?, description = ?, amount = ?, category = ?, category_type = ?, 
+             updated_at = ?, is_active = ? 
+             WHERE id = ?''',
+          [
+            updatedExpenditure.date,
+            updatedExpenditure.description,
+            updatedExpenditure.amount,
+            updatedExpenditure.category,
+            updatedExpenditure.categoryType,
+            updatedExpenditure.updatedAt.toIso8601String(),
+            updatedExpenditure.isActive ? 1 : 0,
+            updatedExpenditure.id,
+          ],
+        );
+        debugPrint('ExpenditureRepository: Fallback update successful for expenditure: ${updatedExpenditure.id}');
+      } catch (fallbackError) {
+        debugPrint('ExpenditureRepository: Fallback update also failed: $fallbackError');
+        throw Exception('Failed to update expenditure: $e (Fallback: $fallbackError)');
+      }
     }
   }
 
   @override
   Future<void> deleteExpenditure(String id) async {
     try {
-      await db.customStatement('UPDATE Expenditures SET is_active = 0 WHERE id = ?', [id]);
+      // OPTIMIZATION: Check if record exists before attempting deletion
+      final existingRecord = await db.customSelect(
+        'SELECT id, is_active FROM Expenditures WHERE id = ?',
+        variables: [d.Variable.withString(id)]
+      ).getSingleOrNull();
+      
+      if (existingRecord == null) {
+        debugPrint('ExpenditureRepository: Record not found, skipping deletion: $id');
+        return; // Record doesn't exist, no need to delete
+      }
+      
+      final isActive = existingRecord.data['is_active'] as int?;
+      if (isActive == 0) {
+        debugPrint('ExpenditureRepository: Record already deleted (inactive), skipping: $id');
+        return; // Already deleted, no need to delete again
+      }
+      
+      // CRITICAL FIX: Use Drift's high-level API for proper stream notifications
+      await (db.update(db.expenditures)..where((tbl) => tbl.id.equals(id)))
+          .write(const ExpendituresCompanion(isActive: d.Value(false)));
+      
+      debugPrint('ExpenditureRepository: Successfully deleted expenditure: $id');
     } catch (e) {
-      throw Exception('Failed to delete expenditure: $e');
+      debugPrint('ExpenditureRepository: Error deleting expenditure: $e');
+      // Fallback to customStatement if Drift fails
+      try {
+        await db.customStatement('UPDATE Expenditures SET is_active = 0 WHERE id = ?', [id]);
+        debugPrint('ExpenditureRepository: Fallback delete successful for expenditure: $id');
+      } catch (fallbackError) {
+        debugPrint('ExpenditureRepository: Fallback delete also failed: $fallbackError');
+        throw Exception('Failed to delete expenditure: $e (Fallback: $fallbackError)');
+      }
     }
   }
 

@@ -62,9 +62,12 @@ class UserViewModel extends ChangeNotifier {
   String? _filterRole;
   Map<String, dynamic> _permissions = {};
 
-  // Stream subscriptions
-  StreamSubscription<List<UserModel>>? _usersSubscription;
+  // OPTIMIZATION: Use List<StreamSubscription> for proper disposal integrity
+  final List<StreamSubscription> _subscriptions = [];
   StreamSubscription<QuerySnapshot>? _firestoreUsersSubscription; // ✨ CRITICAL FIX: Real-time Firestore listener ✨
+  
+  // Individual subscription for users (kept for compatibility)
+  StreamSubscription<List<UserModel>>? _usersSubscription;
 
   // Getters
   bool get loading => _loading;
@@ -659,7 +662,7 @@ class UserViewModel extends ChangeNotifier {
     await _usersSubscription?.cancel();
     
     // Setup new stream
-    _usersSubscription = _repository.watchUsers(companyId).listen(
+    final subscription = _repository.watchUsers(companyId).listen(
       (data) {
         // ✨ CRITICAL FIX: Direct stream processing without postFrameCallback to prevent freezing
         if (!mounted) return;
@@ -690,17 +693,14 @@ class UserViewModel extends ChangeNotifier {
         notifyListeners();
       },
       onError: (e) {
-        // ✨ CRITICAL FIX: Direct error handling without postFrameCallback
         if (!mounted) return;
-        if (_loading) {
-          _loading = false;
-          debugPrint('UserViewModel: Loading set to false - stream error');
-        }
-        _error = 'Error loading users: $e';
-        debugPrint('UserViewModel: Stream error - $e');
+        _loading = false;
+        _error = 'Failed to load users: $e';
+        Logger.error('Error in users stream: $e', tag: 'UserViewModel');
         notifyListeners();
       },
     );
+    _subscriptions.add(subscription);
   }
 
   // Search functionality
@@ -1160,9 +1160,22 @@ class UserViewModel extends ChangeNotifier {
   void dispose() {
     _isDisposed = true; // CRITICAL: Set disposal flag BEFORE cleanup
     _mounted = false;
-    _usersSubscription?.cancel();
-    _firestoreUsersSubscription?.cancel(); // CRITICAL FIX: Cleanup Firestore listener
+    
+    // OPTIMIZATION: Cancel all subscriptions in try-finally block
+    try {
+      for (final subscription in _subscriptions) {
+        subscription.cancel();
+      }
+      _firestoreUsersSubscription?.cancel(); // CRITICAL FIX: Cleanup Firestore listener
+    } catch (e) {
+      Logger.error('Error cancelling subscriptions: $e', tag: 'UserViewModel');
+    } finally {
+      _subscriptions.clear();
+    }
+    
     Logger.debug('UserViewModel: Disposed - all subscriptions cancelled', tag: 'UserViewModel');
+    
+    // Dispose controllers
     _nameController.dispose();
     _emailController.dispose();
     _contactController.dispose();
@@ -1170,6 +1183,7 @@ class UserViewModel extends ChangeNotifier {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _userIdController.dispose();
+    
     super.dispose();
   }
 }

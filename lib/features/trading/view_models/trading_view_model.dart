@@ -28,7 +28,10 @@ class TradingViewModel extends ChangeNotifier {
     return _instance ?? TradingViewModel(repository);
   }
   
-  // Stream subscriptions for real-time updates
+  // OPTIMIZATION: Use List<StreamSubscription> for proper disposal integrity
+  final List<StreamSubscription> _subscriptions = [];
+  
+  // Individual subscription for entries (kept for compatibility)
   StreamSubscription<List<TradingEntry>>? _entriesSubscription;
   
   // Data
@@ -125,16 +128,16 @@ class TradingViewModel extends ChangeNotifier {
         () async {
           // Cancel existing subscription
           await _entriesSubscription?.cancel();
-          _entriesSubscription = null;
           
           // Set up stream for entries
-          _entriesSubscription = _repository.watchEntries(companyId: _userCompanyId).listen(
+          final subscription = _repository.watchEntries(companyId: _userCompanyId).listen(
             (entries) {
               if (!_mounted || _isDisposed) return;
               _entries = entries;
               _isLoading = false; // Set loading to false when data arrives
               _error = null; // Clear any previous error
-              debugPrint('TradingViewModel: Received ${entries.length} entries from stream');
+              _statistics = _calculateStatistics();
+              debugPrint('TradingViewModel: Loaded ${entries.length} entries');
               notifyListeners();
             },
             onError: (e) {
@@ -151,6 +154,7 @@ class TradingViewModel extends ChangeNotifier {
               notifyListeners();
             },
           );
+          _subscriptions.add(subscription);
           
           _isStreamInitialized = true; // Mark as initialized
           
@@ -591,9 +595,55 @@ class TradingViewModel extends ChangeNotifier {
     _isDisposed = true;
     _mounted = false;
     _isStreamInitialized = false;
-    _entriesSubscription?.cancel();
+    
+    // OPTIMIZATION: Cancel all subscriptions in try-finally block
+    try {
+      for (final subscription in _subscriptions) {
+        subscription.cancel();
+      }
+    } catch (e) {
+      Logger.error('Error cancelling subscriptions: $e', tag: 'TradingViewModel');
+    } finally {
+      _subscriptions.clear();
+    }
+    
     _entries.clear();
     _instance = null; // Clear the singleton reference
+    super.dispose();
+  }
+
+  @override
+  void dispose() {
+    Logger.debug('DISPOSING TradingViewModel instance: ${identityHashCode(this)}', tag: 'TradingViewModel');
+    
+    // PROPER DISPOSAL: Allow natural lifecycle management
+    if (_isDisposed) {
+      debugPrint('TradingViewModel: Already disposed, skipping');
+      return;
+    }
+    
+    _isDisposed = true;
+    _mounted = false;
+    _isStreamInitialized = false;
+    
+    // OPTIMIZATION: Cancel all subscriptions in try-finally block
+    try {
+      for (final subscription in _subscriptions) {
+        subscription.cancel();
+      }
+    } catch (e) {
+      Logger.error('Error cancelling subscriptions: $e', tag: 'TradingViewModel');
+    } finally {
+      _subscriptions.clear();
+    }
+    
+    _entries.clear();
+    
+    // Clear singleton reference if this is the current instance
+    if (_instance == this) {
+      _instance = null;
+    }
+    
     super.dispose();
   }
 
@@ -644,29 +694,17 @@ class TradingViewModel extends ChangeNotifier {
     }
   }
 
-  @override
-  void dispose() {
-    Logger.debug('DISPOSING TradingViewModel instance: ${identityHashCode(this)}', tag: 'TradingViewModel');
+  /// Calculate statistics from current entries
+  Map<String, dynamic> _calculateStatistics() {
+    final totalEntries = _entries.length;
+    final activeEntries = _entries.where((e) => e.isActive).length;
+    final totalValue = _entries.fold<double>(0.0, (sum, entry) => sum + (entry.quantity * entry.unitPrice));
     
-    // PROPER DISPOSAL: Allow natural lifecycle management
-    // The singleton pattern will be handled at the Provider level
-    Logger.debug('TradingViewModel: Properly disposing streams and state', tag: 'TradingViewModel');
-    
-    // Cancel streams to prevent memory leaks
-    _entriesSubscription?.cancel();
-    _entriesSubscription = null;
-    
-    // Mark as disposed to prevent further operations
-    _isDisposed = true;
-    _mounted = false;
-    _isStreamInitialized = false;
-    _entries.clear();
-    
-    // Clear singleton reference if this is the current instance
-    if (_instance == this) {
-      _instance = null;
-    }
-    
-    super.dispose();
+    return {
+      'totalEntries': totalEntries,
+      'activeEntries': activeEntries,
+      'totalValue': totalValue,
+      'averageValue': totalEntries > 0 ? totalValue / totalEntries : 0.0,
+    };
   }
 }

@@ -15,6 +15,7 @@ import 'core/services/firebase_options.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/update_manager.dart';
 import 'core/app.dart';
+import 'core/windows_accessibility_fix.dart';
 import 'firestore_sync_service.dart';
 
 /// Safe Firebase initialization with Windows support and graceful fallback
@@ -39,26 +40,39 @@ Future<void> _initializeFirebaseSafely(bool isWindows) async {
         _initializeFallbackMode();
         return;
       }
-    }
-
-    // Try to initialize Firebase with platform-specific options
-    try {
-      final options = DefaultFirebaseOptions.currentPlatform;
       
-      // Validate options before initialization
-      if (_validateFirebaseOptions(options)) {
+      // Windows-specific timeout and retry logic
+      try {
         await Firebase.initializeApp(
-          options: options,
-        );
-        Logger.info('Firebase: Successfully initialized with options', tag: 'Firebase');
-      } else {
-        Logger.warning('Firebase: Invalid options detected, using fallback mode', tag: 'Firebase');
+          options: DefaultFirebaseOptions.currentPlatform,
+        ).timeout(const Duration(seconds: 10));
+        Logger.info('Firebase: Successfully initialized on Windows', tag: 'Firebase');
+      } catch (e) {
+        Logger.warning('Firebase: Windows initialization failed, using fallback mode', tag: 'Firebase');
+        debugPrint('Firebase: Error details: $e');
+        _initializeFallbackMode();
+        return;
+      }
+    } else {
+      // Non-Windows platforms: normal initialization
+      try {
+        final options = DefaultFirebaseOptions.currentPlatform;
+        
+        // Validate options before initialization
+        if (_validateFirebaseOptions(options)) {
+          await Firebase.initializeApp(
+            options: options,
+          );
+          Logger.info('Firebase: Successfully initialized with options', tag: 'Firebase');
+        } else {
+          Logger.warning('Firebase: Invalid options detected, using fallback mode', tag: 'Firebase');
+          _initializeFallbackMode();
+        }
+        
+      } catch (e) {
+        Logger.error('Firebase: Initialization failed', tag: 'Firebase', error: e);
         _initializeFallbackMode();
       }
-      
-    } catch (e) {
-      Logger.error('Firebase: Initialization failed', tag: 'Firebase', error: e);
-      _initializeFallbackMode();
     }
 
   } catch (e) {
@@ -95,8 +109,34 @@ void _initializeFallbackMode() {
   Logger.info('Firebase: Features disabled - Firestore, Auth, Storage', tag: 'Firebase');
   Logger.info('Firebase: Local SQLite database will be used exclusively', tag: 'Firebase');
   
+  // Set global flag for Firebase availability
+  _isFirebaseAvailable = false;
+  
   // The app will continue to work with local SQLite database
   // NetworkSyncManager and other Firebase-dependent services should check Firebase.apps.isEmpty
+}
+
+/// Global flag for Firebase availability check
+bool _isFirebaseAvailable = true;
+
+/// Check if Firebase is properly initialized and available
+bool isFirebaseAvailable() {
+  return _isFirebaseAvailable && Firebase.apps.isNotEmpty;
+}
+
+/// Safe Firebase operation wrapper
+Future<T?> safeFirebaseOperation<T>(Future<T> Function() operation, {T? fallbackValue}) async {
+  if (!isFirebaseAvailable()) {
+    Logger.warning('Firebase: Operation skipped - Firebase not available', tag: 'Firebase');
+    return fallbackValue;
+  }
+  
+  try {
+    return await operation().timeout(const Duration(seconds: 15));
+  } catch (e) {
+    Logger.error('Firebase: Operation failed', tag: 'Firebase', error: e);
+    return fallbackValue;
+  }
 }
 
 void main() async {
@@ -211,8 +251,27 @@ void main() async {
       'cloud_firestore',
     ];
     
-    if (criticalPatterns.any((pattern) => error.toString().contains(pattern))) {
-      Logger.debug('Platform warning silenced: ${error.runtimeType}', tag: 'Platform');
+    // Windows-specific accessibility error patterns
+    final windowsAccessibilityPatterns = [
+      'viewId property must be a FlutterViewId',
+      'Announce message',
+      'SemanticsService.announce',
+      'Tooltip',
+      'Accessibility',
+      'Windows accessibility',
+      'viewId',
+      'FlutterViewId',
+    ];
+    
+    // Check if error should be silenced
+    final shouldSilence = criticalPatterns.any((pattern) => error.toString().contains(pattern)) ||
+                         (isWindows && windowsAccessibilityPatterns.any((pattern) => error.toString().contains(pattern)));
+    
+    if (shouldSilence) {
+      // Only log in debug mode for development
+      if (kDebugMode) {
+        Logger.debug('Platform/Accessibility warning silenced: ${error.runtimeType}', tag: 'Platform');
+      }
     } else {
       Logger.error('Global error', tag: 'Global', error: error);
       if (kDebugMode) {
@@ -221,10 +280,13 @@ void main() async {
     }
   });
 
-  // 4. Run App with Offline-First Architecture
+  // 4. Initialize Windows-specific fixes
   if (isWindows) {
     // Windows: Add connection stability handling
     Logger.debug('Windows Platform: Applying connection stability fixes', tag: 'Platform');
+    
+    // Initialize Windows accessibility fixes to prevent viewId errors
+    WindowsAccessibilityFix.initialize();
   }
   
   // Use original AdminApp to avoid build issues

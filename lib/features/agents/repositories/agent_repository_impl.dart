@@ -121,6 +121,9 @@ class AgentRepositoryImpl implements AgentRepository {
       final clauses = <String>['1=1']; // Start with true clause
       final vars = <d.Variable<Object>>[];
       
+      // CRITICAL FIX: Filter out soft-deleted items
+      clauses.add('is_active = 1');
+      
       // Add company filter for non-super users
       if (!isSuperAdmin && companyId != null) {
         clauses.add('company_id = ?');
@@ -144,6 +147,7 @@ class AgentRepositoryImpl implements AgentRepository {
           .customSelect(
             'SELECT * FROM working_progress WHERE $where ORDER BY updated_at DESC',
             variables: vars,
+            readsFrom: {db.workingProgress}, // Critical for stream updates
           )
           .watch()
           .map((result) {
@@ -169,6 +173,7 @@ class AgentRepositoryImpl implements AgentRepository {
               );
               transfers.add(transfer);
             }
+            debugPrint('AgentRepository: Stream updated transfers - ${transfers.length} items');
             return transfers;
           });
     } catch (e) {
@@ -259,6 +264,9 @@ class AgentRepositoryImpl implements AgentRepository {
       final clauses = <String>['1=1']; // Start with true clause
       final vars = <d.Variable<Object>>[];
       
+      // CRITICAL FIX: Filter out soft-deleted items
+      clauses.add('is_active = 1');
+      
       // Add company filter for non-super users
       if (!isSuperAdmin && companyId != null) {
         clauses.add('company_id = ?');
@@ -282,6 +290,7 @@ class AgentRepositoryImpl implements AgentRepository {
           .customSelect(
             'SELECT * FROM working_progress WHERE $where ORDER BY updated_at DESC',
             variables: vars,
+            readsFrom: {db.workingProgress}, // Critical for stream updates
           )
           .watch()
           .map((result) {
@@ -307,6 +316,7 @@ class AgentRepositoryImpl implements AgentRepository {
               );
               requirements.add(requirement);
             }
+            debugPrint('AgentRepository: Stream updated client requirements - ${requirements.length} items');
             return requirements;
           });
     } catch (e) {

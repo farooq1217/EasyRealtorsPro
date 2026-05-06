@@ -40,6 +40,22 @@ class ExpenditureViewModel extends ChangeNotifier {
   Map<String, dynamic>? _user;
   ExpenditureTab _currentTab = ExpenditureTab.office;
   
+  // OPTIMIZATION: Cached user data to prevent initial null state
+  String? _cachedCompanyId;
+  bool? _cachedIsSuperAdmin;
+  
+  // OPTIMIZATION: Initialize user data from cached AuthService to prevent initial null state
+  void _initializeUserFromCache() {
+    final cachedUser = AuthService.currentUser;
+    if (cachedUser != null) {
+      _cachedCompanyId = local.RoleUtils.getUserCompanyId(cachedUser);
+      _cachedIsSuperAdmin = local.RoleUtils.isSuperAdmin(cachedUser);
+      debugPrint('ExpenditureViewModel: Initialized from AuthService cache - companyId: $_cachedCompanyId, isSuper: $_cachedIsSuperAdmin');
+    } else {
+      debugPrint('ExpenditureViewModel: No cached user data available');
+    }
+  }
+  
   // Data lists
   List<domain.ExpenditureItem> _officeExpenses = [];
   List<domain.ExpenditureItem> _projectExpenses = [];
@@ -164,6 +180,8 @@ class ExpenditureViewModel extends ChangeNotifier {
   Future<void> initialize() async {
     try {
       _loading = true;
+      // OPTIMIZATION: Initialize from cache first to prevent initial null state
+      _initializeUserFromCache();
       notifyListeners();
       
       // CRITICAL FIX: Load user first with timeout to prevent hanging
@@ -349,7 +367,6 @@ class ExpenditureViewModel extends ChangeNotifier {
 
   // Tab management
   void setCurrentTab(ExpenditureTab tab) {
-    // ignore: parameter_types
     if (tab != null) {
       _currentTab = tab;
       notifyListeners();

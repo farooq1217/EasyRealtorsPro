@@ -378,12 +378,8 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
       ),
     );
     
-    // Initialize ViewModel if not yet done (fallback for edge cases)
-    if (!_initialized && _viewModel == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _initializeViewModel();
-      });
-    }
+    // ViewModel initialization is now handled only in initState() to prevent duplicates
+    // No fallback needed as initState() ensures proper initialization
     
     // CRITICAL FIX: Check for infinite loading and force resolution
     if (_loadingStartTime != null && 
