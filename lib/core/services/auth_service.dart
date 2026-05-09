@@ -220,7 +220,7 @@ class AuthService {
     final db = await AppDatabase.instance();
     try {
       final dbResult = await db.customSelect(
-        'SELECT id, username, email, password_hash, name, contact_no, permissions, company_id, status, is_active, is_first_login, user_id, created_at FROM users WHERE email = ? OR username = ?',
+        'SELECT id, username, email, password_hash, name, contact_no, permissions, permissions_map, company_id, status, is_active, is_first_login, user_id, created_at FROM users WHERE email = ? OR username = ?',
         variables: [
           d.Variable.withString(emailKey),
           d.Variable.withString(emailKey),
@@ -249,6 +249,7 @@ class AuthService {
         'isActive': u['is_active'] ?? u['isActive'],
         'is_active': u['is_active'] ?? u['isActive'],
         'permissions': _parsePermissionsFromDb(u['permissions']),
+        'permissionsMap': _parsePermissionsMapFromDb(u['permissions_map']),
         'isFirstLogin': u['is_first_login'] as int? ?? 0,
       };
     } catch (e) {
@@ -272,6 +273,27 @@ class AuthService {
       return permissions;
     }
     return {};
+  }
+
+  /// Helper method to parse permissionsMap from database (handles JSON strings)
+  static dynamic _parsePermissionsMapFromDb(dynamic permissionsMap) {
+    if (permissionsMap == null) return null;
+    if (permissionsMap is String && permissionsMap.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(permissionsMap);
+        debugPrint('AuthService: Successfully decoded permissionsMap: $decoded');
+        return decoded;
+      } catch (e) {
+        debugPrint('AuthService: Failed to decode permissionsMap JSON: $e');
+        return {};
+      }
+    }
+    if (permissionsMap is Map) {
+      debugPrint('AuthService: permissionsMap is already a Map: $permissionsMap');
+      return permissionsMap;
+    }
+    debugPrint('AuthService: permissionsMap is null or empty, returning null');
+    return null;
   }
 
   static Future<void> syncUserCacheFromDb({required AppDatabase db, required String userId}) async {

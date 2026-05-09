@@ -45,10 +45,9 @@ class ModernSidebar extends StatelessWidget {
     final isSuperAdmin = role == 'super_admin';
     
     bool _canSee(String moduleKey) {
-      // CRITICAL SECURITY FIX: Deny-by-default policy
-      
-      // Bypass users and Super Admins get all access
-      if (isBypass || isSuperAdmin) {
+      // CRITICAL SECURITY FIX: Admin bypass for company_admin and super_admin
+      // Admins always see all modules, even if permissionsMap is empty or delayed
+      if (isBypass || isSuperAdmin || isAdminRole) {
         return true;
       }
       
