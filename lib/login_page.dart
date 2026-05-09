@@ -114,11 +114,26 @@ class _LoginPageState extends State<LoginPage> {
                 // Initialize permissions cache immediately from local database
                 await PermissionSyncService.initializePermissionsCache(token);
                 
-                // Get permissions instantly without timeout
-                final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(token);
+                // CRITICAL: Wait for permissions to be fully loaded with timeout
+                bool permissionsLoaded = false;
+                int attempts = 0;
+                const maxAttempts = 10; // Maximum 10 attempts (5 seconds total)
                 
-                if (userWithPermissions != null) {
-                  debugPrint('LoginPage: Permissions loaded successfully, navigating to dashboard...');
+                while (!permissionsLoaded && attempts < maxAttempts) {
+                  await Future.delayed(const Duration(milliseconds: 500)); // Wait 500ms between attempts
+                  attempts++;
+                  
+                  // Check if permissions are loaded
+                  final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(token);
+                  if (userWithPermissions != null && PermissionSyncService.arePermissionsFullyLoaded(userWithPermissions)) {
+                    permissionsLoaded = true;
+                    debugPrint('LoginPage: Permissions loaded successfully after $attempts attempts');
+                    break;
+                  }
+                }
+                
+                if (permissionsLoaded) {
+                  debugPrint('LoginPage: Permissions verified, navigating to dashboard...');
                   
                   if (mounted) {
                     final navArgs = result['requiresProfileCompletion'] == true
@@ -145,9 +160,17 @@ class _LoginPageState extends State<LoginPage> {
                     });
                   }
                 } else {
-                  debugPrint('LoginPage: Timeout loading permissions, proceeding with navigation anyway...');
+                  debugPrint('LoginPage: Permissions failed to load after $maxAttempts attempts, proceeding anyway...');
                   if (mounted) {
-                    // Navigate anyway after timeout
+                    // Show warning but proceed anyway
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Warning: Some permissions may not be loaded. Please refresh if modules are missing.'), 
+                        backgroundColor: Colors.orange,
+                        duration: Duration(seconds: 5),
+                      ),
+                    );
+                    
                     final navArgs = result['requiresProfileCompletion'] == true
                         ? {
                             'initialNavIndex': 5,
@@ -169,6 +192,8 @@ class _LoginPageState extends State<LoginPage> {
                     backgroundColor: Colors.red,
                   ),
                 );
+                // Navigate anyway on error to prevent login lockout
+                Navigator.of(context).pushReplacementNamed('/home');
               }
             } finally {
               if (mounted) {

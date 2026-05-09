@@ -64,6 +64,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   int? _badgeFiles;
   int? _badgeRentals;
   StreamSubscription<Map<String, dynamic>?>? _userStreamSubscription;
+  Timer? _periodicPermissionCheckTimer;
   
   @override
   void initState() {
@@ -82,6 +83,9 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           setState(() {
             _currentUser = user;
           });
+          
+          // CRITICAL: Force permission refresh when user changes to ensure sidebar modules show up
+          _forcePermissionRefreshIfNeeded(user);
         } else if (user == null && _currentUser != null) {
           // Log when user is explicitly logged out (but not on initial null)
           debugPrint('MainNavigationPage: User logged out, clearing current user');
@@ -91,6 +95,9 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         }
       }
     });
+    
+    // CRITICAL: Add periodic check as fallback to ensure permissions are loaded
+    _startPeriodicPermissionCheck();
   }
 
   Future<void> _loadUserData() async {
@@ -120,9 +127,67 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
 
   @override
   void dispose() {
-    // CRITICAL: Clean up stream subscription to prevent memory leaks
+    // CRITICAL: Clean up stream subscription and timer to prevent memory leaks
     _userStreamSubscription?.cancel();
+    _periodicPermissionCheckTimer?.cancel();
     super.dispose();
+  }
+
+  /// Start periodic permission check as fallback
+  void _startPeriodicPermissionCheck() {
+    // Check permissions every 2 seconds for the first 10 seconds after login
+    int checkCount = 0;
+    const maxChecks = 5; // 5 checks over 10 seconds
+    
+    _periodicPermissionCheckTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      checkCount++;
+      
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      if (_currentUser != null && !PermissionSyncService.arePermissionsFullyLoaded(_currentUser)) {
+        debugPrint('MainNavigationPage: Periodic check #$checkCount - Permissions not loaded, forcing refresh...');
+        await _forcePermissionRefreshIfNeeded(_currentUser!);
+      }
+      
+      // Stop after max checks or when permissions are loaded
+      if (checkCount >= maxChecks || PermissionSyncService.arePermissionsFullyLoaded(_currentUser)) {
+        timer.cancel();
+        debugPrint('MainNavigationPage: Periodic permission checks completed');
+      }
+    });
+  }
+
+  /// Force permission refresh if permissions are not loaded
+  Future<void> _forcePermissionRefreshIfNeeded(Map<String, dynamic> user) async {
+    // Check if permissions are loaded
+    if (!PermissionSyncService.arePermissionsFullyLoaded(user)) {
+      debugPrint('MainNavigationPage: Permissions not loaded, forcing refresh...');
+      
+      try {
+        final storage = AppStorage();
+        final settings = await storage.readSettings();
+        final token = settings['authToken'] as String?;
+        
+        if (token != null) {
+          // Force refresh permissions
+          await PermissionSyncService.refreshUserPermissions(token);
+          
+          // Update current user with fresh permissions
+          final refreshedUser = await AuthService.getCurrentUser(token);
+          if (refreshedUser != null && mounted) {
+            setState(() {
+              _currentUser = refreshedUser;
+            });
+            debugPrint('MainNavigationPage: Permissions refreshed and UI updated');
+          }
+        }
+      } catch (e) {
+        debugPrint('MainNavigationPage: Error refreshing permissions: $e');
+      }
+    }
   }
 
   Future<void> _loadBadges() async {
