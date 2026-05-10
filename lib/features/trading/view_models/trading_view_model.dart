@@ -107,6 +107,25 @@ class TradingViewModel extends ChangeNotifier {
       
       _userCompanyId = local.RoleUtils.getUserCompanyId(_currentUser);
       
+      // CRITICAL FIX: Ensure companyId is never null to prevent stream breaks
+      if (_userCompanyId == null && !_isSuperAdmin) {
+        // Try to get companyId from cached AuthService user
+        final cachedUser = AuthService.currentUser;
+        if (cachedUser != null) {
+          final fallbackCompanyId = local.RoleUtils.getUserCompanyId(cachedUser);
+          if (fallbackCompanyId != null) {
+            _userCompanyId = fallbackCompanyId;
+            debugPrint('TradingViewModel: FALLBACK - Using cached companyId from AuthService: $_userCompanyId');
+          } else {
+            debugPrint('TradingViewModel: WARNING - No companyId available, using empty string to prevent hanging');
+            _userCompanyId = '';
+          }
+        } else {
+          debugPrint('TradingViewModel: WARNING - No cached user or companyId, using empty string');
+          _userCompanyId = '';
+        }
+      }
+      
       await loadEntries();
     } catch (e) {
       debugPrint('Error initializing user context: $e');

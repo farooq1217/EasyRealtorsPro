@@ -24,6 +24,7 @@ class SettingsPageClean extends StatefulWidget {
 
 class _SettingsPageCleanState extends State<SettingsPageClean> {
   SettingsViewModel? _viewModel;
+  Map<String, dynamic>? user; // Store user data for access in build method
   final TextEditingController _societyNameController = TextEditingController();
   final TextEditingController _blockNameController = TextEditingController();
   final TextEditingController _fullNameController = TextEditingController();
@@ -73,14 +74,13 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
     final storage = AppStorage();
     final s = await storage.readSettings();
     final token = s['authToken'] as String?;
-    Map<String, dynamic>? currentUser;
     if (token != null) {
-      currentUser = await AuthService.getCurrentUser(token);
+      user = await AuthService.getCurrentUser(token);
     }
     
     // ROLE SYNC FIX: Enhanced role detection
-    final isSuper = RoleUtils.isSuperAdmin(currentUser) || PermissionHelper.isBypassUser(currentUser);
-    var companyId = RoleUtils.getUserCompanyId(currentUser);
+    final isSuper = RoleUtils.isSuperAdmin(user) || PermissionHelper.isBypassUser(user);
+    var companyId = RoleUtils.getUserCompanyId(user);
     
     // IMMEDIATE FALLBACK: Set default fallback for null companyId
     if (companyId == null) {
@@ -94,7 +94,7 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
     }
     
     debugPrint('SettingsPage: Final parameters - isSuper: $isSuper, companyId: $companyId');
-    debugPrint('SettingsPage: User data - Email: ${currentUser?['email']}, Role: ${currentUser?['role']}');
+    debugPrint('SettingsPage: User data - Email: ${user?['email']}, Role: ${user?['role']}');
     
     _viewModel = SettingsViewModel(
       SettingsRepositoryImpl(
@@ -367,16 +367,16 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
 
   @override
   Widget build(BuildContext context) {
-    // AVOID LAZY INITIALIZER ERRORS: Create ViewModel in build method if not yet initialized
-    // Note: storage.readSettings() is async, so we use fallback ViewModel here
-    // The actual user context will be loaded in _initializeViewModel()
-    final viewModel = _viewModel ?? SettingsViewModel(
-      SettingsRepositoryImpl(
-        widget.db,
-        companyId: 'GLOBAL_ADMIN', // Default fallback
-        isSuperAdmin: false, // Will be detected in initialization
-      ),
-    );
+  final actualCompanyId = RoleUtils.getUserCompanyId(user) ?? 'GLOBAL_ADMIN';
+final actualIsSuperAdmin = RoleUtils.isSuperAdmin(user);
+
+final viewModel = _viewModel ?? SettingsViewModel(
+  SettingsRepositoryImpl(
+    widget.db,
+    companyId: actualCompanyId,  // ✅ Dynamic value
+    isSuperAdmin: actualIsSuperAdmin,  // ✅ Dynamic value
+  ),
+);
     
     // ViewModel initialization is now handled only in initState() to prevent duplicates
     // No fallback needed as initState() ensures proper initialization

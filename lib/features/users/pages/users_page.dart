@@ -57,7 +57,7 @@ class _UsersPageState extends State<UsersPage> {
   
   // Role options (hardcoded as required)
   List<Map<String, dynamic>> _roles = [
-    {'id': null, 'name': 'All roles'},
+    {'id': 'all', 'name': 'All roles'}, // Changed from null to 'all'
     {'id': 'super_admin', 'name': 'Super Admin'},
     {'id': 'company_admin', 'name': 'Company Admin'},
     {'id': 'agent', 'name': 'Agent'},
@@ -73,8 +73,9 @@ class _UsersPageState extends State<UsersPage> {
       // - Can only see and filter by: Agent role only
       // - Both "Super Admin" and "Company Admin" roles are hidden from them
       // - Can only assign Agent role to other users
+      // - Use unique string for null value to avoid duplicates
       return [
-        {'id': null, 'name': 'All roles'},
+        {'id': 'all', 'name': 'All roles'}, // Changed from null to 'all'
         {'id': 'agent', 'name': 'Agent'},
       ];
     }
@@ -82,9 +83,10 @@ class _UsersPageState extends State<UsersPage> {
   
   // Status options (hardcoded as required)
   List<Map<String, dynamic>> _statuses = [
-    {'id': null, 'name': 'All statuses'},
+    {'id': 'all', 'name': 'All statuses'},
     {'id': 'active', 'name': 'Active'},
     {'id': 'inactive', 'name': 'Inactive'},
+    {'id': 'archived', 'name': 'Archived'},
   ];
 
   @override
@@ -1265,48 +1267,7 @@ class _UsersPageState extends State<UsersPage> {
           ),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          value: viewModel.companies.isEmpty ? null : viewModel.selectedCompanyId,
-          decoration: InputDecoration(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFFF6B35)),
-            ),
-            labelText: 'Company',
-            hintText: viewModel.companies.isEmpty ? 'Loading companies...' : 'Select Company',
-            prefixIcon: viewModel.companies.isEmpty 
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: Padding(
-                      padding: EdgeInsets.all(12),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
-                      ),
-                    ),
-                  )
-                : null,
-          ),
-          items: viewModel.companies.isEmpty 
-              ? [] 
-              : _buildCompanyDropdownItems(viewModel.companies, viewModel.isCurrentUserSuperAdmin),
-          onChanged: viewModel.companies.isEmpty 
-              ? null 
-              : (value) {
-                  viewModel.selectedCompanyId = value;
-                },
-          isExpanded: true,
-          menuMaxHeight: 300,
-          dropdownColor: Colors.white,
-          icon: viewModel.companies.isEmpty 
-              ? const SizedBox.shrink()
-              : Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
-        ),
+        _buildCompanyDropdownField(viewModel),
         const SizedBox(height: 16),
 
         // Role dropdown
@@ -1515,17 +1476,102 @@ class _UsersPageState extends State<UsersPage> {
     );
   }
 
+  // Build company dropdown field with role-based filtering
+  Widget _buildCompanyDropdownField(UserViewModel viewModel) {
+    // For company admins, show only their company and disable the field
+    if (!viewModel.isCurrentUserSuperAdmin) {
+      final userCompanyId = viewModel.currentUser?['company_id']?.toString();
+      final userCompany = viewModel.companies.firstWhere(
+        (company) => company['id'] == userCompanyId,
+        orElse: () => viewModel.companies.isNotEmpty 
+            ? viewModel.companies.first 
+            : {'id': '', 'name': 'Unknown Company'},
+      );
+      
+      return DropdownButtonFormField<String>(
+        value: userCompanyId,
+        decoration: InputDecoration(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+          ),
+          labelText: 'Company',
+          hintText: userCompany['name'],
+          filled: true,
+          fillColor: Colors.grey.shade100,
+          suffixIcon: Icon(Icons.lock, color: Colors.grey.shade400, size: 20),
+        ),
+        items: [
+          DropdownMenuItem<String>(
+            value: userCompanyId,
+            child: Text(userCompany['name'] ?? 'Unknown Company'),
+          ),
+        ],
+        onChanged: null, // Disabled for company admins
+        isExpanded: true,
+        dropdownColor: Colors.grey.shade50,
+        style: TextStyle(color: Colors.grey.shade700),
+      );
+    }
+    
+    // For super admins, show all companies including GLOBAL_ADMIN option
+    return DropdownButtonFormField<String>(
+      value: viewModel.companies.isEmpty ? null : viewModel.selectedCompanyId,
+      decoration: InputDecoration(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFFFF6B35)),
+        ),
+        labelText: 'Company',
+        hintText: viewModel.companies.isEmpty ? 'Loading companies...' : 'Select Company',
+        prefixIcon: viewModel.companies.isEmpty 
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+                  ),
+                ),
+              )
+            : null,
+      ),
+      items: viewModel.companies.isEmpty 
+          ? [] 
+          : _buildCompanyDropdownItems(viewModel.companies),
+      onChanged: viewModel.companies.isEmpty 
+          ? null 
+          : (value) {
+              viewModel.selectedCompanyId = value;
+            },
+      isExpanded: true,
+      menuMaxHeight: 300,
+      dropdownColor: Colors.white,
+      icon: viewModel.companies.isEmpty 
+          ? const SizedBox.shrink()
+          : Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+    );
+  }
+
   // Helper method to build company dropdown items with GLOBAL_ADMIN option for Super Admins
-  List<DropdownMenuItem<String>> _buildCompanyDropdownItems(List<Map<String, dynamic>> companies, bool isCurrentUserSuperAdmin) {
+  List<DropdownMenuItem<String>> _buildCompanyDropdownItems(List<Map<String, dynamic>> companies) {
     final List<DropdownMenuItem<String>> items = [];
     
     // Add GLOBAL_ADMIN option for Super Admins
-    if (isCurrentUserSuperAdmin) {
-      items.add(DropdownMenuItem<String>(
-        value: 'GLOBAL_ADMIN',
-        child: Text('Global Admin (No Company)'),
-      ));
-    }
+    items.add(DropdownMenuItem<String>(
+      value: 'GLOBAL_ADMIN',
+      child: Text('Global Admin (No Company)'),
+    ));
     
     // Add actual companies
     for (final company in companies) {
@@ -1701,7 +1747,7 @@ class _UsersPageState extends State<UsersPage> {
                             },
                             // ✨ FIX: Validate value against available roles to prevent crashes ✨
                             validator: (value) {
-                              final validRoles = ['super_admin', 'company_admin', 'agent'];
+                              final validRoles = ['all', 'super_admin', 'company_admin', 'agent'];
                               if (value == null || !validRoles.contains(value)) {
                                 return 'Please select a valid role';
                               }

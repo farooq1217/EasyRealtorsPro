@@ -83,8 +83,8 @@ class UserRepositoryImpl implements UserRepository {
                  password_hash, salt, iterations, is_first_login, profile_picture_path
           FROM users 
           WHERE company_id = ? 
-          AND (is_active = 1 OR is_active IS NULL) 
-          AND (status IS NULL OR status NOT IN ('deleted', 'archived'))
+          AND (status IS NULL OR status != 'deleted')
+          -- ✅ CRITICAL FIX: Include archived users, remove is_active filter
           ORDER BY updated_at DESC
         ''';
         variables = [d.Variable.withString(companyId)];
@@ -96,8 +96,8 @@ class UserRepositoryImpl implements UserRepository {
                  company_id, status, is_active, is_synced, created_at, updated_at,
                  password_hash, salt, iterations, is_first_login, profile_picture_path
           FROM users 
-          WHERE (is_active = 1 OR is_active IS NULL) 
-          AND (status IS NULL OR status NOT IN ('deleted', 'archived'))
+          WHERE (status IS NULL OR status != 'deleted')
+          -- ✅ CRITICAL FIX: Include archived users, remove is_active filter
           ORDER BY updated_at DESC
         ''';
         debugPrint('UserRepository: getUsers query for Super Admin - showing all users');
@@ -971,18 +971,47 @@ class UserRepositoryImpl implements UserRepository {
       
       debugPrint('UserRepository: User found - current permissions: ${existingUser.permissions}');
       
-      // CRITICAL: Use customUpdate with proper stream triggering
+      // CRITICAL FIX: Use email and company_id to target correct user record
+      // Build WHERE clause to match the correct user record (same as updateUserPermissions)
+      String whereClause = 'email = ?';
+      List<d.Variable<Object>> whereArgs = [d.Variable.withString(existingUser.email)];
+      
+      // If companyId is provided, also match it to avoid updating wrong duplicate
+      if (existingUser.companyId != null && existingUser.companyId!.isNotEmpty) {
+        whereClause += ' AND (company_id = ? OR company_id IS NULL)';
+        whereArgs.add(d.Variable.withString(existingUser.companyId!));
+      }
+      
+      debugPrint('UserRepository: updateUserRole - WHERE clause: $whereClause');
+      debugPrint('UserRepository: updateUserRole - userEmail: ${existingUser.email}, companyId: ${existingUser.companyId}');
+      
+      // CRITICAL: Use customUpdate with email/company_id matching and proper stream triggering
       final result = await db.customUpdate(
-        'UPDATE users SET permissions = ?, updated_at = ? WHERE id = ?',
+        'UPDATE users SET permissions = ?, updated_at = ? WHERE $whereClause',
         variables: <d.Variable<Object>>[
           d.Variable.withString(finalJson),
           d.Variable.withString(now),
-          d.Variable.withString(userId),
+          ...whereArgs,
         ],
         updates: {db.users}, // CRITICAL: This tells Drift to trigger the watch() stream!
       );
       
       debugPrint('UserRepository: Update completed - affected rows: ${result}');
+      
+      // If no rows were affected, try updating by userId as fallback
+      if (result == 0) {
+        debugPrint('UserRepository: No rows updated by email/company_id, trying userId fallback...');
+        final fallbackResult = await db.customUpdate(
+          'UPDATE users SET permissions = ?, updated_at = ? WHERE id = ?',
+          variables: <d.Variable<Object>>[
+            d.Variable.withString(finalJson),
+            d.Variable.withString(now),
+            d.Variable.withString(userId),
+          ],
+          updates: {db.users},
+        );
+        debugPrint('UserRepository: Fallback update completed - affected rows: ${fallbackResult}');
+      }
       
       // ✨ PRODUCTION FIX: Sync to Firestore immediately after SQLite update ✨
       if (!_sqliteOnlyMode) {
@@ -1036,6 +1065,62 @@ class UserRepositoryImpl implements UserRepository {
     } catch (e) {
       debugPrint('UserRepository: ERROR updating user role: $e');
       throw Exception('Failed to update user role: $e');
+    }
+  }
+
+  @override
+  Future<void> updateUserPermissions({
+    required String userId,
+    required String userEmail,  // Add email parameter to handle duplicates
+    required String? companyId,  // Add company parameter to handle duplicates
+    required Map<String, String> permissionsMap,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    final permissionsJson = jsonEncode({
+      'role': 'agent',
+      'permission': 'custom',
+      'canDelete': false,
+      'permissionsMap': permissionsMap,
+    });
+
+    // Build WHERE clause to match the correct user record
+    String whereClause = 'email = ?';
+    List<d.Variable<Object>> whereArgs = [d.Variable.withString(userEmail)];
+    
+    // If companyId is provided, also match it to avoid updating wrong duplicate
+    if (companyId != null && companyId.isNotEmpty) {
+      whereClause += ' AND (company_id = ? OR company_id IS NULL)';
+      whereArgs.add(d.Variable.withString(companyId));
+    }
+    
+    debugPrint('UserRepository: updateUserPermissions - WHERE clause: $whereClause');
+    debugPrint('UserRepository: updateUserPermissions - userEmail: $userEmail, companyId: $companyId');
+    debugPrint('UserRepository: updateUserPermissions - permissions: $permissionsJson');
+    
+    final result = await db.customUpdate(
+      'UPDATE users SET permissions = ?, updated_at = ? WHERE $whereClause',
+      variables: [
+        d.Variable.withString(permissionsJson),
+        d.Variable.withString(now),
+        ...whereArgs,
+      ],
+      updates: {db.users},
+    );
+    
+    debugPrint('UserRepository: updateUserPermissions - affected rows: $result');
+    
+    // If no rows were affected, try updating by userId as fallback
+    if (result == 0) {
+      debugPrint('UserRepository: No rows updated by email, trying userId fallback...');
+      await db.customUpdate(
+        'UPDATE users SET permissions = ?, updated_at = ? WHERE id = ?',
+        variables: [
+          d.Variable.withString(permissionsJson),
+          d.Variable.withString(now),
+          d.Variable.withString(userId),
+        ],
+        updates: {db.users},
+      );
     }
   }
 
@@ -1131,8 +1216,8 @@ class UserRepositoryImpl implements UserRepository {
             COUNT(CASE WHEN status = 'inactive' THEN 1 END) as inactive_users,
             COUNT(CASE WHEN status = 'archived' THEN 1 END) as archived_users
           FROM users 
-          WHERE (is_active = 1 OR is_active IS NULL)
-          AND (status IS NULL OR status != 'deleted')
+          WHERE (status IS NULL OR status != 'deleted')
+          -- ✅ CRITICAL FIX: Removed is_active condition to include archived users
         ''';
       } else {
         query = '''
@@ -1142,8 +1227,9 @@ class UserRepositoryImpl implements UserRepository {
             COUNT(CASE WHEN status = 'inactive' THEN 1 END) as inactive_users,
             COUNT(CASE WHEN status = 'archived' THEN 1 END) as archived_users
           FROM users 
-          WHERE company_id = ? AND (is_active = 1 OR is_active IS NULL)
+          WHERE company_id = ? 
           AND (status IS NULL OR status != 'deleted')
+          -- ✅ CRITICAL FIX: Removed is_active condition to include archived users
         ''';
         variables = [d.Variable.withString(effectiveCompanyId ?? '')];
       }

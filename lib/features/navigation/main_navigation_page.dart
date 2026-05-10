@@ -564,6 +564,57 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
                                 ],
                               ),
                               const SizedBox(width: 8),
+                              // Refresh Permissions Button
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.2),
+                                    width: 1,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.white.withOpacity(0.1),
+                                      blurRadius: 8,
+                                      spreadRadius: 0.5,
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(18),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.refresh,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                      onPressed: () async {
+                                        if (_currentUser != null) {
+                                          await _forcePermissionRefreshIfNeeded(_currentUser!);
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Permissions refreshed successfully'),
+                                                backgroundColor: Colors.green,
+                                                duration: Duration(seconds: 2),
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                      style: IconButton.styleFrom(
+                                        minimumSize: const Size(32, 32),
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                      tooltip: 'Refresh Permissions',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
                               Container(
                                 margin: const EdgeInsets.only(top: 0, right: 0),
                                 decoration: BoxDecoration(

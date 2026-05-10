@@ -501,9 +501,40 @@ class UserViewModel extends ChangeNotifier {
     }
   }
 
+  // Helper method to force refresh users from database
+  Future<void> forceRefreshUsers() async {
+    try {
+      final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
+      _users = await _repository.getUsers(companyId);
+      _applySearchFilter();
+      debugPrint('UserViewModel: Force refreshed ${_users.length} users');
+    } catch (e) {
+      debugPrint('Error force refreshing users: $e');
+    }
+  }
+
+  // ✅ CRITICAL: Refresh users immediately after archive/delete operations
+  Future<void> _refreshUsersAfterOperation() async {
+    try {
+      final companyId = local.RoleUtils.getUserCompanyId(_currentUser);
+      _users = await _repository.getUsers(companyId);
+      _applySearchFilter();
+      notifyListeners(); // ✅ CRITICAL: Notify UI to update immediately
+      debugPrint('UserViewModel: Refreshed ${_users.length} users after operation');
+    } catch (e) {
+      debugPrint('Error refreshing users after operation: $e');
+      notifyListeners(); // Still notify even on error
+    }
+  }
+
   Future<void> archiveUser(String userId) async {
     try {
       await _repository.archiveUser(userId);
+      
+      // ✅ CRITICAL: Refresh users list immediately after archive
+      await _refreshUsersAfterOperation();
+      
+      debugPrint('UserViewModel: User archived successfully: $userId');
     } catch (e) {
       _error = 'Failed to archive user: $e';
       notifyListeners();
@@ -1019,6 +1050,11 @@ class UserViewModel extends ChangeNotifier {
 
     try {
       await _repository.deleteUser(id);
+      
+      // ✅ CRITICAL: Refresh users list immediately after delete
+      await _refreshUsersAfterOperation();
+      
+      debugPrint('UserViewModel: User deleted successfully: $id');
       return true;
     } catch (e) {
       _error = 'Failed to delete user: $e';
@@ -1043,6 +1079,11 @@ class UserViewModel extends ChangeNotifier {
           updatedAt: DateTime.now().toIso8601String(),
         );
         await _repository.updateUser(updatedUser);
+        
+        // ✅ CRITICAL: Refresh users list immediately after status change
+        await _refreshUsersAfterOperation();
+        
+        debugPrint('UserViewModel: User status updated successfully: $id -> $newStatus');
         return true;
       }
       return false;
@@ -1079,6 +1120,35 @@ class UserViewModel extends ChangeNotifier {
       _error = 'Failed to toggle user active status: $e';
       notifyListeners();
       return false;
+    }
+  }
+
+  Future<void> updateAgentPermissions({
+    required String agentId,
+    required Map<String, String> modulePermissions,
+  }) async {
+    try {
+      // Get the user details to extract email and company ID
+      final user = await _repository.getUserById(agentId);
+      if (user == null) {
+        throw Exception('User not found: $agentId');
+      }
+      
+      await _repository.updateUserPermissions(
+        userId: agentId,
+        userEmail: user.email,
+        companyId: user.companyId,
+        permissionsMap: modulePermissions,
+      );
+      
+      // CRITICAL: Refresh data and notify UI
+      await _loadUsersFromRepository();  // Reload users from database
+      notifyListeners();  // Trigger UI rebuild
+      
+      print('✅ Agent permissions updated successfully');
+    } catch (e) {
+      print('❌ Error: $e');
+      rethrow;
     }
   }
 

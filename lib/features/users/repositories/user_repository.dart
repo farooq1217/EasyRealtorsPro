@@ -50,6 +50,12 @@ abstract class UserRepository {
   // User management operations
   Future<void> updateUserPassword(String userId, String newPassword);
   Future<void> updateUserRole(String userId, String newRole, Map<String, bool> selectedModules);
+  Future<void> updateUserPermissions({
+    required String userId,
+    required String userEmail,
+    required String? companyId,
+    required Map<String, String> permissionsMap,
+  });
   Future<void> archiveUser(String userId);
   
   // User statistics

@@ -299,12 +299,32 @@ class ExpenditureViewModel extends ChangeNotifier {
     
     // IMMEDIATE FALLBACK: Set default fallback for null companyId
     if (companyId == null) {
-      if (isSuperAdmin) {
-        companyId = 'GLOBAL_ADMIN';
-        debugPrint('ExpenditureViewModel: IMMEDIATE FALLBACK - Set companyId to GLOBAL_ADMIN for Super Admin');
+      // CRITICAL FIX: Try to get companyId from cached AuthService user first
+      final cachedUser = AuthService.currentUser;
+      if (cachedUser != null) {
+        final fallbackCompanyId = local.RoleUtils.getUserCompanyId(cachedUser);
+        if (fallbackCompanyId != null) {
+          companyId = fallbackCompanyId;
+          debugPrint('ExpenditureViewModel: FALLBACK - Using cached companyId from AuthService: $companyId');
+        } else {
+          // Final fallback for non-super-admin
+          if (isSuperAdmin) {
+            companyId = 'GLOBAL_ADMIN';
+            debugPrint('ExpenditureViewModel: FALLBACK - Set companyId to GLOBAL_ADMIN for Super Admin');
+          } else {
+            debugPrint('ExpenditureViewModel: FALLBACK - No companyId available, using empty string to prevent hanging');
+            companyId = '';
+          }
+        }
       } else {
-        debugPrint('ExpenditureViewModel: No companyId provided for non-super-admin, using empty string to prevent hanging');
-        companyId = '';
+        // No cached user available
+        if (isSuperAdmin) {
+          companyId = 'GLOBAL_ADMIN';
+          debugPrint('ExpenditureViewModel: FALLBACK - Set companyId to GLOBAL_ADMIN for Super Admin (no cached user)');
+        } else {
+          debugPrint('ExpenditureViewModel: FALLBACK - No cached user or companyId, using empty string');
+          companyId = '';
+        }
       }
     }
     

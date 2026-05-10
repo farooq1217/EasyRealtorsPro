@@ -70,41 +70,145 @@ class PermissionSyncService {
   /// Extract permissionsMap from user object
   static Map<String, dynamic>? _extractPermissionsMap(Map<String, dynamic> user) {
     try {
-      // Check permissionsMap field first
+      debugPrint('PermissionSyncService: Extracting permissionsMap for user ${user['email']}');
+      
+      // Check permissionsMap field first (for future compatibility)
       var permissionsMapRaw = user['permissionsMap'];
       
-      if (permissionsMapRaw == null) {
-        // Check inside permissions field
-        final permissionsField = user['permissions'];
-        if (permissionsField != null) {
-          Map<String, dynamic>? permissions;
-          if (permissionsField is String) {
-            permissions = jsonDecode(permissionsField) as Map<String, dynamic>?;
-          } else if (permissionsField is Map<String, dynamic>) {
-            permissions = permissionsField;
+      if (permissionsMapRaw != null) {
+        debugPrint('PermissionSyncService: Found direct permissionsMap: $permissionsMapRaw');
+        // ✅ CRITICAL FIX: If permissionsMap is empty, generate from role
+        if (permissionsMapRaw is Map && (permissionsMapRaw as Map).isEmpty) {
+          debugPrint('PermissionSyncService: permissionsMap is empty, generating from role');
+          final permissionsField = user['permissions'];
+          if (permissionsField != null) {
+            if (permissionsField is String) {
+              final decoded = jsonDecode(permissionsField);
+              if (decoded is Map) {
+                permissionsMapRaw = _generatePermissionsMapFromRole(Map<String, dynamic>.from(decoded), user);
+                debugPrint('PermissionSyncService: Generated permissionsMap from role (empty case): $permissionsMapRaw');
+              }
+            } else if (permissionsField is Map) {
+              permissionsMapRaw = _generatePermissionsMapFromRole(Map<String, dynamic>.from(permissionsField), user);
+              debugPrint('PermissionSyncService: Generated permissionsMap from role Map (empty case): $permissionsMapRaw');
+            }
           }
-          
-          if (permissions != null) {
-            permissionsMapRaw = permissions['permissionsMap'];
+        }
+      } else {
+        // Check permissions field directly (current database structure)
+        final permissionsField = user['permissions'];
+        debugPrint('PermissionSyncService: Checking permissions field: $permissionsField');
+        
+        if (permissionsField != null) {
+          if (permissionsField is String) {
+            // Parse JSON string from database
+            final decoded = jsonDecode(permissionsField);
+            debugPrint('PermissionSyncService: Decoded permissions from string: $decoded');
+            
+            if (decoded is Map) {
+              // ✅ CRITICAL FIX: Check for nested permissionsMap structure
+              if (decoded.containsKey('permissionsMap') && decoded['permissionsMap'] is Map) {
+                permissionsMapRaw = decoded['permissionsMap'];
+                debugPrint('PermissionSyncService: Extracted nested permissionsMap: $permissionsMapRaw');
+              } else {
+                // ✅ CRITICAL FIX: Generate permissionsMap from role-based permissions
+                permissionsMapRaw = _generatePermissionsMapFromRole(Map<String, dynamic>.from(decoded), user);
+                debugPrint('PermissionSyncService: Generated permissionsMap from role: $permissionsMapRaw');
+              }
+            }
+          } else if (permissionsField is Map) {
+            // Already a map (from cache)
+            // ✅ CRITICAL FIX: Check for nested permissionsMap structure
+            if (permissionsField.containsKey('permissionsMap') && permissionsField['permissionsMap'] is Map) {
+              permissionsMapRaw = permissionsField['permissionsMap'];
+              debugPrint('PermissionSyncService: Extracted nested permissionsMap from Map: $permissionsMapRaw');
+            } else {
+              // ✅ CRITICAL FIX: Generate permissionsMap from role-based permissions
+              permissionsMapRaw = _generatePermissionsMapFromRole(Map<String, dynamic>.from(permissionsField), user);
+              debugPrint('PermissionSyncService: Generated permissionsMap from role Map: $permissionsMapRaw');
+            }
           }
         }
       }
       
       if (permissionsMapRaw != null) {
         if (permissionsMapRaw is Map) {
-          return Map<String, dynamic>.from(permissionsMapRaw);
+          final result = Map<String, dynamic>.from(permissionsMapRaw);
+          debugPrint('PermissionSyncService: Successfully extracted permissionsMap: $result');
+          return result;
         } else if (permissionsMapRaw is String) {
           final decoded = jsonDecode(permissionsMapRaw);
           if (decoded is Map) {
-            return Map<String, dynamic>.from(decoded);
+            final result = Map<String, dynamic>.from(decoded);
+            debugPrint('PermissionSyncService: Successfully extracted permissionsMap from string: $result');
+            return result;
           }
         }
       }
+      
+      debugPrint('PermissionSyncService: No valid permissionsMap found');
+      return null;
     } catch (e) {
       debugPrint('PermissionSyncService: Error extracting permissionsMap: $e');
+      return null;
+    }
+  }
+
+  /// Generate permissionsMap from role-based permissions
+  static Map<String, dynamic> _generatePermissionsMapFromRole(Map<String, dynamic> permissions, Map<String, dynamic> user) {
+    final role = permissions['role']?.toString().toLowerCase();
+    final permission = permissions['permission']?.toString().toLowerCase();
+    
+    debugPrint('PermissionSyncService: Generating permissionsMap for role: $role, permission: $permission');
+    
+    Map<String, String> permissionsMap = {};
+    
+    if (role == 'super_admin') {
+      // Super Admin gets full access to all modules
+      final allModules = [
+        'users', 'companies', 'trading', 'inventory', 'rental', 'expenditure', 
+        'agent_working', 'reports', 'dashboard', 'settings'
+      ];
+      for (final module in allModules) {
+        permissionsMap[module] = 'full_access';
+      }
+    } else if (role == 'company_admin') {
+      // Company Admin gets full access to users and reports, limited access to others
+      permissionsMap['users'] = 'full_access';
+      permissionsMap['reports'] = 'full_access';
+      permissionsMap['dashboard'] = 'view_add_edit';
+      permissionsMap['settings'] = 'view_add_edit';
+      
+      // For other modules, check if there are explicit permissions in the permissions object
+      final modules = ['trading', 'inventory', 'rental', 'expenditure', 'agent_working'];
+      for (final module in modules) {
+        // Check if user has been assigned this module (would be in permissionsMap)
+        if (permissions.containsKey(module)) {
+          permissionsMap[module] = 'view_add_edit'; // Company admin gets full access to assigned modules
+        } else {
+          permissionsMap[module] = 'no_access';
+        }
+      }
+    } else if (role == 'agent') {
+      // Agent gets access based on assigned modules
+      final modules = ['trading', 'inventory', 'rental', 'expenditure', 'agent_working'];
+      for (final module in modules) {
+        if (permissions.containsKey(module)) {
+          permissionsMap[module] = 'view_add_edit'; // Agents get view_add_edit for assigned modules
+        } else {
+          permissionsMap[module] = 'no_access';
+        }
+      }
+      permissionsMap['dashboard'] = 'view_only';
+      permissionsMap['settings'] = 'view_only';
+    } else {
+      // Default/unknown role - minimal access
+      permissionsMap['dashboard'] = 'view_only';
+      permissionsMap['settings'] = 'view_only';
     }
     
-    return null;
+    debugPrint('PermissionSyncService: Generated permissionsMap: $permissionsMap');
+    return Map<String, dynamic>.from(permissionsMap);
   }
   
   /// Force permission refresh and update cache

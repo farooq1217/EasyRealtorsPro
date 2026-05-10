@@ -6,6 +6,7 @@ import 'package:shared/shared.dart';
 import '../core/services/app_storage.dart' show AppStorage;
 import '../core/services/permission_helper.dart';
 import '../core/services/auth_service.dart';
+import '../core/role_utils.dart' as local;
 
 // Note: This sidebar widget is designed to work independently and can be used
 // with any theme management system by passing themeMode and onThemeChanged callbacks.
@@ -37,19 +38,21 @@ class ModernSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final isBypass = PermissionHelper.isBypassUser(currentUser);
-    final role = (currentUser?['role'] ?? '').toString().toLowerCase();
-    final isAdminRole = role == 'admin' || role == 'super_admin' || role == 'company_admin';
-    final isSuperAdmin = role == 'super_admin';
-    
-    bool _canSee(String moduleKey) {
-      // CRITICAL SECURITY FIX: Admin bypass for company_admin and super_admin
-      // Admins always see all modules, even if permissionsMap is empty or delayed
-      if (isBypass || isSuperAdmin || isAdminRole) {
-        return true;
-      }
+   final theme = Theme.of(context);
+  final isDark = theme.brightness == Brightness.dark;
+  final isBypass = PermissionHelper.isBypassUser(currentUser);
+  
+  // ✅ FIX: Use RoleUtils as single source of truth for role detection
+  final isSuperAdmin = local.RoleUtils.isSuperAdmin(currentUser);
+  final isCompanyAdmin = local.RoleUtils.isCompanyAdmin(currentUser);
+  final isAdminRole = isSuperAdmin || isCompanyAdmin;
+  
+  bool _canSee(String moduleKey) {
+    // CRITICAL SECURITY FIX: Admin bypass for company_admin and super_admin
+    // ✅ Now this will work even if currentUser['role'] was null initially
+    if (isBypass || isSuperAdmin || isCompanyAdmin) {  // ✅ Explicit company_admin check
+      return true;
+    }
       
       // Universal modules accessible to all authenticated users
       const universalModules = {'dashboard', 'settings'};
@@ -115,7 +118,7 @@ class ModernSidebar extends StatelessWidget {
       }
       
       // CRITICAL SECURITY FIX: Double-check permissionsMap for agents to ensure explicit assignment
-      if (role == 'agent') {
+      if (local.RoleUtils.isAgent(currentUser)) {
         try {
           var permissionsMapRaw = currentUser?['permissionsMap'];
           
@@ -175,7 +178,7 @@ class ModernSidebar extends StatelessWidget {
       }
       
       // Company Admins get access to users and reports, plus any explicit permissions
-      if (role == 'company_admin') {
+      if (local.RoleUtils.isCompanyAdmin(currentUser)) {
         if (moduleKey == 'users' || moduleKey == 'reports') {
           return true;
         }

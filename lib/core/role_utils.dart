@@ -7,23 +7,25 @@ class RoleUtils {
   /// Check if user is a Super Admin
   static bool isSuperAdmin(Map<String, dynamic>? user) {
     if (user == null) return false;
-    final role = (user['role'] ?? '').toString().toLowerCase();
-    return role == 'super admin' || role == 'superadmin' || role == 'super_admin';
+    final roleStr = (user['role'] ?? '').toString().toLowerCase().trim();
+    return roleStr == 'super admin' || roleStr == 'superadmin' || roleStr == 'super_admin';
   }
 
   /// Check if user is an Agent
   static bool isAgent(Map<String, dynamic>? user) {
     if (user == null) return false;
-    final role = getUserRole(user).toLowerCase();
-    return role == 'agent';
+    final roleStr = getUserRole(user).toLowerCase().trim();
+    return roleStr == 'agent';
   }
 
   /// Check if user is a Company Admin
   static bool isCompanyAdmin(Map<String, dynamic>? user) {
     if (user == null) return false;
-    final role = getUserRole(user).toLowerCase();
-    return role == 'company admin' || role == 'companyadmin';
-  }
+    final roleStr = getUserRole(user).toLowerCase().trim();
+    return roleStr == 'company admin' || 
+         roleStr == 'companyadmin' || 
+         roleStr == 'company_admin';
+           }
 
   /// Check if user is a regular User
   static bool isUser(Map<String, dynamic>? user) {
@@ -32,14 +34,35 @@ class RoleUtils {
     return role == 'user';
   }
 
+  // Cache to prevent infinite loop
+  static final Map<String, String> _roleCache = {};
+  
   /// Get user role as string
   static String getUserRole(Map<String, dynamic>? user) {
     if (user == null) return '';
     
-    // First check direct role field
+    // Create cache key from user ID
+    final userId = user['id']?.toString() ?? user['email']?.toString() ?? '';
+    
+    // First check direct role field (before cache to prevent cache corruption)
     final directRole = (user['role'] ?? '').toString().trim();
+    
+    // If we have a direct role, use it and update cache
     if (directRole.isNotEmpty) {
+      // Check if cached value differs from current role
+      if (userId.isNotEmpty && _roleCache.containsKey(userId)) {
+        final cachedRole = _roleCache[userId]!;
+        if (cachedRole != directRole) {
+          debugPrint('RoleUtils.getUserRole: Role changed from "$cachedRole" to "$directRole", updating cache');
+        }
+      }
+      if (userId.isNotEmpty) _roleCache[userId] = directRole;
       return directRole;
+    }
+    
+    // Only use cache if no direct role available
+    if (userId.isNotEmpty && _roleCache.containsKey(userId)) {
+      return _roleCache[userId]!;
     }
     
     // If no direct role, check permissions JSON for role
@@ -60,20 +83,86 @@ class RoleUtils {
       }
       
       if (permissions != null) {
+        // CRITICAL FIX: Handle double-nested permissionsMap
+        // If permissions contains a nested permissionsMap, extract it
+        if (permissions.containsKey('permissionsMap') && permissions['permissionsMap'] is Map<String, dynamic>) {
+          permissions = permissions['permissionsMap'] as Map<String, dynamic>;
+          debugPrint('RoleUtils.getUserRole: Extracted nested permissionsMap');
+        }
+        
+        // Check for role in the (possibly extracted) permissions map
         final roleFromPermissions = (permissions['role'] ?? '').toString().trim();
         if (roleFromPermissions.isNotEmpty) {
+          if (userId.isNotEmpty) _roleCache[userId] = roleFromPermissions;
           return roleFromPermissions;
         }
       }
     }
     
-    return '';
+    final emptyRole = '';
+    if (userId.isNotEmpty) _roleCache[userId] = emptyRole;
+    return emptyRole;
   }
 
+  // Cache to prevent infinite loop
+  static final Map<String, String?> _companyIdCache = {};
+  
+  /// Clear caches - useful for testing or user changes
+  static void clearCaches() {
+    _roleCache.clear();
+    _companyIdCache.clear();
+    debugPrint('RoleUtils: Caches cleared');
+  }
+  
   /// Get user's company ID
   static String? getUserCompanyId(Map<String, dynamic>? user) {
     if (user == null) return null;
-    return user['company_id']?.toString() ?? user['companyId']?.toString();
+    
+    // Create cache key from user ID
+    final userId = user['id']?.toString() ?? user['email']?.toString() ?? '';
+    if (userId.isNotEmpty && _companyIdCache.containsKey(userId)) {
+      return _companyIdCache[userId];
+    }
+    
+    // First check direct company_id fields
+    final directCompanyId = user['company_id']?.toString() ?? user['companyId']?.toString();
+    if (directCompanyId != null && directCompanyId.isNotEmpty) {
+      if (userId.isNotEmpty) _companyIdCache[userId] = directCompanyId;
+      return directCompanyId;
+    }
+    
+    // Check if permissions contain nested permissionsMap with company info
+    final permissionsRaw = user['permissions'];
+    if (permissionsRaw != null) {
+      Map<String, dynamic>? permissions;
+      
+      if (permissionsRaw is String) {
+        try {
+          permissions = jsonDecode(permissionsRaw) as Map<String, dynamic>?;
+        } catch (e) {
+          debugPrint('RoleUtils.getUserCompanyId: Failed to decode permissions JSON: $e');
+        }
+      } else if (permissionsRaw is Map<String, dynamic>) {
+        permissions = permissionsRaw;
+      }
+      
+      if (permissions != null) {
+        // Handle double-nested permissionsMap
+        if (permissions.containsKey('permissionsMap') && permissions['permissionsMap'] is Map<String, dynamic>) {
+          permissions = permissions['permissionsMap'] as Map<String, dynamic>;
+        }
+        
+        final companyIdFromPermissions = permissions['company_id']?.toString() ?? permissions['companyId']?.toString();
+        if (companyIdFromPermissions != null && companyIdFromPermissions.isNotEmpty) {
+          if (userId.isNotEmpty) _companyIdCache[userId] = companyIdFromPermissions;
+          return companyIdFromPermissions;
+        }
+      }
+    }
+    
+    final nullCompanyId = null;
+    if (userId.isNotEmpty) _companyIdCache[userId] = nullCompanyId;
+    return nullCompanyId;
   }
 
   /// Check if user has specific permission
@@ -100,6 +189,13 @@ class RoleUtils {
     }
     
     if (permissions != null) {
+      // CRITICAL FIX: Handle double-nested permissionsMap
+      // If permissions contains a nested permissionsMap, extract it
+      if (permissions.containsKey('permissionsMap') && permissions['permissionsMap'] is Map<String, dynamic>) {
+        permissions = permissions['permissionsMap'] as Map<String, dynamic>;
+        debugPrint('RoleUtils.hasPermission: Extracted nested permissionsMap for permission check');
+      }
+      
       return permissions[permission] == true;
     }
     

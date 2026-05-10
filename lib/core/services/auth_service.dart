@@ -220,7 +220,7 @@ class AuthService {
     final db = await AppDatabase.instance();
     try {
       final dbResult = await db.customSelect(
-        'SELECT id, username, email, password_hash, name, contact_no, permissions, permissions_map, company_id, status, is_active, is_first_login, user_id, created_at FROM users WHERE email = ? OR username = ?',
+        'SELECT id, username, email, password_hash, name, contact_no, permissions, company_id, status, is_active, is_first_login, user_id, created_at FROM users WHERE email = ? OR username = ?',
         variables: [
           d.Variable.withString(emailKey),
           d.Variable.withString(emailKey),
@@ -249,7 +249,8 @@ class AuthService {
         'isActive': u['is_active'] ?? u['isActive'],
         'is_active': u['is_active'] ?? u['isActive'],
         'permissions': _parsePermissionsFromDb(u['permissions']),
-        'permissionsMap': _parsePermissionsMapFromDb(u['permissions_map']),
+        'permissionsMap': _parsePermissionsMapFromDb(u['permissions']),
+        'role': _extractRoleFromPermissions(u['permissions']),
         'isFirstLogin': u['is_first_login'] as int? ?? 0,
       };
     } catch (e) {
@@ -259,21 +260,25 @@ class AuthService {
   }
 
   /// Helper method to parse permissions from database (handles JSON strings)
-  static dynamic _parsePermissionsFromDb(dynamic permissions) {
-    if (permissions == null) return null;
-    if (permissions is String && permissions.isNotEmpty) {
-      try {
-        return jsonDecode(permissions);
-      } catch (e) {
-        debugPrint('AuthService: Failed to decode permissions JSON: $e');
-        return {};
-      }
+ static dynamic _parsePermissionsFromDb(dynamic permissions) {
+  if (permissions == null) return null;
+  if (permissions is String && permissions.isNotEmpty) {
+    try {
+      return jsonDecode(permissions);
+    } catch (e) {
+      debugPrint('AuthService: Failed to decode permissions JSON: $e');
+      return {};
     }
-    if (permissions is Map) {
-      return permissions;
-    }
-    return {};
   }
+  if (permissions is Map) {
+    // ✅ Handle nested permissionsMap here too for consistency
+    if (permissions.containsKey('permissionsMap') && permissions['permissionsMap'] is Map) {
+      return permissions['permissionsMap'];
+    }
+    return permissions;
+  }
+  return {};
+}
 
   /// Helper method to parse permissionsMap from database (handles JSON strings)
   static dynamic _parsePermissionsMapFromDb(dynamic permissionsMap) {
@@ -320,6 +325,7 @@ class AuthService {
         'name': u['name'] as String?,
         'contactNo': u['contact_no'] as String?,
         'permissions': _parsePermissionsFromDb(u['permissions']),
+        'permissionsMap': _parsePermissionsMapFromDb(u['permissions']),
         'companyId': u['company_id'] as String?,
         'status': u['status'] as String?,
         'isActive': u['is_active'] ?? u['isActive'],
@@ -1309,39 +1315,69 @@ class AuthService {
     debugPrint('User has passwordHash field: ${user?.containsKey('passwordHash')}');
     
     // Check if user is Super Admin (by role or permissions) and persist role/companyId locally
-    final permissions = user?['permissions'];
-    bool isSuperAdminUser = false;
-    String? roleField;
-    String? companyIdField;
-    if (permissions != null) {
-      try {
-        final perms = permissions is String ? jsonDecode(permissions) : permissions;
-        if (perms is Map) {
-          roleField = perms['role']?.toString();
-          companyIdField = (perms['company_id'] ?? perms['companyId'])?.toString();
-          if (roleField == 'super_admin') {
-            isSuperAdminUser = true;
-          }
-        }
-      } catch (_) {}
+  // Check if user is Super Admin (by role or permissions) and persist role/companyId locally
+// Check if user is Super Admin (by role or permissions) and persist role/companyId locally
+final permissions = user?['permissions'];
+bool isSuperAdminUser = false;
+String? roleField;
+String? companyIdField;
+
+if (permissions != null) {
+  try {
+    Map<String, dynamic>? perms;
+    
+    // Handle JSON string permissions from database
+    if (permissions is String) {
+      perms = jsonDecode(permissions) as Map<String, dynamic>?;
+    } else if (permissions is Map<String, dynamic>) {
+      perms = permissions;
     }
-    // Also check role field directly
-    if (user?['role'] == 'super_admin' || isBypassUser) {
-      isSuperAdminUser = true;
-      roleField ??= 'super_admin';
+    
+    if (perms != null) {
+      // ✅ CRITICAL FIX: Handle double-nested permissionsMap (same as RoleUtils)
+      if (perms.containsKey('permissionsMap') && perms['permissionsMap'] is Map<String, dynamic>) {
+        perms = perms['permissionsMap'] as Map<String, dynamic>;
+        if (kDebugMode) debugPrint('AuthService.login: Extracted nested permissionsMap for role detection');
+      }
+      
+      // Now extract role from the (possibly flattened) permissions map
+      roleField = perms['role']?.toString()?.trim();
+      companyIdField = (perms['company_id'] ?? perms['companyId'])?.toString()?.trim();
+      
+      if (roleField == 'super_admin') {
+        isSuperAdminUser = true;
+      }
     }
-    if (isBypassUser) {
-      roleField = 'super_admin';
-      companyIdField = 'GLOBAL_ADMIN';
-    }
-    // Persist resolved role/companyId so offline filters work
-    if (roleField != null && roleField.isNotEmpty) {
-      user?['role'] = roleField;
-    }
-    if (companyIdField != null && companyIdField.isNotEmpty) {
-      user?['companyId'] = companyIdField;
-      user?['company_id'] = companyIdField;
-    }
+  } catch (e) {
+    debugPrint('AuthService.login: Failed to parse permissions for role: $e');
+  }
+}
+
+// Also check role field directly (fallback)
+if (user?['role'] == 'super_admin' || isBypassUser) {
+  isSuperAdminUser = true;
+  roleField ??= 'super_admin';
+}
+if (isBypassUser) {
+  roleField = 'super_admin';
+  companyIdField = 'GLOBAL_ADMIN';
+}
+
+// ✅ Persist resolved role/companyId so offline filters work
+if (roleField != null && roleField.isNotEmpty) {
+  user?['role'] = roleField;  // <-- CRITICAL: Set role in user map for UI
+  debugPrint('AuthService.login: Set user[\'role\'] = "$roleField"');
+}
+if (companyIdField != null && companyIdField.isNotEmpty) {
+  user?['companyId'] = companyIdField;
+  user?['company_id'] = companyIdField;
+}
+
+// ✅ Also update in-memory cache immediately
+if (user != null) {
+  AuthService.currentUser = user;
+  _emitUserUpdate(user);  // Notify listeners
+}
     
     // Verify password - try both 'password' and 'passwordHash' fields (null-safe)
     final storedPasswordRaw = ((user?['password'] ?? user?['passwordHash'] ?? '') as Object?).toString();
@@ -2735,6 +2771,36 @@ class AuthService {
       debugPrint('AuthService: Error reading from local DB in getCurrentUser: $e');
     }
 
+    // ✅ CRITICAL: Extract permissionsMap from nested structure
+    if (merged != null) {
+      final permissions = merged['permissions'];
+      if (permissions != null) {
+        Map<String, dynamic>? perms;
+        
+        if (permissions is String) {
+          perms = jsonDecode(permissions) as Map<String, dynamic>?;
+        } else if (permissions is Map) {
+          perms = permissions as Map<String, dynamic>?;
+        }
+        
+        if (perms != null) {
+          // Handle nested permissionsMap (common structure)
+          if (perms.containsKey('permissionsMap') && perms['permissionsMap'] is Map) {
+            merged['permissionsMap'] = perms['permissionsMap'];
+            if (kDebugMode && showAuthLogs) {
+              debugPrint('AuthService: Extracted nested permissionsMap: ${perms['permissionsMap']}');
+            }
+          } else {
+            // If permissionsMap is at top level
+            merged['permissionsMap'] = perms;
+            if (kDebugMode && showAuthLogs) {
+              debugPrint('AuthService: Set permissionsMap from top level: $perms');
+            }
+          }
+        }
+      }
+    }
+
     // Priority 3: Fetch Firestore user doc if Firebase is available
     if (merged != null) {
       if (waitForFirestore) {
@@ -3090,4 +3156,38 @@ class AuthService {
       }
     }
   }
+  // ✅ YEH HELPER METHOD YAHAN PASTE KARO:
+/// Helper: Extract role from permissions (handles JSON string or Map)
+static String? _extractRoleFromPermissions(dynamic permissions) {
+  if (permissions == null) return null;
+  
+  try {
+    Map<String, dynamic>? perms;
+    
+    // Handle JSON string permissions from database
+    if (permissions is String && permissions.isNotEmpty) {
+      perms = jsonDecode(permissions) as Map<String, dynamic>?;
+    } else if (permissions is Map<String, dynamic>) {
+      perms = permissions;
+    }
+    
+    if (perms != null) {
+      // First check top-level role
+      final directRole = perms['role']?.toString()?.trim();
+      if (directRole != null && directRole.isNotEmpty) {
+        return directRole;
+      }
+      
+      // Fallback: check nested permissionsMap
+      if (perms.containsKey('permissionsMap') && perms['permissionsMap'] is Map) {
+        final nested = perms['permissionsMap'] as Map<String, dynamic>;
+        return nested['role']?.toString()?.trim();
+      }
+    }
+  } catch (e) {
+    debugPrint('AuthService._extractRoleFromPermissions: Failed to extract role: $e');
+  }
+  
+  return null;
+}
 }
