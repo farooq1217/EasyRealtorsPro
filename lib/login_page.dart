@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
-import '../core/font_utils.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
+import '../core/font_utils.dart';
+import '../core/services/auth_service.dart';
+import '../core/services/permission_sync_service.dart';
+import '../core/services/permission_debug_helper.dart';
+import '../core/role_utils.dart' as local;
+import '../core/services/firebase_threading_handler.dart';
+import '../core/windows_platform_fix.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
-import 'core/services/auth_service.dart';
-import 'core/services/permission_sync_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firestore_sync_service.dart';
@@ -114,21 +118,36 @@ class _LoginPageState extends State<LoginPage> {
                 // Initialize permissions cache immediately from local database
                 await PermissionSyncService.initializePermissionsCache(token);
                 
-                // CRITICAL: Wait for permissions to be fully loaded with timeout
+                // CRITICAL: Run permission diagnostic for client systems
+                if (kDebugMode) {
+                  await PermissionDebugHelper.diagnosePermissionSystem(token);
+                }
+                
+                // CRITICAL: Wait for permissions to be fully loaded with extended timeout for client systems
                 bool permissionsLoaded = false;
                 int attempts = 0;
-                const maxAttempts = 10; // Maximum 10 attempts (5 seconds total)
+                const maxAttempts = 30; // Increased to 30 attempts (15 seconds total) for slower client systems
                 
                 while (!permissionsLoaded && attempts < maxAttempts) {
                   await Future.delayed(const Duration(milliseconds: 500)); // Wait 500ms between attempts
                   attempts++;
                   
-                  // Check if permissions are loaded
-                  final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(token);
-                  if (userWithPermissions != null && PermissionSyncService.arePermissionsFullyLoaded(userWithPermissions)) {
-                    permissionsLoaded = true;
-                    debugPrint('LoginPage: Permissions loaded successfully after $attempts attempts');
-                    break;
+                  try {
+                    // Check if permissions are loaded
+                    final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(token);
+                    if (userWithPermissions != null && PermissionSyncService.arePermissionsFullyLoaded(userWithPermissions)) {
+                      permissionsLoaded = true;
+                      debugPrint('LoginPage: Permissions loaded successfully after $attempts attempts');
+                      break;
+                    }
+                    
+                    // Debug logging for troubleshooting
+                    if (attempts % 6 == 0) { // Log every 3 seconds
+                      debugPrint('LoginPage: Still waiting for permissions... attempt $attempts/$maxAttempts');
+                    }
+                  } catch (e) {
+                    debugPrint('LoginPage: Error checking permissions on attempt $attempts: $e');
+                    // Continue trying even if one attempt fails
                   }
                 }
                 
@@ -160,14 +179,76 @@ class _LoginPageState extends State<LoginPage> {
                     });
                   }
                 } else {
-                  debugPrint('LoginPage: Permissions failed to load after $maxAttempts attempts, proceeding anyway...');
+                  debugPrint('LoginPage: Permissions failed to load after $maxAttempts attempts, trying fallback...');
                   if (mounted) {
-                    // Show warning but proceed anyway
+                    // CRITICAL: Try fallback permission loading for client systems
+                    try {
+                      debugPrint('LoginPage: Attempting fallback permission initialization...');
+                      
+                      // Force refresh permissions from database
+                      await PermissionSyncService.refreshUserPermissions(token);
+                      
+                      // Wait a bit more for fallback to complete
+                      await Future.delayed(const Duration(seconds: 2));
+                      
+                      // Check one more time
+                      final fallbackUser = await PermissionSyncService.getPermissionsInstantly(token);
+                      if (fallbackUser != null && PermissionSyncService.arePermissionsFullyLoaded(fallbackUser)) {
+                        debugPrint('LoginPage: Fallback permission loading successful!');
+                        setState(() { _isLoading = false; });
+                        
+                        // Navigate normally since permissions loaded via fallback
+                        final navArgs = result['requiresProfileCompletion'] == true
+                            ? {
+                                'initialNavIndex': 5,
+                                'initialNotice': (result['profileRedirectMessage'] as String?) ??
+                                    'Please complete your profile to continue',
+                              }
+                            : null;
+                        
+                        SchedulerBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
+                        });
+                        return; // Exit early, don't show warning
+                      }
+                    } catch (fallbackError) {
+                      debugPrint('LoginPage: Fallback permission loading also failed: $fallbackError');
+                    }
+                    
+                    // Show warning but proceed anyway if all attempts failed
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Warning: Some permissions may not be loaded. Please refresh if modules are missing.'), 
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            const Icon(Icons.warning, color: Colors.white),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text('Some permissions may not be loaded. Please refresh if modules are missing.'), 
+                            ),
+                          ],
+                        ),
                         backgroundColor: Colors.orange,
-                        duration: Duration(seconds: 5),
+                        duration: const Duration(seconds: 8),
+                        action: SnackBarAction(
+                          label: 'REFRESH',
+                          textColor: Colors.white,
+                          onPressed: () async {
+                            debugPrint('LoginPage: User requested manual permission refresh...');
+                            try {
+                              await PermissionSyncService.refreshUserPermissions(token);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Permissions refreshed! Please check if modules appear now.'),
+                                  backgroundColor: Colors.green,
+                                  duration: Duration(seconds: 3),
+                                ),
+                              );
+                            } catch (e) {
+                              debugPrint('LoginPage: Manual refresh failed: $e');
+                            }
+                          },
+                        ),
                       ),
                     );
                     

@@ -1,0 +1,70 @@
+name: EasyRealtorsPro
+description: Flutter Desktop Admin app (Windows) - SQLite-only version for Windows release builds
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.1.2
+  equatable: ^2.0.5
+  url_launcher: ^6.3.0
+  path_provider: ^2.1.4
+  http: ^1.2.1
+  shimmer: ^3.0.0
+  drive_client:
+    path: packages/drive_client
+  shared:
+    path: packages/shared
+  pdf: ^3.10.8
+  printing: ^5.12.0
+  flutter_local_notifications: ^19.5.0
+  syncfusion_flutter_pdf: ^32.1.23
+  image: ^4.2.0
+  file_selector: ^1.0.3
+  image_picker: ^1.1.2
+  flutter_svg: ^2.0.10
+  system_tray: ^2.0.3
+  window_manager: ^0.5.1
+  drift: ^2.30.1
+  fl_chart: ^1.1.1
+  jwt_decoder: ^2.0.1
+  crypto: ^3.0.5
+  random_string: ^2.3.1
+  share_plus: ^12.0.1
+  csv: ^5.0.2
+  intl: ^0.19.0
+  google_fonts: ^6.2.1
+  cached_network_image: ^3.3.1
+  timezone: ^0.10.1
+  syncfusion_flutter_charts: ^32.2.8
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  package_info_plus: ^4.2.0
+  dio: ^5.4.0
+  archive: ^3.4.9
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  build_runner: ^2.4.12
+  drift_dev: ^2.20.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/logo.png
+    - assets/fonts/
+
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Bold.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-SemiBold.ttf
