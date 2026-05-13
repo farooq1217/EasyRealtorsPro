@@ -12,6 +12,11 @@ class PermissionHelper {
   static bool _hasLoggedAccessState = false;
   static String? _lastLoggedUserId;
   static Set<String> _loggedModules = <String>{};
+  
+  /// Check if permission sync is currently in progress (HYBRID mode support)
+  static bool isPermissionSyncInProgress() {
+    return PermissionSyncService.isPermissionSyncInProgress();
+  }
   static bool isBypassUser(Map<String, dynamic>? user) {
     final email = (user?['email'] ?? user?['username'])?.toString().toLowerCase();
     return email == 'mayof286@gmail.com';

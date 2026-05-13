@@ -48,11 +48,16 @@ class ModernSidebar extends StatelessWidget {
   final isAdminRole = isSuperAdmin || isCompanyAdmin;
   
   bool _canSee(String moduleKey) {
+    debugPrint('🔍 Sidebar: Checking $moduleKey for ${currentUser?['email']}');
+  debugPrint('Sidebar: Role = ${currentUser?['role']}');
+  debugPrint('Sidebar: PermissionsMap = ${currentUser?['permissionsMap']}');
     // CRITICAL SECURITY FIX: Admin bypass for company_admin and super_admin
     // ✅ Now this will work even if currentUser['role'] was null initially
-    if (isBypass || isSuperAdmin || isCompanyAdmin) {  // ✅ Explicit company_admin check
+    if (isBypass || isSuperAdmin || isCompanyAdmin) { 
+      debugPrint('✅ Admin bypass granted for $moduleKey'); 
       return true;
     }
+
       
       // Universal modules accessible to all authenticated users
       const universalModules = {'dashboard', 'settings'};
@@ -60,10 +65,20 @@ class ModernSidebar extends StatelessWidget {
         return true;
       }
       
+      // HYBRID MODE: Temporary access during permission sync
+      final user = currentUser;
+      if (user != null && (user['email'] as String?)?.isNotEmpty == true) {
+        final isSyncing = PermissionHelper.isPermissionSyncInProgress();
+        if (isSyncing) {
+          debugPrint('Sidebar: Granting temporary access during permission sync for module: $moduleKey');
+          return true; // Temporary access during sync
+        }
+      }
+      
       // CRITICAL FIX: Deny-by-default - if permissionsMap is null or empty, HIDE all modules
       var permissionsMapRaw = currentUser?['permissionsMap'];
       
-      // If permissionsMap is not a direct field, check inside the permissions field
+      // If permissionsMap is not a direct field, check inside permissions field
       if (permissionsMapRaw == null) {
         final permissionsField = currentUser?['permissions'];
         if (permissionsField != null) {
@@ -122,7 +137,7 @@ class ModernSidebar extends StatelessWidget {
         try {
           var permissionsMapRaw = currentUser?['permissionsMap'];
           
-          // If permissionsMap is not a direct field, check inside the permissions field
+          // If permissionsMap is not a direct field, check inside permissions field
           if (permissionsMapRaw == null) {
             final permissionsField = currentUser?['permissions'];
             if (permissionsField != null) {

@@ -27,6 +27,58 @@ class PermissionSyncService {
   static Map<String, dynamic>? get cachedPermissionsMap => _cachedPermissionsMap;
   static Map<String, dynamic>? get cachedUser => _cachedUser;
   static bool get hasCachedPermissions => _cachedPermissionsMap != null && _cachedPermissionsMap!.isNotEmpty;
+  // Permission sync state tracking
+  static bool _isPermissionSyncInProgress = false;
+  static String? _currentSyncToken;
+  
+  /// HYBRID: Smart permission loading with ONLINE + OFFLINE + HYBRID modes
+  static Future<Map<String, dynamic>?> loadPermissionsSmart(String? token) async {
+    if (token == null) return null;
+    
+    _isPermissionSyncInProgress = true;
+    _currentSyncToken = token;
+    
+    try {
+      debugPrint('🔍 PermissionSyncService: Starting HYBRID permission loading...');
+      
+      // STRATEGY 1: Try LOCAL database first (FAST - works OFFLINE)
+      final localUser = await AuthService.getCurrentUser(token, waitForFirestore: false);
+      if (localUser != null && _hasValidPermissions(localUser)) {
+        debugPrint('✅ PermissionSyncService: Permissions loaded from LOCAL database (OFFLINE mode)');
+        _cacheUserPermissions(localUser, token);
+        return localUser;
+      }
+      
+      // STRATEGY 2: Try Firestore (ONLINE mode)
+      try {
+        debugPrint('⚡ PermissionSyncService: Local not available, trying Firestore (ONLINE mode)...');
+        final firestoreUser = await AuthService.getCurrentUser(token, waitForFirestore: true);
+        if (firestoreUser != null && _hasValidPermissions(firestoreUser)) {
+          // CACHE to local database for OFFLINE use
+          await _cachePermissionsLocally(firestoreUser);
+          debugPrint('✅ PermissionSyncService: Permissions loaded from Firestore + CACHED locally (HYBRID mode)');
+          _cacheUserPermissions(firestoreUser, token);
+          return firestoreUser;
+        }
+      } catch (e) {
+        debugPrint('⚠️ PermissionSyncService: Firestore unavailable: $e');
+      }
+      
+      // STRATEGY 3: Emergency fallback (last resort)
+      debugPrint('🚨 PermissionSyncService: Both sources failed, using emergency fallback');
+      final emergencyUser = _getEmergencyPermissions(token);
+      if (emergencyUser != null) {
+        _cacheUserPermissions(emergencyUser, token);
+        return emergencyUser;
+      }
+      
+      return null;
+    } finally {
+      _isPermissionSyncInProgress = false;
+      _currentSyncToken = null;
+    }
+  }
+  
   /// Initialize permissions cache with immediate local data injection
   /// OPTIMIZED: No timeouts, immediate cache population from local database
   static Future<void> initializePermissionsCache(String? token) async {
@@ -67,93 +119,205 @@ class PermissionSyncService {
     }
   }
   
+  /// Check if permission sync is currently in progress
+  static bool isPermissionSyncInProgress() {
+    return _isPermissionSyncInProgress;
+  }
+  
+  /// Check if user has valid permissions structure
+ static bool _hasValidPermissions(Map<String, dynamic>? user) {
+  if (user == null) return false;
+  
+  // Try direct permissionsMap first
+  var permissionsMap = user['permissionsMap'];
+  
+  // If not found, try to extract from nested permissions field
+  if (permissionsMap == null) {
+    final permissions = user['permissions'];
+    if (permissions != null) {
+      try {
+        Map<String, dynamic>? perms;
+        if (permissions is String) {
+          perms = jsonDecode(permissions) as Map<String, dynamic>?;
+        } else if (permissions is Map) {
+          perms = permissions as Map<String, dynamic>?;
+        }
+        
+        if (perms != null) {
+          if (perms.containsKey('permissionsMap') && perms['permissionsMap'] is Map) {
+            permissionsMap = perms['permissionsMap'];
+          } else {
+            permissionsMap = perms;
+          }
+        }
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+  
+  // Handle string permissionsMap
+  if (permissionsMap is String) {
+    try {
+      permissionsMap = jsonDecode(permissionsMap);
+    } catch (_) {
+      return false;
+    }
+  }
+  
+  return permissionsMap != null && 
+         (permissionsMap is Map) && 
+         (permissionsMap as Map).isNotEmpty;
+}
+  
+  /// Cache user permissions in global cache
+  static void _cacheUserPermissions(Map<String, dynamic> user, String token) {
+    final permissionsMap = _extractPermissionsMap(user);
+    if (permissionsMap != null && permissionsMap.isNotEmpty) {
+      _cachedUser = user;
+      _cachedPermissionsMap = permissionsMap;
+      _lastUserId = token;
+      
+      debugPrint('PermissionSyncService: Cached permissions for ${user['email']}');
+      debugPrint('PermissionSyncService: Available modules: ${permissionsMap.keys.toList()}');
+    }
+  }
+  
+  /// Cache permissions locally for offline use
+  static Future<void> _cachePermissionsLocally(Map<String, dynamic> user) async {
+    try {
+      // This will trigger AuthService's local caching mechanism
+      // Cache user data locally for offline use
+      final storage = AppStorage();
+      final settings = await storage.readSettings();
+      settings['cachedUser'] = user;
+      await storage.writeSettings(settings);
+      debugPrint('PermissionSyncService: Permissions cached locally for offline use');
+    } catch (e) {
+      debugPrint('PermissionSyncService: Error caching permissions locally: $e');
+    }
+  }
+  
+  /// Get emergency permissions for last resort
+  static Map<String, dynamic>? _getEmergencyPermissions(String? token) {
+    if (token == null) return null;
+    
+    try {
+      final payload = _decodeJWT(token);
+      if (payload == null) return null;
+      
+      final email = payload['email'] as String?;
+      if (email == null) return null;
+      
+      // Emergency: Basic permissions for authenticated user
+      final emergencyUser = {
+        'id': email.toLowerCase(),
+        'email': email,
+        'name': payload['name'] ?? email.split('@')[0],
+        'role': 'agent', // Safe default
+        'permissionsMap': {
+          'dashboard': 'view_only',
+          'settings': 'view_only',
+        },
+      };
+      
+      debugPrint('PermissionSyncService: Emergency permissions created for $email');
+      return emergencyUser;
+    } catch (e) {
+      debugPrint('PermissionSyncService: Error creating emergency permissions: $e');
+      return null;
+    }
+  }
+  
+  /// Decode JWT token (helper method)
+  static Map<String, dynamic>? _decodeJWT(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      
+      final payload = parts[1];
+      // Pad base64 string if needed
+      final padding = '=' * ((4 - payload.length % 4) % 4);
+      final normalizedPayload = payload + padding;
+      
+      final decoded = utf8.decode(base64.decode(normalizedPayload));
+      return jsonDecode(decoded) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('PermissionSyncService: Error decoding JWT: $e');
+      return null;
+    }
+  }
+  
+  /// Extract permissionsMap from user object
+  /// Extract permissionsMap from user object
   /// Extract permissionsMap from user object
   static Map<String, dynamic>? _extractPermissionsMap(Map<String, dynamic> user) {
     try {
-      debugPrint('PermissionSyncService: Extracting permissionsMap for user ${user['email']}');
+      // debugPrint('PermissionSyncService: Extracting permissionsMap for user ${user['email']}');
       
-      // Check permissionsMap field first (for future compatibility)
       var permissionsMapRaw = user['permissionsMap'];
       
+      // ✅ FIX: Handle empty permissionsMap by generating from role
       if (permissionsMapRaw != null) {
-        debugPrint('PermissionSyncService: Found direct permissionsMap: $permissionsMapRaw');
-        // ✅ CRITICAL FIX: If permissionsMap is empty, generate from role
         if (permissionsMapRaw is Map && (permissionsMapRaw as Map).isEmpty) {
-          debugPrint('PermissionSyncService: permissionsMap is empty, generating from role');
+          // debugPrint('PermissionSyncService: permissionsMap is empty, generating from role');
           final permissionsField = user['permissions'];
           if (permissionsField != null) {
+            Map<String, dynamic>? decodedPerms;
             if (permissionsField is String) {
-              final decoded = jsonDecode(permissionsField);
-              if (decoded is Map) {
-                permissionsMapRaw = _generatePermissionsMapFromRole(Map<String, dynamic>.from(decoded), user);
-                debugPrint('PermissionSyncService: Generated permissionsMap from role (empty case): $permissionsMapRaw');
-              }
+              // ✅ FIX: Added explicit cast here
+              decodedPerms = jsonDecode(permissionsField) as Map<String, dynamic>?;
             } else if (permissionsField is Map) {
-              permissionsMapRaw = _generatePermissionsMapFromRole(Map<String, dynamic>.from(permissionsField), user);
-              debugPrint('PermissionSyncService: Generated permissionsMap from role Map (empty case): $permissionsMapRaw');
+              // ✅ FIX: Added explicit cast here
+              decodedPerms = Map<String, dynamic>.from(permissionsField);
+            }
+            
+            if (decodedPerms != null) {
+              permissionsMapRaw = _generatePermissionsMapFromRole(decodedPerms, user);
             }
           }
         }
-      } else {
-        // Check permissions field directly (current database structure)
+      } 
+      // ✅ FIX: If permissionsMap is null, try to generate from permissions field
+      else {
         final permissionsField = user['permissions'];
-        debugPrint('PermissionSyncService: Checking permissions field: $permissionsField');
         
         if (permissionsField != null) {
+          Map<String, dynamic>? decodedPerms;
           if (permissionsField is String) {
-            // Parse JSON string from database
-            final decoded = jsonDecode(permissionsField);
-            debugPrint('PermissionSyncService: Decoded permissions from string: $decoded');
-            
-            if (decoded is Map) {
-              // ✅ CRITICAL FIX: Check for nested permissionsMap structure
-              if (decoded.containsKey('permissionsMap') && decoded['permissionsMap'] is Map) {
-                permissionsMapRaw = decoded['permissionsMap'];
-                debugPrint('PermissionSyncService: Extracted nested permissionsMap: $permissionsMapRaw');
-              } else {
-                // ✅ CRITICAL FIX: Generate permissionsMap from role-based permissions
-                permissionsMapRaw = _generatePermissionsMapFromRole(Map<String, dynamic>.from(decoded), user);
-                debugPrint('PermissionSyncService: Generated permissionsMap from role: $permissionsMapRaw');
-              }
-            }
+            // ✅ FIX: Added explicit cast here
+            decodedPerms = jsonDecode(permissionsField) as Map<String, dynamic>?;
           } else if (permissionsField is Map) {
-            // Already a map (from cache)
-            // ✅ CRITICAL FIX: Check for nested permissionsMap structure
-            if (permissionsField.containsKey('permissionsMap') && permissionsField['permissionsMap'] is Map) {
-              permissionsMapRaw = permissionsField['permissionsMap'];
-              debugPrint('PermissionSyncService: Extracted nested permissionsMap from Map: $permissionsMapRaw');
-            } else {
-              // ✅ CRITICAL FIX: Generate permissionsMap from role-based permissions
-              permissionsMapRaw = _generatePermissionsMapFromRole(Map<String, dynamic>.from(permissionsField), user);
-              debugPrint('PermissionSyncService: Generated permissionsMap from role Map: $permissionsMapRaw');
-            }
+            // ✅ FIX: Added explicit cast here
+            decodedPerms = Map<String, dynamic>.from(permissionsField);
+          }
+          
+          if (decodedPerms != null) {
+            permissionsMapRaw = _generatePermissionsMapFromRole(decodedPerms, user);
           }
         }
       }
       
+      // ✅ FIX: Parse and return the map safely without undefined 'result' variable
       if (permissionsMapRaw != null) {
         if (permissionsMapRaw is Map) {
           final result = Map<String, dynamic>.from(permissionsMapRaw);
-          debugPrint('PermissionSyncService: Successfully extracted permissionsMap: $result');
           return result;
         } else if (permissionsMapRaw is String) {
           final decoded = jsonDecode(permissionsMapRaw);
           if (decoded is Map) {
             final result = Map<String, dynamic>.from(decoded);
-            debugPrint('PermissionSyncService: Successfully extracted permissionsMap from string: $result');
             return result;
           }
         }
       }
       
-      debugPrint('PermissionSyncService: No valid permissionsMap found');
       return null;
     } catch (e) {
       debugPrint('PermissionSyncService: Error extracting permissionsMap: $e');
       return null;
     }
   }
-
   /// Generate permissionsMap from role-based permissions
   static Map<String, dynamic> _generatePermissionsMapFromRole(Map<String, dynamic> permissions, Map<String, dynamic> user) {
     final role = permissions['role']?.toString().toLowerCase();

@@ -1374,10 +1374,37 @@ if (companyIdField != null && companyIdField.isNotEmpty) {
 }
 
 // ✅ Also update in-memory cache immediately
+// ✅ CRITICAL FIX: Extract permissionsMap to top-level BEFORE caching
+// This ensures PermissionSyncService can find it immediately
 if (user != null) {
-  AuthService.currentUser = user;
-  _emitUserUpdate(user);  // Notify listeners
+  final permissions = user['permissions'];
+  if (permissions != null && user['permissionsMap'] == null) {
+    Map<String, dynamic>? perms;
+    
+    // Handle JSON string permissions from database
+    if (permissions is String) {
+      perms = jsonDecode(permissions) as Map<String, dynamic>?;
+    } else if (permissions is Map) {
+      perms = permissions as Map<String, dynamic>?;
+    }
+    
+    if (perms != null) {
+      // Extract nested permissionsMap if it exists
+      if (perms.containsKey('permissionsMap') && perms['permissionsMap'] is Map) {
+        user['permissionsMap'] = perms['permissionsMap'];
+        if (kDebugMode) debugPrint('AuthService.login: Extracted nested permissionsMap to top-level');
+      } else {
+        // If permissionsMap is at top level of decoded object
+        user['permissionsMap'] = perms;
+        if (kDebugMode) debugPrint('AuthService.login: Set permissionsMap from decoded permissions');
+      }
+    }
+  }
 }
+
+// ✅ NOW set the cache - permissionsMap is guaranteed to be at top-level
+AuthService.currentUser = user;
+_emitUserUpdate(user);
     
     // Verify password - try both 'password' and 'passwordHash' fields (null-safe)
     final storedPasswordRaw = ((user?['password'] ?? user?['passwordHash'] ?? '') as Object?).toString();
@@ -3156,38 +3183,28 @@ if (user != null) {
       }
     }
   }
-  // ✅ YEH HELPER METHOD YAHAN PASTE KARO:
-/// Helper: Extract role from permissions (handles JSON string or Map)
-static String? _extractRoleFromPermissions(dynamic permissions) {
-  if (permissions == null) return null;
-  
-  try {
-    Map<String, dynamic>? perms;
+  /// Helper: Extract role from permissions (handles JSON string or Map)
+  static String? _extractRoleFromPermissions(dynamic permissions) {
+    if (permissions == null) return null;
     
-    // Handle JSON string permissions from database
-    if (permissions is String && permissions.isNotEmpty) {
-      perms = jsonDecode(permissions) as Map<String, dynamic>?;
-    } else if (permissions is Map<String, dynamic>) {
-      perms = permissions;
-    }
-    
-    if (perms != null) {
-      // First check top-level role
-      final directRole = perms['role']?.toString()?.trim();
-      if (directRole != null && directRole.isNotEmpty) {
-        return directRole;
+    try {
+      Map<String, dynamic>? perms;
+      
+      // Handle JSON string permissions from database
+      if (permissions is String && permissions.isNotEmpty) {
+        perms = jsonDecode(permissions) as Map<String, dynamic>?;
+      } else if (permissions is Map) {
+        perms = Map<String, dynamic>.from(permissions);
       }
       
-      // Fallback: check nested permissionsMap
-      if (perms.containsKey('permissionsMap') && perms['permissionsMap'] is Map) {
-        final nested = perms['permissionsMap'] as Map<String, dynamic>;
-        return nested['role']?.toString()?.trim();
-      }
+      if (perms == null) return null;
+      
+      // Extract role from permissions map
+      final role = perms['role']?.toString();
+      return role?.isNotEmpty == true ? role : null;
+    } catch (e) {
+      debugPrint('AuthService: Error extracting role from permissions: $e');
+      return null;
     }
-  } catch (e) {
-    debugPrint('AuthService._extractRoleFromPermissions: Failed to extract role: $e');
   }
-  
-  return null;
-}
 }

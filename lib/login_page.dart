@@ -113,46 +113,15 @@ class _LoginPageState extends State<LoginPage> {
             try {
               final token = result['token'] as String?;
               if (token != null) {
-                debugPrint('LoginPage: Initializing permissions cache...');
+                debugPrint('LoginPage: Starting HYBRID permission loading...');
+                setState(() { _isLoading = true; });
                 
-                // Initialize permissions cache immediately from local database
-                await PermissionSyncService.initializePermissionsCache(token);
+                // HYBRID: Try smart permission loading with ONLINE + OFFLINE + fallback
+                final userWithPermissions = await PermissionSyncService.loadPermissionsSmart(token);
                 
-                // CRITICAL: Run permission diagnostic for client systems
-                if (kDebugMode) {
-                  await PermissionDebugHelper.diagnosePermissionSystem(token);
-                }
-                
-                // CRITICAL: Wait for permissions to be fully loaded with extended timeout for client systems
-                bool permissionsLoaded = false;
-                int attempts = 0;
-                const maxAttempts = 30; // Increased to 30 attempts (15 seconds total) for slower client systems
-                
-                while (!permissionsLoaded && attempts < maxAttempts) {
-                  await Future.delayed(const Duration(milliseconds: 500)); // Wait 500ms between attempts
-                  attempts++;
-                  
-                  try {
-                    // Check if permissions are loaded
-                    final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(token);
-                    if (userWithPermissions != null && PermissionSyncService.arePermissionsFullyLoaded(userWithPermissions)) {
-                      permissionsLoaded = true;
-                      debugPrint('LoginPage: Permissions loaded successfully after $attempts attempts');
-                      break;
-                    }
-                    
-                    // Debug logging for troubleshooting
-                    if (attempts % 6 == 0) { // Log every 3 seconds
-                      debugPrint('LoginPage: Still waiting for permissions... attempt $attempts/$maxAttempts');
-                    }
-                  } catch (e) {
-                    debugPrint('LoginPage: Error checking permissions on attempt $attempts: $e');
-                    // Continue trying even if one attempt fails
-                  }
-                }
-                
-                if (permissionsLoaded) {
-                  debugPrint('LoginPage: Permissions verified, navigating to dashboard...');
+                if (userWithPermissions != null && PermissionSyncService.arePermissionsFullyLoaded(userWithPermissions)) {
+                  debugPrint('LoginPage: ✅ HYBRID permission loading successful!');
+                  debugPrint('LoginPage: Available modules: ${userWithPermissions['permissionsMap']?.keys?.toList() ?? []}');
                   
                   if (mounted) {
                     final navArgs = result['requiresProfileCompletion'] == true
@@ -163,95 +132,69 @@ class _LoginPageState extends State<LoginPage> {
                           }
                         : null;
                     
-                    // THREAD SAFETY: Wrap navigation in proper UI thread callbacks
+                    // THREAD SAFETY: Navigate immediately with loaded permissions
                     SchedulerBinding.instance.addPostFrameCallback((_) {
                       if (!mounted) return;
                       Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
                       
-                      // TRIGGER BACKGROUND SYNC AFTER NAVIGATION - Thread Safe
+                      // TRIGGER BACKGROUND SYNC AFTER NAVIGATION (for HYBRID mode)
                       SchedulerBinding.instance.addPostFrameCallback((_) {
                         if (!mounted) return;
                         Future.delayed(const Duration(seconds: 3), () async {
-                          debugPrint('LoginPage: Triggering background sync after navigation...');
+                          debugPrint('LoginPage: Triggering background sync for HYBRID mode...');
                           await AuthService.triggerBackgroundSyncAfterLogin();
                         });
                       });
                     });
                   }
                 } else {
-                  debugPrint('LoginPage: Permissions failed to load after $maxAttempts attempts, trying fallback...');
+                  debugPrint('LoginPage: ❌ HYBRID permission loading failed');
                   if (mounted) {
-                    // CRITICAL: Try fallback permission loading for client systems
-                    try {
-                      debugPrint('LoginPage: Attempting fallback permission initialization...');
-                      
-                      // Force refresh permissions from database
-                      await PermissionSyncService.refreshUserPermissions(token);
-                      
-                      // Wait a bit more for fallback to complete
-                      await Future.delayed(const Duration(seconds: 2));
-                      
-                      // Check one more time
-                      final fallbackUser = await PermissionSyncService.getPermissionsInstantly(token);
-                      if (fallbackUser != null && PermissionSyncService.arePermissionsFullyLoaded(fallbackUser)) {
-                        debugPrint('LoginPage: Fallback permission loading successful!');
-                        setState(() { _isLoading = false; });
-                        
-                        // Navigate normally since permissions loaded via fallback
-                        final navArgs = result['requiresProfileCompletion'] == true
-                            ? {
-                                'initialNavIndex': 5,
-                                'initialNotice': (result['profileRedirectMessage'] as String?) ??
-                                    'Please complete your profile to continue',
-                              }
-                            : null;
-                        
-                        SchedulerBinding.instance.addPostFrameCallback((_) {
-                          if (!mounted) return;
-                          Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
-                        });
-                        return; // Exit early, don't show warning
-                      }
-                    } catch (fallbackError) {
-                      debugPrint('LoginPage: Fallback permission loading also failed: $fallbackError');
-                    }
-                    
-                    // Show warning but proceed anyway if all attempts failed
+                    // User-friendly error message (no more orange warning)
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Row(
                           children: [
-                            const Icon(Icons.warning, color: Colors.white),
+                            const Icon(Icons.error_outline, color: Colors.white),
                             const SizedBox(width: 8),
                             const Expanded(
-                              child: Text('Some permissions may not be loaded. Please refresh if modules are missing.'), 
+                              child: Text('Unable to load permissions. Please check your internet connection and try again.'), 
                             ),
                           ],
                         ),
-                        backgroundColor: Colors.orange,
-                        duration: const Duration(seconds: 8),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 10),
                         action: SnackBarAction(
-                          label: 'REFRESH',
+                          label: 'RETRY',
                           textColor: Colors.white,
                           onPressed: () async {
-                            debugPrint('LoginPage: User requested manual permission refresh...');
-                            try {
-                              await PermissionSyncService.refreshUserPermissions(token);
+                            debugPrint('LoginPage: User requested retry...');
+                            setState(() { _isLoading = true; });
+                            
+                            // Retry HYBRID loading
+                            final retryUser = await PermissionSyncService.loadPermissionsSmart(token);
+                            if (retryUser != null && PermissionSyncService.arePermissionsFullyLoaded(retryUser)) {
+                              setState(() { _isLoading = false; });
+                              Navigator.of(context).pushReplacementNamed('/home', arguments: result['requiresProfileCompletion'] == true ? {
+                                'initialNavIndex': 5,
+                                'initialNotice': (result['profileRedirectMessage'] as String?) ?? 'Please complete your profile to continue',
+                              } : null);
+                            } else {
+                              setState(() { _isLoading = false; });
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Permissions refreshed! Please check if modules appear now.'),
-                                  backgroundColor: Colors.green,
-                                  duration: Duration(seconds: 3),
+                                  content: Text('Retry failed. Please contact support if the issue persists.'),
+                                  backgroundColor: Colors.red,
+                                  duration: Duration(seconds: 5),
                                 ),
                               );
-                            } catch (e) {
-                              debugPrint('LoginPage: Manual refresh failed: $e');
                             }
                           },
                         ),
                       ),
                     );
                     
+                    // Navigate anyway to prevent login lockout (user can access Dashboard/Settings)
                     final navArgs = result['requiresProfileCompletion'] == true
                         ? {
                             'initialNavIndex': 5,
@@ -265,11 +208,11 @@ class _LoginPageState extends State<LoginPage> {
                 }
               }
             } catch (e) {
-              debugPrint('LoginPage: Error loading permissions: $e');
+              debugPrint('LoginPage: Error in HYBRID permission loading: $e');
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Error loading permissions: $e'),
+                    content: Text('System error: $e'),
                     backgroundColor: Colors.red,
                   ),
                 );
