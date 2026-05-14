@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
 import 'dart:async';
@@ -40,6 +41,9 @@ import '../users/pages/users_page.dart';
 import '../companies/pages/companies_page.dart';
 import '../reports/pages/reports_page.dart';
 import 'package:shared/shared.dart' show AppDatabase;
+import 'dart:convert'; 
+
+
 
 /// Main navigation page with sidebar and content area
 class MainNavigationPage extends StatefulWidget {
@@ -74,6 +78,8 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     _loadTheme();
     _loadBadges();
     
+
+   
     // CRITICAL: Listen to user stream for reactive sidebar updates
     _userStreamSubscription = AuthService.currentUserStream.listen((user) {
       if (mounted) {
@@ -398,17 +404,39 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Original Sidebar
-              ModernSidebar(
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: _onDestinationSelected,
-                onTradingTap: _onTradingTap,
-                onLogout: _onLogout,
-                onToggle: _onToggleSidebar,
-                isOpen: _isSidebarOpen,
-                currentUser: _currentUser,
-                badgeFiles: _badgeFiles,
-                badgeRentals: _badgeRentals,
-              ),
+             // ✅ Original Sidebar - with safe currentUser handling
+ValueListenableBuilder<Map<String, dynamic>?>(
+  valueListenable: AuthService.currentUserNotifier,
+  builder: (context, notifierUser, _) {
+    // ✅ Priority: Use stream-updated _currentUser, fallback to notifier
+    final effectiveUser = _currentUser ?? notifierUser;
+    
+    // ✅ Optional: Loading state if user is null
+    if (effectiveUser == null) {
+      return const SizedBox.shrink();
+    }
+    
+    // ✅ Debug logging (properly scoped inside builder)
+    if (kDebugMode) {
+      final role = effectiveUser['role'];
+      final perms = effectiveUser['permissions'];
+      debugPrint('🔍 MainNav: Sidebar user - role: $role, has permissions: ${perms != null}');
+    }
+    
+    // ✅ ModernSidebar with guaranteed non-null user
+    return ModernSidebar(
+      selectedIndex: _selectedIndex,
+      onDestinationSelected: _onDestinationSelected,
+      onTradingTap: _onTradingTap,
+      onLogout: _onLogout,
+      onToggle: _onToggleSidebar,
+      isOpen: _isSidebarOpen,
+      currentUser: effectiveUser,  // ✅ Single, clean parameter
+      badgeFiles: _badgeFiles,
+      badgeRentals: _badgeRentals,
+    );
+  },
+),
               
               // Separation Gap
               const SizedBox(width: 8),

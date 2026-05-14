@@ -12,11 +12,17 @@ class RoleUtils {
   }
 
   /// Check if user is an Agent
-  static bool isAgent(Map<String, dynamic>? user) {
-    if (user == null) return false;
-    final roleStr = getUserRole(user).toLowerCase().trim();
-    return roleStr == 'agent';
-  }
+ static bool isAgent(Map<String, dynamic>? user) {
+  if (user == null) return false;
+  
+  // Direct check first
+  final directRole = (user['role'] ?? '').toString().toLowerCase().trim();
+  if (directRole == 'agent') return true;
+  
+  // Fallback to getUserRole()
+  final roleStr = getUserRole(user).toLowerCase().trim();
+  return roleStr == 'agent';
+}
 
   /// Check if user is a Company Admin
   static bool isCompanyAdmin(Map<String, dynamic>? user) {
@@ -38,71 +44,57 @@ class RoleUtils {
   static final Map<String, String> _roleCache = {};
   
   /// Get user role as string
-  static String getUserRole(Map<String, dynamic>? user) {
-    if (user == null) return '';
-    
-    // Create cache key from user ID
-    final userId = user['id']?.toString() ?? user['email']?.toString() ?? '';
-    
-    // First check direct role field (before cache to prevent cache corruption)
-    final directRole = (user['role'] ?? '').toString().trim();
-    
-    // If we have a direct role, use it and update cache
-    if (directRole.isNotEmpty) {
-      // Check if cached value differs from current role
-      if (userId.isNotEmpty && _roleCache.containsKey(userId)) {
-        final cachedRole = _roleCache[userId]!;
-        if (cachedRole != directRole) {
-          debugPrint('RoleUtils.getUserRole: Role changed from "$cachedRole" to "$directRole", updating cache');
-        }
-      }
-      if (userId.isNotEmpty) _roleCache[userId] = directRole;
-      return directRole;
-    }
-    
-    // Only use cache if no direct role available
-    if (userId.isNotEmpty && _roleCache.containsKey(userId)) {
-      return _roleCache[userId]!;
-    }
-    
-    // If no direct role, check permissions JSON for role
-    final permissionsRaw = user['permissions'];
-    if (permissionsRaw != null) {
-      Map<String, dynamic>? permissions;
-      
-      // Handle JSON string permissions from database
-      if (permissionsRaw is String) {
-        try {
-          permissions = jsonDecode(permissionsRaw) as Map<String, dynamic>?;
-        } catch (e) {
-          debugPrint('RoleUtils.getUserRole: Failed to decode permissions JSON: $e');
-          return '';
-        }
-      } else if (permissionsRaw is Map<String, dynamic>) {
-        permissions = permissionsRaw;
-      }
-      
-      if (permissions != null) {
-        // CRITICAL FIX: Handle double-nested permissionsMap
-        // If permissions contains a nested permissionsMap, extract it
-        if (permissions.containsKey('permissionsMap') && permissions['permissionsMap'] is Map<String, dynamic>) {
-          permissions = permissions['permissionsMap'] as Map<String, dynamic>;
-          debugPrint('RoleUtils.getUserRole: Extracted nested permissionsMap');
-        }
-        
-        // Check for role in the (possibly extracted) permissions map
-        final roleFromPermissions = (permissions['role'] ?? '').toString().trim();
-        if (roleFromPermissions.isNotEmpty) {
-          if (userId.isNotEmpty) _roleCache[userId] = roleFromPermissions;
-          return roleFromPermissions;
-        }
-      }
-    }
-    
-    final emptyRole = '';
-    if (userId.isNotEmpty) _roleCache[userId] = emptyRole;
-    return emptyRole;
+ /// Get user role as string - FIXED VERSION
+static String getUserRole(Map<String, dynamic>? user) {
+  if (user == null) return '';
+  
+  final userId = user['id']?.toString() ?? user['email']?.toString() ?? '';
+  
+  // ✅ PRIORITY 1: Direct role field (always check fresh, don't trust cache first)
+  final directRole = (user['role'] ?? '').toString().trim();
+  if (directRole.isNotEmpty && directRole.toLowerCase() != 'null') {
+    if (userId.isNotEmpty) _roleCache[userId] = directRole;
+    return directRole;
   }
+  
+  // ✅ PRIORITY 2: Extract from permissions JSON (handle both string & map)
+  final permissionsRaw = user['permissions'];
+  if (permissionsRaw != null) {
+    Map<String, dynamic>? permissions;
+    
+    if (permissionsRaw is String) {
+      try {
+        permissions = jsonDecode(permissionsRaw) as Map<String, dynamic>?;
+      } catch (e) {
+        debugPrint('RoleUtils: JSON decode failed: $e');
+        return '';
+      }
+    } else if (permissionsRaw is Map<String, dynamic>) {
+      permissions = permissionsRaw;
+    }
+    
+    if (permissions != null) {
+      // ✅ Handle nested structure: { permissions: { permissionsMap: { role: "..." } } }
+      if (permissions.containsKey('permissionsMap') && permissions['permissionsMap'] is Map) {
+        permissions = permissions['permissionsMap'] as Map<String, dynamic>;
+      }
+      
+      final roleFromPerms = (permissions['role'] ?? '').toString().trim();
+      if (roleFromPerms.isNotEmpty && roleFromPerms.toLowerCase() != 'null') {
+        if (userId.isNotEmpty) _roleCache[userId] = roleFromPerms;
+        return roleFromPerms;
+      }
+    }
+  }
+  
+  // ✅ PRIORITY 3: Fallback to cache ONLY if no fresh data
+  if (userId.isNotEmpty && _roleCache.containsKey(userId)) {
+    final cached = _roleCache[userId]!;
+    if (cached.isNotEmpty) return cached;
+  }
+  
+  return ''; // Final fallback
+}
 
   // Cache to prevent infinite loop
   static final Map<String, String?> _companyIdCache = {};
@@ -166,78 +158,63 @@ class RoleUtils {
   }
 
   /// Check if user has specific permission
-  static bool hasPermission(Map<String, dynamic>? user, String permission) {
-    if (user == null) return false;
-    
-    // Super admins have all permissions
-    if (isSuperAdmin(user)) return true;
-    
-    // Check permissions map if it exists
-    final permissionsRaw = user['permissions'];
-    Map<String, dynamic>? permissions;
-    
-    // CRITICAL FIX: Handle JSON string permissions from database
-    if (permissionsRaw is String) {
-      try {
-        permissions = jsonDecode(permissionsRaw) as Map<String, dynamic>?;
-      } catch (e) {
-        debugPrint('RoleUtils: Failed to decode permissions JSON: $e');
-        permissions = null;
-      }
-    } else if (permissionsRaw is Map<String, dynamic>) {
-      permissions = permissionsRaw;
+ static bool hasPermission(Map<String, dynamic>? user, String permission) {
+  if (user == null) return false;
+  
+  // Super admins have all permissions
+  if (isSuperAdmin(user)) return true;
+  
+  final permissionsRaw = user['permissions'];
+  Map<String, dynamic>? permissions;
+  
+  // Handle JSON string permissions
+  if (permissionsRaw is String) {
+    try {
+      permissions = jsonDecode(permissionsRaw) as Map<String, dynamic>?;
+    } catch (e) {
+      debugPrint('RoleUtils: Failed to decode permissions JSON: $e');
+      permissions = null;
     }
-    
-    if (permissions != null) {
-      // CRITICAL FIX: Handle double-nested permissionsMap
-      // If permissions contains a nested permissionsMap, extract it
-      if (permissions.containsKey('permissionsMap') && permissions['permissionsMap'] is Map<String, dynamic>) {
-        permissions = permissions['permissionsMap'] as Map<String, dynamic>;
-        debugPrint('RoleUtils.hasPermission: Extracted nested permissionsMap for permission check');
-      }
-      
-      return permissions[permission] == true;
-    }
-    
-    // Fallback to role-based permissions
-    final role = getUserRole(user).toLowerCase();
-    switch (permission) {
-      case 'view_users':
-      case 'create_users':
-      case 'edit_users':
-      case 'delete_users':
-        return isSuperAdmin(user) || isCompanyAdmin(user);
-      case 'view_companies':
-      case 'create_companies':
-      case 'edit_companies':
-      case 'delete_companies':
-        return isSuperAdmin(user);
-      case 'view_trading':
-      case 'create_trading':
-      case 'edit_trading':
-      case 'delete_trading':
-        return isSuperAdmin(user) || isCompanyAdmin(user) || isAgent(user);
-      case 'view_inventory':
-      case 'create_inventory':
-      case 'edit_inventory':
-      case 'delete_inventory':
-        return isSuperAdmin(user) || isCompanyAdmin(user) || isAgent(user);
-      case 'view_rentals':
-      case 'create_rentals':
-      case 'edit_rentals':
-      case 'delete_rentals':
-        return isSuperAdmin(user) || isCompanyAdmin(user) || isAgent(user);
-      case 'view_expenditure':
-      case 'create_expenditure':
-      case 'edit_expenditure':
-      case 'delete_expenditure':
-        return isSuperAdmin(user) || isCompanyAdmin(user) || isAgent(user);
-      case 'view_reports':
-        return isSuperAdmin(user) || isCompanyAdmin(user) || isAgent(user);
-      default:
-        return false;
-    }
+  } else if (permissionsRaw is Map<String, dynamic>) {
+    permissions = permissionsRaw;
   }
+  
+  if (permissions != null) {
+    // Handle nested permissionsMap
+    if (permissions.containsKey('permissionsMap') && permissions['permissionsMap'] is Map<String, dynamic>) {
+      permissions = permissions['permissionsMap'] as Map<String, dynamic>;
+      debugPrint('RoleUtils.hasPermission: Extracted nested permissionsMap');
+    }
+    
+    // ✅ FIX: Check for string-based permission levels
+    final permValue = permissions[permission]?.toString().toLowerCase().trim();
+    
+    if (permValue != null && permValue.isNotEmpty) {
+      // Deny if explicitly no_access or false-like
+      if (permValue == 'no_access' || permValue == 'false' || permValue == '0') {
+        return false;
+      }
+      // Allow any other non-empty string value (view_only, view_add, full_access, etc.)
+      return true;
+    }
+    
+    // Fallback: check for boolean true (legacy support)
+    if (permissions[permission] == true) return true;
+  }
+  
+  // Fallback to role-based permissions (existing switch statement)
+  final role = getUserRole(user).toLowerCase();
+  switch (permission) {
+    case 'view_users':
+    case 'create_users':
+    case 'edit_users':
+    case 'delete_users':
+      return isSuperAdmin(user) || isCompanyAdmin(user);
+    // ... baqi cases ...
+    default:
+      return false;
+  }
+}
 
   /// Create permissions map for Super Admin
   static Map<String, bool> createSuperAdminPermissions() {

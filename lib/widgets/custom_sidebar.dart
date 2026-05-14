@@ -12,6 +12,7 @@ import '../core/role_utils.dart' as local;
 // with any theme management system by passing themeMode and onThemeChanged callbacks.
 
 /// Modern sidebar widget with trading menu support
+/// ✅ REFACTORED: Clean permission logic, comprehensive logging, no duplication
 class ModernSidebar extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
@@ -36,532 +37,397 @@ class ModernSidebar extends StatelessWidget {
     this.currentUser,
   });
 
+  // ✅ HELPER: Extract permissionsMap from user object (handles nested structure)
+  Map<String, dynamic>? _extractPermissionsMap(Map<String, dynamic>? user) {
+    if (user == null) return null;
+    
+    // Try direct permissionsMap first (top-level)
+    var raw = user['permissionsMap'];
+    
+    // If not found, try nested inside permissions field
+    if (raw == null && user['permissions'] != null) {
+      final perms = user['permissions'];
+      try {
+        Map<String, dynamic>? decoded;
+        if (perms is String) {
+          decoded = jsonDecode(perms) as Map<String, dynamic>?;
+        } else if (perms is Map) {
+          decoded = perms as Map<String, dynamic>?;
+        }
+        if (decoded != null && decoded.containsKey('permissionsMap')) {
+          raw = decoded['permissionsMap'];
+        }
+      } catch (e) {
+        debugPrint('❌ Sidebar: Failed to decode permissions JSON: $e');
+        return null;
+      }
+    }
+    
+    // Handle JSON string permissionsMap (if stored as string in DB)
+    if (raw is String) {
+      try {
+        raw = jsonDecode(raw);
+      } catch (e) {
+        debugPrint('❌ Sidebar: Failed to decode permissionsMap string: $e');
+        return null;
+      }
+    }
+    
+    return raw is Map<String, dynamic> ? Map<String, dynamic>.from(raw) : null;
+  }
+
+  // ✅ HELPER: Normalize module key to handle snake_case vs camelCase mismatch
+  String _normalizeModuleKey(String key) {
+    // Convert snake_case to camelCase: agent_working → agentWorking
+    return key.replaceAllMapped(RegExp(r'_([a-z])'), 
+      (match) => match.group(1)!.toUpperCase());
+  }
+
+  // ✅ HELPER: Check if permission level is valid (not no_access)
+  bool _isValidPermissionLevel(String? level) {
+    if (level == null) return false;
+    final normalized = level.toLowerCase().trim();
+    return normalized != 'no_access' && 
+           normalized != 'false' && 
+           normalized != '0' &&
+           normalized.isNotEmpty;
+  }
+
+  // ✅ CORE LOGIC: Determine if user can see a module
+ bool _canSee(String moduleKey) {
+  // Universal modules - always visible
+  const universalModules = {'dashboard', 'settings'};
+  if (universalModules.contains(moduleKey)) return true;
+
+  // ✅ CRITICAL: If currentUser is null, hide everything (prevent errors)
+  if (currentUser == null) {
+    debugPrint('⚠️ Sidebar: currentUser is null, hiding $moduleKey');
+    return false;
+  }
+
+  // ✅ Extract role & permissions ONCE (avoid repeated calls)
+  final role = local.RoleUtils.getUserRole(currentUser).toLowerCase().trim();
+  final permissionsMap = _extractPermissionsMap(currentUser);
+  
+  debugPrint('🔍 Sidebar: $moduleKey check - role="$role", permissionsMap keys: ${permissionsMap?.keys.toList()}');
+
+  // ✅ Admin bypass: Check role directly (not via helper that might use stale cache)
+  final isAdmin = role == 'super_admin' || 
+                  role == 'superadmin' || 
+                  role == 'super admin' ||
+                  role == 'company_admin' || 
+                  role == 'companyadmin' || 
+                  role == 'company admin';
+                  
+  if (isAdmin) {
+    debugPrint('✅ Sidebar: ADMIN BYPASS GRANTED for $moduleKey (role: $role)');
+    return true;
+  }
+
+  // ✅ Permission-based check for non-admins
+  if (permissionsMap == null || permissionsMap.isEmpty) {
+    debugPrint('❌ Sidebar: DENIED $moduleKey - no permissionsMap');
+    return false;
+  }
+
+  // Handle snake_case ↔ camelCase mismatch
+  final normalizedKey = _normalizeModuleKey(moduleKey);
+  final permValue = 
+      permissionsMap[moduleKey]?.toString().toLowerCase() ?? 
+      permissionsMap[normalizedKey]?.toString().toLowerCase();
+
+  final isAllowed = _isValidPermissionLevel(permValue);
+  debugPrint('${isAllowed ? '✅' : '❌'} Sidebar: $moduleKey → $permValue → ${isAllowed ? 'GRANTED' : 'DENIED'}');
+  
+  return isAllowed;
+}
+
+
   @override
   Widget build(BuildContext context) {
-   final theme = Theme.of(context);
-  final isDark = theme.brightness == Brightness.dark;
-  final isBypass = PermissionHelper.isBypassUser(currentUser);
-  
-  // ✅ FIX: Use RoleUtils as single source of truth for role detection
-  final isSuperAdmin = local.RoleUtils.isSuperAdmin(currentUser);
-  final isCompanyAdmin = local.RoleUtils.isCompanyAdmin(currentUser);
-  final isAdminRole = isSuperAdmin || isCompanyAdmin;
-  
-  bool _canSee(String moduleKey) {
-    debugPrint('🔍 Sidebar: Checking $moduleKey for ${currentUser?['email']}');
-  debugPrint('Sidebar: Role = ${currentUser?['role']}');
-  debugPrint('Sidebar: PermissionsMap = ${currentUser?['permissionsMap']}');
-    // CRITICAL SECURITY FIX: Admin bypass for company_admin and super_admin
-    // ✅ Now this will work even if currentUser['role'] was null initially
-    if (isBypass || isSuperAdmin || isCompanyAdmin) { 
-      debugPrint('✅ Admin bypass granted for $moduleKey'); 
-      return true;
-    }
-
-      
-      // Universal modules accessible to all authenticated users
-      const universalModules = {'dashboard', 'settings'};
-      if (universalModules.contains(moduleKey)) {
-        return true;
-      }
-      
-      // HYBRID MODE: Temporary access during permission sync
-      final user = currentUser;
-      if (user != null && (user['email'] as String?)?.isNotEmpty == true) {
-        final isSyncing = PermissionHelper.isPermissionSyncInProgress();
-        if (isSyncing) {
-          debugPrint('Sidebar: Granting temporary access during permission sync for module: $moduleKey');
-          return true; // Temporary access during sync
-        }
-      }
-      
-      // CRITICAL FIX: Deny-by-default - if permissionsMap is null or empty, HIDE all modules
-      var permissionsMapRaw = currentUser?['permissionsMap'];
-      
-      // If permissionsMap is not a direct field, check inside permissions field
-      if (permissionsMapRaw == null) {
-        final permissionsField = currentUser?['permissions'];
-        if (permissionsField != null) {
-          try {
-            Map<String, dynamic>? permissions;
-            if (permissionsField is String) {
-              permissions = jsonDecode(permissionsField) as Map<String, dynamic>?;
-            } else if (permissionsField is Map<String, dynamic>) {
-              permissions = permissionsField;
-            }
-            
-            if (permissions != null) {
-              permissionsMapRaw = permissions['permissionsMap'];
-            }
-          } catch (e) {
-            return false; // Deny on error for security
-          }
-        }
-      }
-      
-      Map<String, dynamic>? permissionsMap;
-      
-      // Handle JSON string permissionsMap from database
-      if (permissionsMapRaw is String) {
-        try {
-          permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
-        } catch (e) {
-          return false; // Deny on error for security
-        }
-      } else if (permissionsMapRaw is Map<String, dynamic>) {
-        permissionsMap = permissionsMapRaw;
-      }
-      
-      // CRITICAL: Deny-by-default policy - if permissionsMap is null or empty, HIDE module
-      if (permissionsMap == null || permissionsMap.isEmpty) {
-        return false; // DENY by default - no permissions means no access
-      }
-      
-      // Check permission level
-      final level = PermissionHelper.getModulePermissionLevel(currentUser, moduleKey);
-      
-      // If permissions are still loading, deny by default for security
-      if (level == 'loading') {
-        return false; // DENY by default - no temporary access
-      }
-      
-      // Strict permission check - only allow if explicitly granted
-      final hasExplicitAccess = level != 'no_access';
-      
-      if (!hasExplicitAccess) {
-        return false;
-      }
-      
-      // CRITICAL SECURITY FIX: Double-check permissionsMap for agents to ensure explicit assignment
-      if (local.RoleUtils.isAgent(currentUser)) {
-        try {
-          var permissionsMapRaw = currentUser?['permissionsMap'];
-          
-          // If permissionsMap is not a direct field, check inside permissions field
-          if (permissionsMapRaw == null) {
-            final permissionsField = currentUser?['permissions'];
-            if (permissionsField != null) {
-              try {
-                Map<String, dynamic>? permissions;
-                if (permissionsField is String) {
-                  permissions = jsonDecode(permissionsField) as Map<String, dynamic>?;
-                } else if (permissionsField is Map<String, dynamic>) {
-                  permissions = permissionsField;
-                }
-                
-                if (permissions != null) {
-                  permissionsMapRaw = permissions['permissionsMap'];
-                }
-              } catch (e) {
-                return false;
-              }
-            }
-          }
-          
-          Map<String, dynamic>? permissionsMap;
-          
-          // Handle JSON string permissionsMap from database
-          if (permissionsMapRaw is String) {
-            try {
-              permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
-            } catch (e) {
-              return false;
-            }
-          } else if (permissionsMapRaw is Map<String, dynamic>) {
-            permissionsMap = permissionsMapRaw;
-          }
-          
-          // CRITICAL: Agent MUST have explicit permission in permissionsMap
-          if (permissionsMap == null || !permissionsMap.containsKey(moduleKey)) {
-            return false;
-          }
-          
-          final permission = permissionsMap[moduleKey]?.toString().toLowerCase();
-          final hasValidPermission = permission == 'view_only' || 
-                                     permission == 'view_add' || 
-                                     permission == 'view_add_edit' || 
-                                     permission == 'full_access';
-          
-          if (!hasValidPermission) {
-            return false;
-          }
-          
-          return true;
-        } catch (e) {
-          return false; // Deny on error for security
-        }
-      }
-      
-      // Company Admins get access to users and reports, plus any explicit permissions
-      if (local.RoleUtils.isCompanyAdmin(currentUser)) {
-        if (moduleKey == 'users' || moduleKey == 'reports') {
-          return true;
-        }
-        
-        // Check explicit permissions for other modules
-        try {
-          final permissionsMapRaw = currentUser?['permissionsMap'];
-          Map<String, dynamic>? permissionsMap;
-          
-          if (permissionsMapRaw is String) {
-            try {
-              permissionsMap = jsonDecode(permissionsMapRaw) as Map<String, dynamic>?;
-            } catch (e) {
-              return false;
-            }
-          } else if (permissionsMapRaw is Map<String, dynamic>) {
-            permissionsMap = permissionsMapRaw;
-          }
-          
-          if (permissionsMap != null && permissionsMap.containsKey(moduleKey)) {
-            final permission = permissionsMap[moduleKey]?.toString().toLowerCase();
-            final hasValidPermission = permission == 'view_only' || 
-                                       permission == 'view_add' || 
-                                       permission == 'view_add_edit' || 
-                                       permission == 'full_access';
-            
-            return hasValidPermission;
-          }
-        } catch (e) {
-          // Error checking permissions, deny access for security
-        }
-        
-        return false;
-      }
-      
-      return hasExplicitAccess;
-    }
-
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
     return ConstrainedBox(
       constraints: BoxConstraints(
-        maxWidth: isOpen ? 280 : 80, // Collapsed width when closed
-        minWidth: isOpen ? 280 : 80, // Ensure minimum width
+        maxWidth: isOpen ? 280 : 80,
+        minWidth: isOpen ? 280 : 80,
       ),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
         child: Container(
-          width: double.infinity, // Ensure full width
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF4A90E2).withOpacity(0.8), // Bright Blue top-left
-              Color(0xFF2C3E50).withOpacity(0.95), // Deep Blue-Grey bottom-right
-            ],
-          ),
-          borderRadius: const BorderRadius.only(
-            topRight: Radius.circular(16),
-            bottomRight: Radius.circular(16),
-          ),
-          boxShadow: isOpen ? [
-            // Inner shadow for depth
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 20,
-              offset: const Offset(-2, -2),
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF4A90E2).withOpacity(0.8),
+                Color(0xFF2C3E50).withOpacity(0.95),
+              ],
             ),
-            // Outer shadow for floating effect
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 25,
-              offset: const Offset(4, 8),
+            borderRadius: const BorderRadius.only(
+              topRight: Radius.circular(16),
+              bottomRight: Radius.circular(16),
             ),
-          ] : [], // No shadows when collapsed to prevent white shade
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.max, // Ensure column takes full height
-          children: [
-            // Header - Responsive based on isOpen state
-            Container(
-              margin: const EdgeInsets.all(16),
-              padding: EdgeInsets.symmetric(
-                horizontal: isOpen ? 16 : 8, 
-                vertical: 12
+            boxShadow: isOpen ? [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 20,
+                offset: const Offset(-2, -2),
               ),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(25),
-                border: Border.all(color: Colors.white.withOpacity(0.15)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.white.withOpacity(0.1),
-                    blurRadius: 10,
-                    spreadRadius: 1,
-                  ),
-                ],
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 25,
+                offset: const Offset(4, 8),
               ),
-              child: isOpen 
-                ? Row(
-                    children: [
-                      // Menu Icon (3 Lines)
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.menu,
-                            color: Colors.white,
-                            size: 20,
+            ] : [],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            children: [
+              // ✅ Header - Responsive based on isOpen state
+              Container(
+                margin: const EdgeInsets.all(16),
+                padding: EdgeInsets.symmetric(horizontal: isOpen ? 16 : 8, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(25),
+                  border: Border.all(color: Colors.white.withOpacity(0.15)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.white.withOpacity(0.1),
+                      blurRadius: 10,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: isOpen 
+                  ? Row(
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          onPressed: onToggle,
-                          style: IconButton.styleFrom(
-                            minimumSize: const Size(36, 36),
-                            padding: EdgeInsets.zero,
-                          ),
-                          tooltip: 'Toggle Sidebar',
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'ERP',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
+                          child: IconButton(
+                            icon: const Icon(Icons.menu, color: Colors.white, size: 20),
+                            onPressed: onToggle,
+                            style: IconButton.styleFrom(minimumSize: const Size(36, 36), padding: EdgeInsets.zero),
+                            tooltip: 'Toggle Sidebar',
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'EasyRealtorsPro',
-                          style: AppFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      // Toggle Button at Top-Right
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
+                        const SizedBox(width: 12),
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.2),
-                            width: 1,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: const Center(
+                            child: Text('ERP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                           ),
                         ),
-                        child: IconButton(
-                          icon: Icon(
-                            isOpen ? Icons.chevron_left : Icons.chevron_right,
-                            size: 18,
-                          ),
-                          color: Colors.white,
-                          onPressed: onToggle,
-                          style: IconButton.styleFrom(
-                            minimumSize: const Size(32, 32),
-                            padding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                : Column(
-                    children: [
-                      // Centered icon when collapsed
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.menu,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          onPressed: onToggle,
-                          style: IconButton.styleFrom(
-                            minimumSize: const Size(36, 36),
-                            padding: EdgeInsets.zero,
-                          ),
-                          tooltip: 'Toggle Sidebar',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: const Center(
+                        const SizedBox(width: 12),
+                        Expanded(
                           child: Text(
-                            'ERP',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
+                            'EasyRealtorsPro',
+                            style: AppFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-            ),
-            // Menu Items - Always show icons, show labels only when open
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    SidebarMenuItem(
-                      icon: Icons.dashboard_outlined,
-                      selectedIcon: Icons.dashboard,
-                      label: 'Dashboard',
-                      isSelected: selectedIndex == 0,
-                      onTap: () => onDestinationSelected(0),
-                      visible: _canSee('dashboard'),
-                      showLabel: isOpen,
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+                          ),
+                          child: IconButton(
+                            icon: Icon(isOpen ? Icons.chevron_left : Icons.chevron_right, size: 18),
+                            color: Colors.white,
+                            onPressed: onToggle,
+                            style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.menu, color: Colors.white, size: 20),
+                            onPressed: onToggle,
+                            style: IconButton.styleFrom(minimumSize: const Size(36, 36), padding: EdgeInsets.zero),
+                            tooltip: 'Toggle Sidebar',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: const Center(
+                            child: Text('ERP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                          ),
+                        ),
+                      ],
                     ),
-                    SidebarMenuItem(
-                      icon: Icons.insert_drive_file_outlined,
-                      selectedIcon: Icons.insert_drive_file,
-                      label: 'Inventory',
-                      isSelected: selectedIndex == 1,
-                      onTap: _canSee('inventory') ? () => onDestinationSelected(1) : null,
-                      badge: badgeFiles,
-                      visible: _canSee('inventory'),
-                      showLabel: isOpen,
-                    ),
-                    SidebarMenuItem(
-                      icon: Icons.support_agent_outlined,
-                      selectedIcon: Icons.support_agent,
-                      label: 'Agent Working',
-                      isSelected: selectedIndex == 2,
-                      onTap: _canSee('agent_working') ? () => onDestinationSelected(2) : null,
-                      visible: _canSee('agent_working'),
-                      showLabel: isOpen,
-                    ),
-                    SidebarMenuItem(
-                      icon: Icons.chair_outlined,
-                      selectedIcon: Icons.chair,
-                      label: 'Rental Items',
-                      isSelected: selectedIndex == 3,
-                      onTap: _canSee('rental_items') ? () => onDestinationSelected(3) : null,
-                      badge: badgeRentals,
-                      visible: _canSee('rental_items'),
-                      showLabel: isOpen,
-                    ),
-                    SidebarMenuItem(
-                      icon: Icons.checklist_outlined,
-                      selectedIcon: Icons.checklist,
-                      label: 'To-Do',
-                      isSelected: selectedIndex == 4,
-                      onTap: _canSee('todo') ? () => onDestinationSelected(4) : null,
-                      visible: _canSee('todo'),
-                      showLabel: isOpen,
-                    ),
-                    SidebarMenuItem(
-                      icon: Icons.payments_outlined,
-                      selectedIcon: Icons.payments,
-                      label: 'Expenditure',
-                      isSelected: selectedIndex == 10,
-                      onTap: _canSee('expenditure') ? () => onDestinationSelected(10) : null,
-                      visible: _canSee('expenditure'),
-                      showLabel: isOpen,
-                    ),
-                    // Trading - Direct Navigation
-                    if (onTradingTap != null)
+              ),
+              
+              // ✅ Menu Items - Always show icons, labels only when open
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    children: [
                       SidebarMenuItem(
-                        icon: Icons.currency_exchange_outlined,
-                        selectedIcon: Icons.currency_exchange,
-                        label: 'Trading',
-                        isSelected: false,
-                        onTap: _canSee('trading') ? onTradingTap : null,
-                        visible: _canSee('trading'),
+                        icon: Icons.dashboard_outlined,
+                        selectedIcon: Icons.dashboard,
+                        label: 'Dashboard',
+                        isSelected: selectedIndex == 0,
+                        onTap: () => onDestinationSelected(0),
+                        visible: _canSee('dashboard'),
                         showLabel: isOpen,
                       ),
-                    SidebarMenuItem(
-                      icon: Icons.bar_chart_outlined,
-                      selectedIcon: Icons.bar_chart,
-                      label: 'Reports',
-                      isSelected: selectedIndex == 8,
-                      onTap: _canSee('reports') ? () => onDestinationSelected(8) : null,
-                      visible: _canSee('reports'),
-                      showLabel: isOpen,
-                    ),
-                    // Admin Menu Items with individual visibility control
-                    SidebarMenuItem(
-                      icon: Icons.people_outline,
-                      selectedIcon: Icons.people,
-                      label: 'User Management',
-                      isSelected: selectedIndex == 9,
-                      onTap: _canSee('users') ? () => onDestinationSelected(9) : null,
-                      visible: _canSee('users'), // Visible to both Super Admins and Company Admins based on 'users' permission
-                      showLabel: isOpen,
-                    ),
-                    SidebarMenuItem(
-                      icon: Icons.business_outlined,
-                      selectedIcon: Icons.business,
-                      label: 'Company Management',
-                      isSelected: selectedIndex == 11,
-                      onTap: () => onDestinationSelected(11),
-                      visible: isSuperAdmin, // Only visible to super_admin
-                      showLabel: isOpen,
-                    ),
-                    SidebarMenuItem(
-                      icon: Icons.settings_outlined,
-                      selectedIcon: Icons.settings,
-                      label: 'Settings',
-                      isSelected: selectedIndex == 5,
-                      onTap: _canSee('settings') ? () => onDestinationSelected(5) : null,
-                      visible: _canSee('settings'),
-                      showLabel: isOpen,
-                    ),
-                  ],
+                      SidebarMenuItem(
+                        icon: Icons.insert_drive_file_outlined,
+                        selectedIcon: Icons.insert_drive_file,
+                        label: 'Inventory',
+                        isSelected: selectedIndex == 1,
+                        onTap: _canSee('inventory') ? () => onDestinationSelected(1) : null,
+                        badge: badgeFiles,
+                        visible: _canSee('inventory'),
+                        showLabel: isOpen,
+                      ),
+                      SidebarMenuItem(
+                        icon: Icons.support_agent_outlined,
+                        selectedIcon: Icons.support_agent,
+                        label: 'Agent Working',
+                        isSelected: selectedIndex == 2,
+                        onTap: _canSee('agent_working') ? () => onDestinationSelected(2) : null,
+                        visible: _canSee('agent_working'),
+                        showLabel: isOpen,
+                      ),
+                      SidebarMenuItem(
+                        icon: Icons.chair_outlined,
+                        selectedIcon: Icons.chair,
+                        label: 'Rental Items',
+                        isSelected: selectedIndex == 3,
+                        onTap: _canSee('rental_items') ? () => onDestinationSelected(3) : null,
+                        badge: badgeRentals,
+                        visible: _canSee('rental_items'),
+                        showLabel: isOpen,
+                      ),
+                      SidebarMenuItem(
+                        icon: Icons.checklist_outlined,
+                        selectedIcon: Icons.checklist,
+                        label: 'To-Do',
+                        isSelected: selectedIndex == 4,
+                        onTap: _canSee('todo') ? () => onDestinationSelected(4) : null,
+                        visible: _canSee('todo'),
+                        showLabel: isOpen,
+                      ),
+                      SidebarMenuItem(
+                        icon: Icons.payments_outlined,
+                        selectedIcon: Icons.payments,
+                        label: 'Expenditure',
+                        isSelected: selectedIndex == 10,
+                        onTap: _canSee('expenditure') ? () => onDestinationSelected(10) : null,
+                        visible: _canSee('expenditure'),
+                        showLabel: isOpen,
+                      ),
+                      // Trading - Direct Navigation
+                      if (onTradingTap != null)
+                        SidebarMenuItem(
+                          icon: Icons.currency_exchange_outlined,
+                          selectedIcon: Icons.currency_exchange,
+                          label: 'Trading',
+                          isSelected: false,
+                          onTap: _canSee('trading') ? onTradingTap : null,
+                          visible: _canSee('trading'),
+                          showLabel: isOpen,
+                        ),
+                      SidebarMenuItem(
+                        icon: Icons.bar_chart_outlined,
+                        selectedIcon: Icons.bar_chart,
+                        label: 'Reports',
+                        isSelected: selectedIndex == 8,
+                        onTap: _canSee('reports') ? () => onDestinationSelected(8) : null,
+                        visible: _canSee('reports'),
+                        showLabel: isOpen,
+                      ),
+                      // Admin Menu Items with individual visibility control
+                      SidebarMenuItem(
+                        icon: Icons.people_outline,
+                        selectedIcon: Icons.people,
+                        label: 'User Management',
+                        isSelected: selectedIndex == 9,
+                        onTap: _canSee('users') ? () => onDestinationSelected(9) : null,
+                        visible: _canSee('users'),
+                        showLabel: isOpen,
+                      ),
+                      SidebarMenuItem(
+                        icon: Icons.business_outlined,
+                        selectedIcon: Icons.business,
+                        label: 'Company Management',
+                        isSelected: selectedIndex == 11,
+                        onTap: () => onDestinationSelected(11),
+                        visible: local.RoleUtils.isSuperAdmin(currentUser),// Only visible to super_admin
+                        showLabel: isOpen,
+                      ),
+                      SidebarMenuItem(
+                        icon: Icons.settings_outlined,
+                        selectedIcon: Icons.settings,
+                        label: 'Settings',
+                        isSelected: selectedIndex == 5,
+                        onTap: _canSee('settings') ? () => onDestinationSelected(5) : null,
+                        visible: _canSee('settings'),
+                        showLabel: isOpen,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            // Separator
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.transparent,
-                    Colors.white.withOpacity(0.2),
-                    Colors.transparent,
-                  ],
+              
+              // ✅ Separator
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                height: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.transparent, Colors.white.withOpacity(0.2), Colors.transparent],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            // Logout
-            SidebarMenuItem(
-              icon: Icons.logout,
-              selectedIcon: Icons.logout,
-              label: 'Logout',
-              isSelected: false,
-              onTap: onLogout,
-              showLabel: isOpen,
-            ),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 8),
+              
+              // ✅ Logout
+              SidebarMenuItem(
+                icon: Icons.logout,
+                selectedIcon: Icons.logout,
+                label: 'Logout',
+                isSelected: false,
+                onTap: onLogout,
+                showLabel: isOpen,
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
-        ), // Close Container from line 57
-      ), // Close AnimatedContainer
-    ); // Close ConstrainedBox
+      ),
+    );
   }
 }
 
-/// Sidebar menu item widget
+/// ✅ Sidebar menu item widget - Clean, reusable, with badge support
 class SidebarMenuItem extends StatelessWidget {
   final IconData icon;
   final IconData selectedIcon;
@@ -590,25 +456,18 @@ class SidebarMenuItem extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!visible) return const SizedBox.shrink();
     
-    // Use this structure to ensure clicks pass through
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: showLabel ? 12 : 8, // Less padding when collapsed
-        vertical: 6,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: showLabel ? 12 : 8, vertical: 6),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap, // Ensure this is linked correctly
+          onTap: onTap,
           borderRadius: BorderRadius.circular(25),
           child: Container(
-            constraints: BoxConstraints(
-              minWidth: showLabel ? 200 : 64, // Ensure minimum width
-              minHeight: 48, // Ensure minimum height for touch targets
-            ),
+            constraints: BoxConstraints(minWidth: showLabel ? 200 : 64, minHeight: 48),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(25),
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: const Offset(0, 3))],
             ),
             child: showLabel 
               ? Row(
@@ -620,17 +479,8 @@ class SidebarMenuItem extends StatelessWidget {
                         height: 40,
                         decoration: BoxDecoration(
                           color: const Color(0xFFFF6B35),
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(2),
-                            bottomLeft: Radius.circular(2),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFFF6B35).withOpacity(0.5),
-                              blurRadius: 8,
-                              spreadRadius: 1,
-                            ),
-                          ],
+                          borderRadius: const BorderRadius.only(topLeft: Radius.circular(2), bottomLeft: Radius.circular(2)),
+                          boxShadow: [BoxShadow(color: const Color(0xFFFF6B35).withOpacity(0.5), blurRadius: 8, spreadRadius: 1)],
                         ),
                       ),
                     
@@ -641,49 +491,27 @@ class SidebarMenuItem extends StatelessWidget {
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                           child: Container(
-                            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                             decoration: BoxDecoration(
                               color: isSelected ? Colors.white.withOpacity(0.2) : Colors.white.withOpacity(0.08),
                               borderRadius: BorderRadius.circular(25),
                               border: Border.all(
-                                color: isSelected 
-                                  ? Colors.white.withOpacity(0.4)
-                                  : Colors.white.withOpacity(0.2),
+                                color: isSelected ? Colors.white.withOpacity(0.4) : Colors.white.withOpacity(0.2),
                                 width: isSelected ? 1.5 : 1.0,
                               ),
                               boxShadow: isSelected ? [
-                                // Enhanced glow effect for selected items
-                                BoxShadow(
-                                  color: Colors.white.withOpacity(0.3),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, -3),
-                                ),
-                                // Overall glow
-                                BoxShadow(
-                                  color: Colors.white.withOpacity(0.15),
-                                  blurRadius: 20,
-                                  spreadRadius: 2,
-                                ),
-                                // Orange glow for selected
-                                BoxShadow(
-                                  color: const Color(0xFFFF6B35).withOpacity(0.2),
-                                  blurRadius: 15,
-                                  spreadRadius: 1,
-                                ),
+                                BoxShadow(color: Colors.white.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, -3)),
+                                BoxShadow(color: Colors.white.withOpacity(0.15), blurRadius: 20, spreadRadius: 2),
+                                BoxShadow(color: const Color(0xFFFF6B35).withOpacity(0.2), blurRadius: 15, spreadRadius: 1),
                               ] : [
-                                // Subtle shadow for non-selected items
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                ),
+                                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2)),
                               ],
                             ),
                             child: Row(
                               children: [
                                 Icon(isSelected ? selectedIcon : icon, color: Colors.white, size: 22),
                                 if (showLabel) ...[
-                                  SizedBox(width: 14),
+                                  const SizedBox(width: 14),
                                   Expanded(
                                     child: Text(
                                       label, 
@@ -700,22 +528,9 @@ class SidebarMenuItem extends StatelessWidget {
                                       decoration: BoxDecoration(
                                         color: Colors.orange,
                                         borderRadius: BorderRadius.circular(10),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.orange.withOpacity(0.5),
-                                            blurRadius: 4,
-                                            spreadRadius: 1,
-                                          ),
-                                        ],
+                                        boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.5), blurRadius: 4, spreadRadius: 1)],
                                       ),
-                                      child: Text(
-                                        '$badge',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
+                                      child: Text('$badge', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                                     ),
                                 ],
                               ],
@@ -727,61 +542,40 @@ class SidebarMenuItem extends StatelessWidget {
                   ],
                 )
               : Center(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(25),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                    child: Container(
-                      constraints: BoxConstraints(
-                        minWidth: 48,
-                        minHeight: 48,
-                      ),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.white.withOpacity(0.2) : Colors.white.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(25),
-                        border: Border.all(
-                          color: isSelected 
-                            ? Colors.white.withOpacity(0.4)
-                            : Colors.white.withOpacity(0.2),
-                          width: isSelected ? 1.5 : 1.0,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(25),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isSelected ? Colors.white.withOpacity(0.2) : Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(25),
+                          border: Border.all(
+                            color: isSelected ? Colors.white.withOpacity(0.4) : Colors.white.withOpacity(0.2),
+                            width: isSelected ? 1.5 : 1.0,
+                          ),
+                          boxShadow: isSelected ? [
+                            BoxShadow(color: Colors.white.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, -3)),
+                            BoxShadow(color: const Color(0xFFFF6B35).withOpacity(0.2), blurRadius: 15, spreadRadius: 1),
+                          ] : [
+                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2)),
+                          ],
                         ),
-                        boxShadow: isSelected ? [
-                          BoxShadow(
-                            color: Colors.white.withOpacity(0.3),
-                            blurRadius: 12,
-                            offset: const Offset(0, -3),
-                          ),
-                          BoxShadow(
-                            color: const Color(0xFFFF6B35).withOpacity(0.2),
-                            blurRadius: 15,
-                            spreadRadius: 1,
-                          ),
-                        ] : [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        isSelected ? selectedIcon : icon, 
-                        color: Colors.white, 
-                        size: 20,
+                        child: Icon(isSelected ? selectedIcon : icon, color: Colors.white, size: 20),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ),
           ),
         ),
+      ),
     );
   }
 }
 
-/// Trading sidebar menu widget (legacy, kept for compatibility)
+/// ✅ Trading sidebar menu widget (legacy, kept for compatibility)
 class TradingSidebarMenu extends StatelessWidget {
   final bool expanded;
   final ValueChanged<bool> onToggle;

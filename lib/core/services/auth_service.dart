@@ -23,6 +23,8 @@ import 'background_sync_manager.dart';
 import 'firebase_threading_handler.dart';
 
 class AuthService {
+   static final ValueNotifier<Map<String, dynamic>?> currentUserNotifier = 
+      ValueNotifier<Map<String, dynamic>?>(null);
   static Map<String, dynamic>? currentUser; // in-memory cache for immediate UI refresh
   static bool get _firebaseReady => Firebase.apps.isNotEmpty;
   static const String _usersFile = 'users.json';
@@ -3143,6 +3145,7 @@ _emitUserUpdate(user);
 
     // Clear Firestore local cache to avoid stale data after manual deletes
     await _clearFirestorePersistence();
+    
   }
 
   /// Clears Firestore local cache/persistence to remove stale documents after manual deletes or resets.

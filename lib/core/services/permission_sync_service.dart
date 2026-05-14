@@ -251,73 +251,44 @@ class PermissionSyncService {
   /// Extract permissionsMap from user object
   /// Extract permissionsMap from user object
   /// Extract permissionsMap from user object
-  static Map<String, dynamic>? _extractPermissionsMap(Map<String, dynamic> user) {
-    try {
-      // debugPrint('PermissionSyncService: Extracting permissionsMap for user ${user['email']}');
-      
-      var permissionsMapRaw = user['permissionsMap'];
-      
-      // ✅ FIX: Handle empty permissionsMap by generating from role
-      if (permissionsMapRaw != null) {
-        if (permissionsMapRaw is Map && (permissionsMapRaw as Map).isEmpty) {
-          // debugPrint('PermissionSyncService: permissionsMap is empty, generating from role');
-          final permissionsField = user['permissions'];
-          if (permissionsField != null) {
-            Map<String, dynamic>? decodedPerms;
-            if (permissionsField is String) {
-              // ✅ FIX: Added explicit cast here
-              decodedPerms = jsonDecode(permissionsField) as Map<String, dynamic>?;
-            } else if (permissionsField is Map) {
-              // ✅ FIX: Added explicit cast here
-              decodedPerms = Map<String, dynamic>.from(permissionsField);
-            }
-            
-            if (decodedPerms != null) {
-              permissionsMapRaw = _generatePermissionsMapFromRole(decodedPerms, user);
-            }
-          }
-        }
-      } 
-      // ✅ FIX: If permissionsMap is null, try to generate from permissions field
-      else {
-        final permissionsField = user['permissions'];
-        
-        if (permissionsField != null) {
-          Map<String, dynamic>? decodedPerms;
-          if (permissionsField is String) {
-            // ✅ FIX: Added explicit cast here
-            decodedPerms = jsonDecode(permissionsField) as Map<String, dynamic>?;
-          } else if (permissionsField is Map) {
-            // ✅ FIX: Added explicit cast here
-            decodedPerms = Map<String, dynamic>.from(permissionsField);
-          }
-          
-          if (decodedPerms != null) {
-            permissionsMapRaw = _generatePermissionsMapFromRole(decodedPerms, user);
-          }
-        }
+ static Map<String, dynamic>? _extractPermissionsMap(Map<String, dynamic> user) {
+  try {
+    // Step 1: Try direct permissionsMap (top-level)
+    var raw = user['permissionsMap'];
+    
+    // Step 2: If not found, try nested inside 'permissions' field
+    if (raw == null && user['permissions'] != null) {
+      final perms = user['permissions'];
+      if (perms is String) {
+        raw = jsonDecode(perms);
+      } else if (perms is Map) {
+        raw = perms;
       }
       
-      // ✅ FIX: Parse and return the map safely without undefined 'result' variable
-      if (permissionsMapRaw != null) {
-        if (permissionsMapRaw is Map) {
-          final result = Map<String, dynamic>.from(permissionsMapRaw);
-          return result;
-        } else if (permissionsMapRaw is String) {
-          final decoded = jsonDecode(permissionsMapRaw);
-          if (decoded is Map) {
-            final result = Map<String, dynamic>.from(decoded);
-            return result;
-          }
-        }
+      // Handle nested permissionsMap inside permissions
+      if (raw is Map && raw.containsKey('permissionsMap')) {
+        raw = raw['permissionsMap'];
       }
-      
-      return null;
-    } catch (e) {
-      debugPrint('PermissionSyncService: Error extracting permissionsMap: $e');
-      return null;
     }
+    
+    // Step 3: Handle string → Map conversion
+    if (raw is String) {
+      raw = jsonDecode(raw);
+    }
+    
+    // Step 4: Return clean Map or null
+    if (raw is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(raw);
+    } else if (raw is Map) {
+      return Map<String, dynamic>.from(raw.cast<String, dynamic>());
+    }
+    
+    return null;
+  } catch (e) {
+    debugPrint('❌ PermissionSyncService: _extractPermissionsMap error: $e');
+    return null;
   }
+}
   /// Generate permissionsMap from role-based permissions
   static Map<String, dynamic> _generatePermissionsMapFromRole(Map<String, dynamic> permissions, Map<String, dynamic> user) {
     final role = permissions['role']?.toString().toLowerCase();
