@@ -31,113 +31,112 @@ class _InventoryListState extends State<InventoryList> {
         
         return Column(
           children: [
-            // This is the ONLY Expanded widget. It pushes pagination to the bottom.
-            Expanded(
-              child: SingleChildScrollView(
-                // This makes the WHOLE page scroll
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Filter Chips Row
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? const Color(0xFF1B1F24)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade300.withOpacity(0.7)),
-                      ),
-                      child: Row(
-                        children: [
-                          _buildFilterChip('All', null, viewModel),
-                          const SizedBox(width: 8),
-                          _buildFilterChip('Available', 'Not Sold', viewModel),
-                          const SizedBox(width: 8),
-                          _buildFilterChip('Sold', 'Sold', viewModel),
-                        ],
-                      ),
+            // Filter Chips and Dropdowns fixed at the top
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Filter Chips Row
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF1B1F24)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade300.withOpacity(0.7)),
                     ),
-                    const SizedBox(height: 16),
-                    // Society and Block Dropdowns
-                    Row(
+                    child: Row(
                       children: [
-                        Expanded(
-                          child: Container(
-                            key: ValueKey('dropdown_${viewModel.selectedSocietyId}_${viewModel.societies.length}'),
-                            child: SizedBox(
-                              height: 60,
-                              child: _buildDropdown(
-                                'Society',
-                                viewModel.societies,
-                                viewModel.selectedSocietyId,
-                                (value) => viewModel.setSelectedSociety(value),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Container(
-                            key: ValueKey('dropdown_${viewModel.selectedSocietyId}_${viewModel.blocks.length}'),
-                            child: SizedBox(
-                              height: 60,
-                              child: _buildDropdown(
-                                'Block',
-                                viewModel.getAvailableBlocks(),
-                                viewModel.selectedBlockId,
-                                // CRITICAL FIX: Disable Block dropdown if no specific society is selected
-                                (viewModel.selectedSocietyId == null || viewModel.selectedSocietyId == 'All') 
-                                    ? null // This disables the dropdown
-                                    : (String? value) => viewModel.setSelectedBlock(value),
-                              ),
-                            ),
-                          ),
-                        ),
+                        _buildFilterChip('All', null, viewModel),
+                        const SizedBox(width: 8),
+                        _buildFilterChip('Available', 'Not Sold', viewModel),
+                        const SizedBox(width: 8),
+                        _buildFilterChip('Sold', 'Sold', viewModel),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    // The List MUST NOT have an 'Expanded' wrapper here.
-                    viewModel.isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : paginatedItemsForType.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.search_off, size: 64, color: Colors.grey.shade400),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      'No items found',
-                                      style: AppFonts.poppins(
-                                        fontSize: 16,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Try adjusting your filters or add new items',
-                                      style: AppFonts.poppins(
-                                        fontSize: 14,
-                                        color: Colors.grey.shade500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : ListView.builder(
-                                shrinkWrap: true, // CRITICAL
-                                physics: const NeverScrollableScrollPhysics(), // CRITICAL
-                                itemCount: paginatedItemsForType.length,
-                                itemBuilder: (ctx, i) {
-                                  final item = paginatedItemsForType[i];
-                                  return _buildInventoryCard(item, viewModel);
-                                },
-                              ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Society and Block Dropdowns
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          key: ValueKey('dropdown_${viewModel.selectedSocietyId}_${viewModel.societies.length}'),
+                          child: SizedBox(
+                            height: 60,
+                            child: _buildDropdown(
+                              'Society',
+                              viewModel.societies,
+                              viewModel.selectedSocietyId,
+                              (value) => viewModel.setSelectedSociety(value),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Container(
+                          key: ValueKey('dropdown_${viewModel.selectedSocietyId}_${viewModel.blocks.length}'),
+                          child: SizedBox(
+                            height: 60,
+                            child: _buildDropdown(
+                              'Block',
+                              viewModel.getAvailableBlocks(),
+                              viewModel.selectedBlockId,
+                              // CRITICAL FIX: Disable Block dropdown if no specific society is selected
+                              (viewModel.selectedSocietyId == null || viewModel.selectedSocietyId == 'All') 
+                                  ? null // This disables the dropdown
+                                  : (String? value) => viewModel.setSelectedBlock(value),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
+            ),
+            
+            // Scrollable List View
+            Expanded(
+              child: viewModel.isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : paginatedItemsForType.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.search_off, size: 64, color: Colors.grey.shade400),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No items found',
+                                style: AppFonts.poppins(
+                                  fontSize: 16,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Try adjusting your filters or add new items',
+                                style: AppFonts.poppins(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: paginatedItemsForType.length,
+                          itemBuilder: (ctx, i) {
+                            final item = paginatedItemsForType[i];
+                            return _buildInventoryCard(item, viewModel);
+                          },
+                        ),
             ),
             // Standardized Footer with pagination and add button
             Container(

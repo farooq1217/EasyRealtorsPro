@@ -1,4 +1,4 @@
-name: EasyRealtorsPro
+name: easyrealtorspro
 description: Flutter Desktop Admin app (Windows) with first-run Drive setup and retention scheduler.
 version: 0.1.0
 publish_to: 'none'
@@ -54,6 +54,7 @@ dependencies:
   archive: ^3.4.9
   flutter_secure_storage: ^9.2.2
   permission_handler: ^11.3.1
+  flutter_dotenv: ^6.0.1
   # sqlite3: ^2.4.0 # Permanently removed for web compatibility
 
 dev_dependencies:
@@ -68,6 +69,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - .env
     - assets/fonts/
     - assets/images/
     - assets/logo.png

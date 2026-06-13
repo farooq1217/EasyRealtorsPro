@@ -7,7 +7,7 @@ import '../models/inventory_item.dart';
 import '../repositories/inventory_repository_impl.dart';
 import '../../settings/repositories/settings_repository_impl.dart';
 import '../../../core/services/app_storage.dart' show AppStorage;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/shared_utils.dart' show TopRightSearch;
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../../core/role_utils.dart';

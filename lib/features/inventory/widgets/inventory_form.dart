@@ -11,7 +11,7 @@ import '../../../core/app_utils.dart' show pickAndCompressImage, showImageSource
 import 'package:shared/shared.dart';
 import '../../../core/role_utils.dart' as local;
 import '../../../core/services/app_storage.dart' show AppStorage;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 
 class InventoryForm extends StatefulWidget {
   final InventoryItem? existing;

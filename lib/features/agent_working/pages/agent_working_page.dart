@@ -17,7 +17,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared/shared.dart';
 import '../../../core/role_utils.dart' as local;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../widgets/image_upload_widget.dart' show ImageUploadWidget;
@@ -27,6 +27,7 @@ import '../../../widgets/standardized_footer.dart' show StandardizedFooter;
 import '../../agents/view_models/agent_view_model.dart';
 import '../../agents/repositories/agent_repository_impl.dart';
 import 'agent_working_detail_page.dart';
+import '../../../core/utils/logger.dart';
 
 class AgentWorkingPage extends StatefulWidget {
   final AppDatabase db;
@@ -238,7 +239,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   } 
 
   Future<void> _submitTransfer({required String action, BuildContext? dialogContext, Map<String, dynamic>? existingItem}) async {
-    print("Save button clicked. Validating form...");
+    Logger.debug("Save button clicked. Validating form...");
     
     bool success;
     if (existingItem != null) {
@@ -266,7 +267,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
           ),
         );
       } catch (e) {
-        print("Warning: Could not show success message: $e");
+        Logger.warning("Could not show success message: $e");
       }
     } else if (context.read<AgentViewModel>().error != null && mounted) {
       // Show error message with error handling
@@ -275,13 +276,13 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
           SnackBar(content: Text(context.read<AgentViewModel>().error!), backgroundColor: Colors.red),
         );
       } catch (e) {
-        print("Warning: Could not show error message: $e");
+        Logger.warning("Could not show error message: $e");
       }
     }
   }
 
   Future<void> _submitClientRequirement({required String action, BuildContext? dialogContext, Map<String, dynamic>? existingItem}) async {
-    print("Save button clicked for client requirement. Validating form...");
+    Logger.debug("Save button clicked for client requirement. Validating form...");
     
     bool success;
     if (existingItem != null) {
@@ -309,7 +310,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
           ),
         );
       } catch (e) {
-        print("Warning: Could not show success message: $e");
+        Logger.warning("Could not show success message: $e");
       }
     } else if (context.read<AgentViewModel>().error != null && mounted) {
       // Show error message with error handling
@@ -318,7 +319,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
           SnackBar(content: Text(context.read<AgentViewModel>().error!), backgroundColor: Colors.red),
         );
       } catch (e) {
-        print("Warning: Could not show error message: $e");
+        Logger.warning("Could not show error message: $e");
       }
     }
   }
@@ -523,18 +524,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                 children: [
                   // This is the ONLY Expanded widget. It pushes pagination to the bottom.
                   Expanded(
-                    child: SingleChildScrollView(
-                      // This makes the WHOLE page scroll together
+                    child: Padding(
                       padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Conditionally render the active list directly here instead of TabBarView
-                          _tabController.index == 0 
-                              ? _buildTransferContent() 
-                              : _buildClientRequirementContent(),
-                        ],
-                      ),
+                      child: _tabController.index == 0 
+                          ? _buildTransferContent() 
+                          : _buildClientRequirementContent(),
                     ),
                   ),
                   // Standardized Footer with pagination and add button
@@ -644,8 +638,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         return filteredPaginatedTransfers.isEmpty
             ? _buildEmptyState('No transfers found')
             : ListView.builder(
-                shrinkWrap: true, // CRITICAL
-                physics: const NeverScrollableScrollPhysics(), // CRITICAL
+                physics: const BouncingScrollPhysics(),
                 itemCount: filteredPaginatedTransfers.length,
                 itemBuilder: (context, index) {
                   final transfer = filteredPaginatedTransfers[index];
@@ -670,8 +663,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         return filteredPaginatedRequirements.isEmpty
             ? _buildEmptyState('No client requirements found')
             : ListView.builder(
-                shrinkWrap: true, // CRITICAL
-                physics: const NeverScrollableScrollPhysics(), // CRITICAL
+                physics: const BouncingScrollPhysics(),
                 itemCount: filteredPaginatedRequirements.length,
                 itemBuilder: (context, index) {
                   final requirement = filteredPaginatedRequirements[index];
@@ -909,45 +901,46 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       barrierDismissible: false,
       builder: (dialogContext) => ChangeNotifierProvider<AgentViewModel>.value(
         value: Provider.of<AgentViewModel>(context, listen: false),
-        child: Dialog(
-          insetPadding: const EdgeInsets.all(16),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
-              maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
-            ),
-            child: Column(
-              children: [
-                // Header with back button
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
-                      ),
-                      const Spacer(),
-                      Text(
-                        'Add Transfer',
-                        style: AppFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFFFF6B35),
-                      ),
+        child: StatefulBuilder(
+          builder: (dialogContext, setDialogState) => Dialog(
+            backgroundColor: Colors.white,
+            insetPadding: const EdgeInsets.all(16),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+                maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                        ),
+                        const Spacer(),
+                        Text(
+                          'Add Transfer',
+                          style: AppFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const Spacer(),
+                      ],
                     ),
-                    const Spacer(),
-                  ],
-                ),
+                  ),
+                  Expanded(
+                    child: _buildTransferForm(dialogContext, setDialogState: setDialogState, existingItem: null),
+                  ),
+                ],
               ),
-              // Clean form content - no tabs
-              Expanded(
-                child: _buildTransferForm(dialogContext, existingItem: null),
-              ),
-            ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -959,45 +952,46 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       barrierDismissible: false,
       builder: (dialogContext) => ChangeNotifierProvider<AgentViewModel>.value(
         value: Provider.of<AgentViewModel>(context, listen: false),
-        child: Dialog(
-          insetPadding: const EdgeInsets.all(16),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
-              maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
-            ),
-            child: Column(
-              children: [
-                // Header with back button
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
-                      ),
-                      const Spacer(),
-                      Text(
-                        'Add Client Requirement',
-                        style: AppFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFFFF6B35),
-                      ),
+        child: StatefulBuilder(
+          builder: (dialogContext, setDialogState) => Dialog(
+            backgroundColor: Colors.white,
+            insetPadding: const EdgeInsets.all(16),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
+                maxHeight: MediaQuery.of(dialogContext).size.height * 0.9,
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          style: IconButton.styleFrom(backgroundColor: Colors.white, elevation: 2),
+                        ),
+                        const Spacer(),
+                        Text(
+                          'Add Client Requirement',
+                          style: AppFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const Spacer(),
+                      ],
                     ),
-                    const Spacer(),
-                  ],
-                ),
+                  ),
+                  Expanded(
+                    child: _buildClientRequirementForm(dialogContext, setDialogState: setDialogState, existingItem: null),
+                  ),
+                ],
               ),
-              // Clean form content - no tabs
-              Expanded(
-                child: _buildClientRequirementForm(dialogContext, existingItem: null),
-              ),
-            ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -1080,7 +1074,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     });
   }
 
-  Widget _buildTransferForm(BuildContext dialogContext, {final Map<String, dynamic>? existingItem}) {
+  Widget _buildTransferForm(BuildContext dialogContext, {StateSetter? setDialogState, final Map<String, dynamic>? existingItem}) {
     // Initialize form data if existingItem is provided
     if (existingItem != null) {
       _initializeTransferForm(existingItem);
@@ -1104,7 +1098,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                     'Commercial', 
                     'Plot',
                     'other'
-                  ], Icons.home, (value) => context.read<AgentViewModel>().setTransferCategory(value)),
+                  ], Icons.home, (value) {
+                      context.read<AgentViewModel>().setTransferCategory(value);
+                      if (setDialogState != null) setDialogState(() {});
+                  }),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -1114,7 +1111,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                     '1 Kanal',
                     '2 Kanal',
                     'other'
-                  ], Icons.straighten, (value) => context.read<AgentViewModel>().setTransferSize(value)),
+                  ], Icons.straighten, (value) {
+                      context.read<AgentViewModel>().setTransferSize(value);
+                      if (setDialogState != null) setDialogState(() {});
+                  }),
                 ),
               ],
             ),
@@ -1124,7 +1124,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                 Expanded(
                   child: Consumer<AgentViewModel>(
                     builder: (context, viewModel, child) {
-                      return _buildDateFieldWithIcon('Date *', viewModel.dateCtl, _pickDate);
+                      return _buildDateFieldWithIcon('Date *', viewModel.dateCtl, () async {
+                          await _pickDate();
+                          if (setDialogState != null) setDialogState(() {});
+                        });
                     },
                   ),
                 ),
@@ -1132,7 +1135,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                 Expanded(
                   child: Consumer<AgentViewModel>(
                     builder: (context, viewModel, child) {
-                      return _buildTimeFieldWithIcon('Time', viewModel.timeCtl, _pickTime);
+                      return _buildTimeFieldWithIcon('Time', viewModel.timeCtl, () {
+                        _pickTime();
+                        if (setDialogState != null) setDialogState(() {});
+                      });
                     },
                   ),
                 ),
@@ -1187,7 +1193,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                     children: [
                       // Upload button
                       ElevatedButton.icon(
-                        onPressed: () => viewModel.pickImage(),
+                        onPressed: () {
+                          viewModel.pickImage();
+                          if (setDialogState != null) setDialogState(() {});
+                        },
                         icon: const Icon(Icons.upload_file),
                         label: const Text('Upload Image'),
                         style: ElevatedButton.styleFrom(
@@ -1215,13 +1224,16 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                                   'Image selected: ${viewModel.imagePath!.split('/').last}',
                                   style: AppFonts.poppins(
                                     fontSize: 12,
-                                    color: Colors.green.shade800,
+                                    color: const Color(0xFF333333),
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               IconButton(
-                                onPressed: () => viewModel.clearImagePath(),
+                                onPressed: () {
+                                  viewModel.clearImagePath();
+                                  if (setDialogState != null) setDialogState(() {});
+                                },
                                 icon: const Icon(Icons.clear, size: 18),
                                 color: Colors.red.shade600,
                                 tooltip: 'Clear image',
@@ -1274,7 +1286,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     );
   }
 
-  Widget _buildClientRequirementForm(BuildContext dialogContext, {final Map<String, dynamic>? existingItem}) {
+  Widget _buildClientRequirementForm(BuildContext dialogContext, {StateSetter? setDialogState, final Map<String, dynamic>? existingItem}) {
     // Initialize form data if existingItem is provided
     if (existingItem != null) {
       _initializeClientRequirementForm(existingItem);
@@ -1298,7 +1310,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                     'Commercial', 
                     'Plot',
                     'other'
-                  ], Icons.home, (value) => context.read<AgentViewModel>().setReqCategory(value)),
+                  ], Icons.home, (value) {
+                      context.read<AgentViewModel>().setReqCategory(value);
+                      if (setDialogState != null) setDialogState(() {});
+                  }),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -1308,7 +1323,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                     '1 Kanal',
                     '2 Kanal',
                     'other'
-                  ], Icons.straighten, (value) => context.read<AgentViewModel>().setReqSize(value)),
+                  ], Icons.straighten, (value) {
+                      context.read<AgentViewModel>().setReqSize(value);
+                      if (setDialogState != null) setDialogState(() {});
+                  }),
                 ),
               ],
             ),
@@ -1322,7 +1340,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                     'LDA Avenue',
                     'Valencia',
                     'other'
-                  ], Icons.location_on, (value) => context.read<AgentViewModel>().setReqLocation(value)),
+                  ], Icons.location_on, (value) {
+                      context.read<AgentViewModel>().setReqLocation(value);
+                      if (setDialogState != null) setDialogState(() {});
+                  }),
                 ),
                 const SizedBox(width: 16),
                 const Expanded(child: SizedBox()), // Empty space for alignment
@@ -1364,7 +1385,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                 Expanded(
                   child: Consumer<AgentViewModel>(
                     builder: (context, viewModel, child) {
-                      return _buildDateFieldWithIcon('Date', viewModel.reqDateCtl, _pickRequirementDate);
+                      return _buildDateFieldWithIcon('Date', viewModel.reqDateCtl, () async {
+                          await _pickRequirementDate();
+                          if (setDialogState != null) setDialogState(() {});
+                        });
                     },
                   ),
                 ),
@@ -1385,7 +1409,10 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             // Upload Image - Separate row below Remarks
             ImageUploadWidget(
               imagePaths: context.read<AgentViewModel>().requirementImages,
-              onImagesChanged: (images) => context.read<AgentViewModel>().setRequirementImages(images),
+              onImagesChanged: (images) {
+                  context.read<AgentViewModel>().setRequirementImages(images);
+                  if (setDialogState != null) setDialogState(() {});
+              },
               maxImages: 3,
             ),
             
@@ -1491,6 +1518,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
  Widget _buildDropdownField(String label, String? value, List<String> items, IconData icon, Function(String?) onChanged) {
   return DropdownButtonFormField<String>(
     value: value,
+    dropdownColor: Colors.white,
     decoration: InputDecoration(
       labelText: label,
       labelStyle: AppFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.black87),
@@ -1501,8 +1529,11 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
       filled: true,
       fillColor: Colors.white,
     ),
-    style: AppFonts.poppins(fontSize: 12),
-    items: items.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+    style: AppFonts.poppins(fontSize: 12, color: Colors.black87),
+    items: items.map((item) => DropdownMenuItem(
+      value: item, 
+      child: Text(item, style: AppFonts.poppins(fontSize: 12, color: Colors.black87)),
+    )).toList(),
     onChanged: onChanged,
   );
 }
@@ -1534,7 +1565,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
           filled: true,
           fillColor: Colors.white,
         ),
-        style: AppFonts.poppins(fontSize: 12),
+        style: AppFonts.poppins(fontSize: 12, color: Colors.black87),
       ),
     );
   }
@@ -1642,6 +1673,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           value: context.read<AgentViewModel>().requirementSource,
+          dropdownColor: Colors.white,
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -1653,13 +1685,12 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           ),
-          items: const [
-            DropdownMenuItem(value: 'Direct', child: Text('Direct')),
-            DropdownMenuItem(value: 'Agent', child: Text('Agent')),
-            DropdownMenuItem(value: 'Website', child: Text('Website')),
-            DropdownMenuItem(value: 'Social Media', child: Text('Social Media')),
-            DropdownMenuItem(value: 'Referral', child: Text('Referral')),
-          ],
+          items: ['Direct','Agent','Website','Social Media','Referral']
+              .map((item) => DropdownMenuItem<String>(
+                    value: item,
+                    child: Text(item, style: AppFonts.poppins(fontSize: 12, color: Colors.black87)),
+                  ))
+              .toList(),
           onChanged: (value) {
             context.read<AgentViewModel>().setRequirementSource(value);
           },

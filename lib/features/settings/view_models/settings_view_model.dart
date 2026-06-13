@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/settings_repository_impl.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/windows_platform_fix.dart'; // ✨ CRITICAL FIX: Windows platform stability
 
 class SettingsViewModel extends ChangeNotifier {

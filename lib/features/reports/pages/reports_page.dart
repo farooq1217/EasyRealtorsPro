@@ -8,7 +8,7 @@ import 'package:printing/printing.dart';
 import 'package:file_selector/file_selector.dart';
 import '../../../../core/font_utils.dart';
 import '../../../../core/services/permission_helper.dart';
-import '../../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../../core/services/app_storage.dart';
 import '../view_models/reports_view_model.dart';
 import '../../../widgets/custom_pagination_card.dart' show CustomPaginationCard;

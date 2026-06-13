@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared/shared.dart' show AppDatabase;
-import '../services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../services/permission_sync_service.dart';
 
 /// Helper class for debugging permission issues on client systems

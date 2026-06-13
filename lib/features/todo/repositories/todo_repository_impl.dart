@@ -1,43 +1,63 @@
 import 'package:drift/drift.dart' as d;
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:shared/shared.dart';
 import 'todo_repository.dart';
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
+import '../../../core/services/firebase_threading_handler.dart';
 
 class TodoRepositoryImpl implements TodoRepository {
   final AppDatabase _db;
 
+  // Platform detection for thread safety
+  static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
+
   TodoRepositoryImpl(this._db);
+
+  // Helper method to wrap streams with platform thread safety
+  Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
+    if (_isWindows) {
+      debugPrint('TodoRepository: Wrapping $streamName with Windows thread safety');
+      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+        stream,
+        streamName: 'TodoRepository $streamName',
+      );
+    }
+    return stream;
+  }
 
   @override
   Stream<List<Reminder>> getReminders(String userId, String? companyId) {
+    Stream<List<Reminder>> stream;
     if (companyId == null) {
-      return (_db.select(_db.reminders)
+      stream = (_db.select(_db.reminders)
             ..where((tbl) => 
                 tbl.agentId.equals(userId) &
                 tbl.is_active.equals(true)))
           .watch();
     } else {
-      return (_db.select(_db.reminders)
+      stream = (_db.select(_db.reminders)
             ..where((tbl) => 
                 tbl.agentId.equals(userId) &
                 tbl.companyId.equals(companyId) &
                 tbl.is_active.equals(true)))
           .watch();
     }
+    return _wrapStreamWithThreadSafety(stream, 'getReminders');
   }
 
   @override
   Stream<List<Reminder>> getRemindersForDate(String userId, String? companyId, DateTime date) {
     final dateStr = date.toIso8601String().split('T')[0]; // YYYY-MM-DD format
+    Stream<List<Reminder>> stream;
     if (companyId == null) {
-      return (_db.select(_db.reminders)
+      stream = (_db.select(_db.reminders)
             ..where((tbl) => 
                 tbl.agentId.equals(userId) &
                 tbl.reminderDate.equals(dateStr) &
                 tbl.is_active.equals(true)))
           .watch();
     } else {
-      return (_db.select(_db.reminders)
+      stream = (_db.select(_db.reminders)
             ..where((tbl) => 
                 tbl.agentId.equals(userId) &
                 tbl.companyId.equals(companyId) &
@@ -45,6 +65,7 @@ class TodoRepositoryImpl implements TodoRepository {
                 tbl.is_active.equals(true)))
           .watch();
     }
+    return _wrapStreamWithThreadSafety(stream, 'getRemindersForDate');
   }
 
   @override
@@ -128,6 +149,17 @@ class TodoRepositoryImpl implements TodoRepository {
       updatedAt: d.Value(DateTime.now().toIso8601String()),
     ));
   }
+
+  @override
+  Future<void> markAsRead(int reminderId) async {
+    await (_db.update(_db.reminders)..where((tbl) => tbl.reminderId.equals(reminderId)))
+        .write(RemindersCompanion(
+
+      updatedAt: d.Value(DateTime.now().toIso8601String()),
+    ));
+  }
+
+
 
   @override
   Future<void> updateReminderStatus(int reminderId, String newStatus) async {

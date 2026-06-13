@@ -70,7 +70,7 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
     return DefaultTabController(
       length: 2,
       child: Scaffold( // Direct Scaffold use karein
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
           title: Text(
             'Trading', 
@@ -126,22 +126,20 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
           builder: (context, viewModel, child) {
             return Column( // Main body Column
               children: [
-                Expanded( // 1. This ONLY goes here to take available space and push pagination down
-                  child: SingleChildScrollView( // 2. Makes WHOLE page scroll together
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildHeaderAndTabs(), // Your top search, headers, or tabs
-                        _buildFilters(),       // Any dropdowns/filters
-                        
-                        // 3. The inner ListView/GridView MUST NOT be wrapped in Expanded
-                        _tabController.index == 0 
-                            ? _buildEntriesList(viewModel, 'File')
-                            : _buildEntriesList(viewModel, 'Form'),
-                      ],
-                    ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeaderAndTabs(), // Your top search, headers, or tabs
+                      _buildFilters(),       // Any dropdowns/filters
+                    ],
                   ),
+                ),
+                Expanded(
+                  child: _tabController.index == 0 
+                      ? _buildEntriesList(viewModel, 'File')
+                      : _buildEntriesList(viewModel, 'Form'),
                 ),
                 // 4. Standardized Footer with pagination and add button
                 Consumer<TradingViewModel>(
@@ -180,7 +178,7 @@ class _TradingPageState extends State<TradingPage> with TickerProviderStateMixin
   Widget _buildFilters() {
     return Container(
       padding: const EdgeInsets.all(16),
-      color: Colors.white,
+      color: Theme.of(context).cardColor,
       child: Column(
         children: [
           Row(

@@ -6,12 +6,13 @@ import 'package:file_selector/file_selector.dart';
 import 'package:image_picker/image_picker.dart';
 import '../repositories/agent_repository.dart';
 import '../repositories/agent_repository_impl.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../../core/services/permission_sync_service.dart' show PermissionSyncService;
 import '../../../core/services/app_storage.dart' show AppStorage;
 import 'package:shared/shared.dart' show WorkingProgressData, WorkingComment;
 import '../../../core/role_utils.dart';
+import '../../../core/utils/logger.dart';
 
 class AgentViewModel extends ChangeNotifier {
   final AgentRepository _repository;
@@ -626,11 +627,11 @@ class AgentViewModel extends ChangeNotifier {
     _isSaving = true;
     notifyListeners();
     
-    print("AgentViewModel: addTransfer() called. Starting validation...");
+    Logger.debug("AgentViewModel: addTransfer() called. Starting validation...");
     
     // CRITICAL FIX: Ensure user is loaded with permissions before proceeding
     if (_currentUser == null) {
-      print("AgentViewModel: Current user is null, reloading...");
+      Logger.info("AgentViewModel: Current user is null, reloading...");
       await _loadCurrentUser();
     }
     
@@ -697,7 +698,7 @@ class AgentViewModel extends ChangeNotifier {
       return false;
     }
 
-    print("AgentViewModel: Validation passed. Proceeding with save...");
+    Logger.debug("AgentViewModel: Validation passed. Proceeding with save...");
     
     try {
       final emailKey = (_currentUser?['email'] ?? _currentUser?['username'] ?? '').toString().trim().toLowerCase();
@@ -763,7 +764,7 @@ class AgentViewModel extends ChangeNotifier {
 
   // Update transfer
   Future<bool> updateTransfer(String id) async {
-    print("AgentViewModel: updateTransfer() called. Starting validation...");
+    Logger.debug("AgentViewModel: updateTransfer() called. Starting validation...");
     
     if (!PermissionHelper.canAddModule(_currentUser, 'agent_working')) {
       _error = 'Permission Denied';
@@ -818,7 +819,7 @@ class AgentViewModel extends ChangeNotifier {
       return false;
     }
 
-    print("AgentViewModel: Validation passed. Proceeding with update...");
+    Logger.debug("AgentViewModel: Validation passed. Proceeding with update...");
     _isSaving = true;
     _error = null;
     notifyListeners();
@@ -841,8 +842,8 @@ class AgentViewModel extends ChangeNotifier {
           ? transferOtherSizeCtl.text.trim()
           : _transferSize;
 
-      print("AgentViewModel: About to update transfer with ID: $id");
-      print("AgentViewModel: Category: $categoryToSave, Size: $sizeToSave");
+      Logger.info("AgentViewModel: About to update transfer with ID: $id");
+      Logger.debug("AgentViewModel: Category: $categoryToSave, Size: $sizeToSave");
 
       await _repository.updateEntry(
         id: id,
@@ -859,7 +860,7 @@ class AgentViewModel extends ChangeNotifier {
         images: _transferImages,
       );
 
-      print("AgentViewModel: Transfer updated successfully - ID: $id");
+      Logger.info("AgentViewModel: Transfer updated successfully - ID: $id");
       debugPrint('AgentViewModel: Transfer updated successfully - ID: $id');
 
       // FIXED: Removed redundant manual refresh - notifyListeners() is enough
@@ -871,7 +872,7 @@ class AgentViewModel extends ChangeNotifier {
       
       return true;
     } catch (e) {
-      print("AgentViewModel: Error updating transfer: $e");
+      Logger.error("AgentViewModel: Error updating transfer: $e");
       _error = 'Failed to update transfer: $e';
       debugPrint('Error updating transfer: $e');
       return false;
@@ -942,11 +943,11 @@ class AgentViewModel extends ChangeNotifier {
     notifyListeners();
     
     try {
-      print("AgentViewModel: addClientRequirement() called. Starting validation...");
+      Logger.debug("AgentViewModel: addClientRequirement() called. Starting validation...");
       
       // CRITICAL FIX: Ensure user is loaded with permissions before proceeding
       if (_currentUser == null) {
-        print("AgentViewModel: Current user is null, reloading...");
+        Logger.info("AgentViewModel: Current user is null, reloading...");
         try {
           await _loadCurrentUser();
           // If still null after reload, fail early
@@ -1030,7 +1031,7 @@ class AgentViewModel extends ChangeNotifier {
         return false;
       }
 
-      print("AgentViewModel: Validation passed. Proceeding with save...");
+      Logger.debug("AgentViewModel: Validation passed. Proceeding with save...");
       
       final emailKey = (_currentUser?['email'] ?? _currentUser?['username'] ?? '').toString().trim().toLowerCase();
       final safeEmail = emailKey.replaceAll('/', '_');
@@ -1074,7 +1075,7 @@ class AgentViewModel extends ChangeNotifier {
 
   // Update client requirement
   Future<bool> updateClientRequirement(String id) async {
-    print("AgentViewModel: updateClientRequirement() called. Starting validation...");
+    Logger.debug("AgentViewModel: updateClientRequirement() called. Starting validation...");
     
     if (!PermissionHelper.canAddModule(_currentUser, 'agent_working')) {
       _error = 'Permission Denied';
@@ -1094,7 +1095,7 @@ class AgentViewModel extends ChangeNotifier {
       return false;
     }
 
-    print("AgentViewModel: Validation passed. Proceeding with update...");
+    Logger.debug("AgentViewModel: Validation passed. Proceeding with update...");
     _isSaving = true;
     _error = null;
     notifyListeners();

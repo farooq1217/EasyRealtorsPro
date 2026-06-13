@@ -2,11 +2,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared/shared.dart' show TradingEntry, AppDatabase;
+import 'package:shared/shared.dart' show TradingEntry;
 import '../../../core/role_utils.dart' as local;
 import '../repositories/trading_repository.dart';
 import '../repositories/trading_repository_impl.dart' show AlreadyDeletedException;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/firebase_threading_handler.dart';
 import '../../../core/utils/logger.dart';
 import '../../../core/utils/error_handler.dart';
@@ -19,7 +19,7 @@ class TradingViewModel extends ChangeNotifier {
   
   // Simple constructor with singleton pattern
   TradingViewModel(this._repository) {
-    _instance = this;
+    _instance ??= this;
     _initializeUser();
   }
   
@@ -199,18 +199,24 @@ class TradingViewModel extends ChangeNotifier {
 
   // Load statistics
   Future<void> loadStatistics() async {
+    if (_isDisposed) return;
     try {
       await FirebaseThreadingHandler.executeWithThreadSafety(
         () async {
+          if (_isDisposed) return;
           _statistics = await _repository.getTradingStatistics(companyId: _userCompanyId);
         },
         operationName: 'loadStatistics',
       );
       
-      notifyListeners();
+      if (!_isDisposed) {
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('Error loading statistics: $e');
-      notifyListeners();
+      if (!_isDisposed) {
+        notifyListeners();
+      }
     }
   }
 
@@ -282,16 +288,9 @@ class TradingViewModel extends ChangeNotifier {
       debugPrint('TradingViewModel: Error saving trading entry: $e');
       _error = 'Failed to save entry: $e';
       
-      // In debug mode, if it's a schema error, reset the database
+      // In debug mode, if it's a schema error, log it
       if (kDebugMode && e.toString().contains('NOT NULL constraint failed')) {
-        debugPrint('[TRADING_VM] Schema error detected, resetting database...');
-        try {
-          await AppDatabase.closeInstance();
-          await AppDatabase.resetDatabaseInDevMode();
-          debugPrint('[TRADING_VM] Database reset completed. Please try again.');
-        } catch (resetError) {
-          debugPrint('[TRADING_VM] Error during database reset: $resetError');
-        }
+        debugPrint('[TRADING_VM] Schema error detected (NOT NULL constraint failed). Skipping database reset.');
       }
       
       rethrow;
@@ -597,15 +596,15 @@ class TradingViewModel extends ChangeNotifier {
 
   // Reinitialize method for recovery after unexpected disposal
   Future<void> reinitializeIfNeeded() async {
-    if (_isDisposed && _mounted == false) {
-      Logger.debug('TradingViewModel: Reinitializing after disposal', tag: 'TradingViewModel');
-      _isDisposed = false;
-      _mounted = true;
-      _isStreamInitialized = false;
-      
-      await _initializeUser();
-      Logger.debug('TradingViewModel: Reinitialized successfully', tag: 'TradingViewModel');
+    if (_isDisposed) {
+      Logger.warning(
+        'TradingViewModel: Cannot reinitialize a disposed ChangeNotifier instance. '
+        'A new instance should be created instead.',
+        tag: 'TradingViewModel',
+      );
+      return;
     }
+    // No-op if it's already active/initialized
   }
 
   // Proper cleanup method for app exit (not navigation)
@@ -725,5 +724,14 @@ class TradingViewModel extends ChangeNotifier {
       'totalValue': totalValue,
       'averageValue': totalEntries > 0 ? totalValue / totalEntries : 0.0,
     };
+  }
+
+  @override
+  void notifyListeners() {
+    if (_isDisposed) {
+      Logger.debug('TradingViewModel: notifyListeners called after dispose, skipping', tag: 'TradingViewModel');
+      return;
+    }
+    super.notifyListeners();
   }
 }

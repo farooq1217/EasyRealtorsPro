@@ -2,11 +2,12 @@ import 'dart:async';
 import 'package:drift/drift.dart' as d;
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:shared/shared.dart';
 import '../../../core/role_utils.dart' as local;
 import 'package:uuid/uuid.dart';
 import '../../../core/services/app_storage.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/permission_helper.dart';
 import 'company_repository.dart';
 import '../../companies/models/company_model.dart';
@@ -43,7 +44,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
 
   // Helper method to disable Firestore operations in SQLite-only mode
   bool _isFirestoreOperationAllowed() {
-    return !_sqliteOnlyMode;
+    return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
   }
 
   // Helper method to execute Firestore operations only if allowed
@@ -62,6 +63,9 @@ class CompanyRepositoryImpl implements CompanyRepository {
   // Helper method to check if current user is Super Admin
   Future<bool> _isSuperAdmin() async {
     try {
+      if (AuthService.currentUser != null) {
+        return local.RoleUtils.isSuperAdmin(AuthService.currentUser) || PermissionHelper.isBypassUser(AuthService.currentUser);
+      }
       final storage = AppStorage();
       final settings = await storage.readSettings();
       final authToken = settings['authToken'] as String?;
@@ -324,6 +328,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
 
   @override
   Future<bool> canAddMoreUsers(String companyId) async {
+    if (companyId == 'GLOBAL_ADMIN') return true;
     try {
       // Get company's user limit
       final limitResult = await db.customSelect(
@@ -355,6 +360,16 @@ class CompanyRepositoryImpl implements CompanyRepository {
 
   @override
   Future<int> getCurrentUserCount(String companyId) async {
+    if (companyId == 'GLOBAL_ADMIN') {
+      try {
+        final result = await db.customSelect(
+          "SELECT COUNT(*) as cnt FROM users WHERE (status = 'active' OR status IS NULL) AND (is_active = 1 OR is_active IS NULL)",
+        ).get();
+        return int.tryParse(result.first.data['cnt'].toString() ?? '0') ?? 0;
+      } catch (e) {
+        return 0;
+      }
+    }
     try {
       final result = await db.customSelect(
         "SELECT COUNT(*) as cnt FROM users WHERE company_id = ? AND (status = 'active' OR status IS NULL) AND (is_active = 1 OR is_active IS NULL)",
@@ -369,6 +384,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
 
   @override
   Future<int> getMaxUserLimit(String companyId) async {
+    if (companyId == 'GLOBAL_ADMIN') return 999999;
     try {
       final result = await db.customSelect(
         'SELECT max_user_limit, subscription_tier FROM companies WHERE id = ? LIMIT 1',
@@ -406,6 +422,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
 
   @override
   Future<String?> getSubscriptionTier(String companyId) async {
+    if (companyId == 'GLOBAL_ADMIN') return 'Enterprise';
     try {
       final result = await db.customSelect(
         'SELECT subscription_tier FROM companies WHERE id = ? LIMIT 1',
@@ -516,8 +533,8 @@ class CompanyRepositoryImpl implements CompanyRepository {
 
   @override
   Future<void> syncCompaniesFromFirestore() async {
-    if (!_isFirestoreOperationAllowed()) {
-      debugPrint('CompanyRepository: Firestore sync not allowed in SQLite-only mode');
+    if (Firebase.apps.isEmpty) {
+      debugPrint('CompanyRepository: Skipping Firestore sync - Firebase is not initialized');
       return;
     }
     
@@ -528,8 +545,11 @@ class CompanyRepositoryImpl implements CompanyRepository {
         final firestore = FirebaseFirestore.instance;
         final companiesCollection = firestore.collection('companies');
         
-        // ✨ CRITICAL FIX: Add timeout for Windows to prevent hanging
-        final querySnapshot = await companiesCollection.get().timeout(
+        // ✨ CRITICAL FIX: Run with thread safety and add timeout for Windows to prevent hanging
+        final querySnapshot = await FirebaseThreadingHandler.executeWithThreadSafety(
+          () => companiesCollection.get(),
+          operationName: 'CompanyRepository syncCompaniesFromFirestore query',
+        ).timeout(
           _isWindows ? const Duration(seconds: 6) : const Duration(seconds: 12),
           onTimeout: () {
             debugPrint('CompanyRepository: Firestore query timed out - returning empty result');
@@ -592,8 +612,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
         
         debugPrint('CompanyRepository: Successfully synced ${querySnapshot.docs.length} companies from Firestore');
       } catch (e) {
-        debugPrint('CompanyRepository: Error syncing from Firestore: $e');
-        rethrow;
+        debugPrint('Offline mode active - CompanyRepository: Error syncing from Firestore: $e');
       }
     });
   }
@@ -713,6 +732,7 @@ class CompanyRepositoryImpl implements CompanyRepository {
 
   @override
   Future<bool> isCompanyActive(String companyId) async {
+    if (companyId == 'GLOBAL_ADMIN') return true;
     try {
       final result = await db.customSelect(
         'SELECT is_active, status FROM companies WHERE id = ? LIMIT 1',

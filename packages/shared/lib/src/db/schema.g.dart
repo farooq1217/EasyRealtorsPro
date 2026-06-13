@@ -6913,6 +6913,15 @@ class $RemindersTable extends Reminders
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
       defaultValue: const Constant(true));
+  static const VerificationMeta _isReadMeta = const VerificationMeta('isRead');
+  @override
+  late final GeneratedColumn<bool> isRead = GeneratedColumn<bool>(
+      'is_read', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_read" IN (0, 1))'),
+      defaultValue: const Constant(false));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -6948,6 +6957,7 @@ class $RemindersTable extends Reminders
         reminderTime,
         notificationStatus,
         is_active,
+        isRead,
         createdAt,
         updatedAt,
         isSynced
@@ -7032,6 +7042,10 @@ class $RemindersTable extends Reminders
       context.handle(_is_activeMeta,
           is_active.isAcceptableOrUnknown(data['is_active']!, _is_activeMeta));
     }
+    if (data.containsKey('is_read')) {
+      context.handle(_isReadMeta,
+          isRead.isAcceptableOrUnknown(data['is_read']!, _isReadMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -7079,6 +7093,8 @@ class $RemindersTable extends Reminders
           DriftSqlType.string, data['${effectivePrefix}notification_status'])!,
       is_active: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
+      isRead: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_read'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -7106,6 +7122,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
   final String reminderTime;
   final String notificationStatus;
   final bool is_active;
+  final bool isRead;
   final String createdAt;
   final String updatedAt;
   final bool isSynced;
@@ -7121,6 +7138,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       required this.reminderTime,
       required this.notificationStatus,
       required this.is_active,
+      required this.isRead,
       required this.createdAt,
       required this.updatedAt,
       required this.isSynced});
@@ -7146,6 +7164,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
     map['reminder_time'] = Variable<String>(reminderTime);
     map['notification_status'] = Variable<String>(notificationStatus);
     map['is_active'] = Variable<bool>(is_active);
+    map['is_read'] = Variable<bool>(isRead);
     map['created_at'] = Variable<String>(createdAt);
     map['updated_at'] = Variable<String>(updatedAt);
     map['is_synced'] = Variable<bool>(isSynced);
@@ -7173,6 +7192,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       reminderTime: Value(reminderTime),
       notificationStatus: Value(notificationStatus),
       is_active: Value(is_active),
+      isRead: Value(isRead),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       isSynced: Value(isSynced),
@@ -7195,6 +7215,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       notificationStatus:
           serializer.fromJson<String>(json['notificationStatus']),
       is_active: serializer.fromJson<bool>(json['is_active']),
+      isRead: serializer.fromJson<bool>(json['isRead']),
       createdAt: serializer.fromJson<String>(json['createdAt']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
       isSynced: serializer.fromJson<bool>(json['isSynced']),
@@ -7215,6 +7236,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       'reminderTime': serializer.toJson<String>(reminderTime),
       'notificationStatus': serializer.toJson<String>(notificationStatus),
       'is_active': serializer.toJson<bool>(is_active),
+      'isRead': serializer.toJson<bool>(isRead),
       'createdAt': serializer.toJson<String>(createdAt),
       'updatedAt': serializer.toJson<String>(updatedAt),
       'isSynced': serializer.toJson<bool>(isSynced),
@@ -7233,6 +7255,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
           String? reminderTime,
           String? notificationStatus,
           bool? is_active,
+          bool? isRead,
           String? createdAt,
           String? updatedAt,
           bool? isSynced}) =>
@@ -7250,6 +7273,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
         reminderTime: reminderTime ?? this.reminderTime,
         notificationStatus: notificationStatus ?? this.notificationStatus,
         is_active: is_active ?? this.is_active,
+        isRead: isRead ?? this.isRead,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         isSynced: isSynced ?? this.isSynced,
@@ -7280,6 +7304,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
           ? data.notificationStatus.value
           : this.notificationStatus,
       is_active: data.is_active.present ? data.is_active.value : this.is_active,
+      isRead: data.isRead.present ? data.isRead.value : this.isRead,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
@@ -7300,6 +7325,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
           ..write('reminderTime: $reminderTime, ')
           ..write('notificationStatus: $notificationStatus, ')
           ..write('is_active: $is_active, ')
+          ..write('isRead: $isRead, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('isSynced: $isSynced')
@@ -7320,6 +7346,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       reminderTime,
       notificationStatus,
       is_active,
+      isRead,
       createdAt,
       updatedAt,
       isSynced);
@@ -7338,6 +7365,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
           other.reminderTime == this.reminderTime &&
           other.notificationStatus == this.notificationStatus &&
           other.is_active == this.is_active &&
+          other.isRead == this.isRead &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.isSynced == this.isSynced);
@@ -7355,6 +7383,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
   final Value<String> reminderTime;
   final Value<String> notificationStatus;
   final Value<bool> is_active;
+  final Value<bool> isRead;
   final Value<String> createdAt;
   final Value<String> updatedAt;
   final Value<bool> isSynced;
@@ -7370,6 +7399,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     this.reminderTime = const Value.absent(),
     this.notificationStatus = const Value.absent(),
     this.is_active = const Value.absent(),
+    this.isRead = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.isSynced = const Value.absent(),
@@ -7386,6 +7416,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     required String reminderTime,
     required String notificationStatus,
     this.is_active = const Value.absent(),
+    this.isRead = const Value.absent(),
     required String createdAt,
     required String updatedAt,
     this.isSynced = const Value.absent(),
@@ -7408,6 +7439,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     Expression<String>? reminderTime,
     Expression<String>? notificationStatus,
     Expression<bool>? is_active,
+    Expression<bool>? isRead,
     Expression<String>? createdAt,
     Expression<String>? updatedAt,
     Expression<bool>? isSynced,
@@ -7424,6 +7456,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
       if (reminderTime != null) 'reminder_time': reminderTime,
       if (notificationStatus != null) 'notification_status': notificationStatus,
       if (is_active != null) 'is_active': is_active,
+      if (isRead != null) 'is_read': isRead,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (isSynced != null) 'is_synced': isSynced,
@@ -7442,6 +7475,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
       Value<String>? reminderTime,
       Value<String>? notificationStatus,
       Value<bool>? is_active,
+      Value<bool>? isRead,
       Value<String>? createdAt,
       Value<String>? updatedAt,
       Value<bool>? isSynced}) {
@@ -7457,6 +7491,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
       reminderTime: reminderTime ?? this.reminderTime,
       notificationStatus: notificationStatus ?? this.notificationStatus,
       is_active: is_active ?? this.is_active,
+      isRead: isRead ?? this.isRead,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isSynced: isSynced ?? this.isSynced,
@@ -7499,6 +7534,9 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     if (is_active.present) {
       map['is_active'] = Variable<bool>(is_active.value);
     }
+    if (isRead.present) {
+      map['is_read'] = Variable<bool>(isRead.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<String>(createdAt.value);
     }
@@ -7525,6 +7563,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
           ..write('reminderTime: $reminderTime, ')
           ..write('notificationStatus: $notificationStatus, ')
           ..write('is_active: $is_active, ')
+          ..write('isRead: $isRead, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('isSynced: $isSynced')
@@ -10314,6 +10353,12 @@ class $ExpenditureSubItemsTable extends ExpenditureSubItems
   late final GeneratedColumn<double> amount = GeneratedColumn<double>(
       'amount', aliasedName, false,
       type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _categoryMeta =
+      const VerificationMeta('category');
+  @override
+  late final GeneratedColumn<String> category = GeneratedColumn<String>(
+      'category', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _companyIdMeta =
       const VerificationMeta('companyId');
   @override
@@ -10364,6 +10409,7 @@ class $ExpenditureSubItemsTable extends ExpenditureSubItems
         parentId,
         description,
         amount,
+        category,
         companyId,
         createdBy,
         createdAt,
@@ -10405,6 +10451,10 @@ class $ExpenditureSubItemsTable extends ExpenditureSubItems
           amount.isAcceptableOrUnknown(data['amount']!, _amountMeta));
     } else if (isInserting) {
       context.missing(_amountMeta);
+    }
+    if (data.containsKey('category')) {
+      context.handle(_categoryMeta,
+          category.isAcceptableOrUnknown(data['category']!, _categoryMeta));
     }
     if (data.containsKey('company_id')) {
       context.handle(_companyIdMeta,
@@ -10449,6 +10499,8 @@ class $ExpenditureSubItemsTable extends ExpenditureSubItems
           .read(DriftSqlType.string, data['${effectivePrefix}description'])!,
       amount: attachedDatabase.typeMapping
           .read(DriftSqlType.double, data['${effectivePrefix}amount'])!,
+      category: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}category']),
       companyId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}company_id']),
       createdBy: attachedDatabase.typeMapping
@@ -10476,6 +10528,7 @@ class ExpenditureSubItem extends DataClass
   final String parentId;
   final String description;
   final double amount;
+  final String? category;
   final String? companyId;
   final String? createdBy;
   final String? createdAt;
@@ -10487,6 +10540,7 @@ class ExpenditureSubItem extends DataClass
       required this.parentId,
       required this.description,
       required this.amount,
+      this.category,
       this.companyId,
       this.createdBy,
       this.createdAt,
@@ -10500,6 +10554,9 @@ class ExpenditureSubItem extends DataClass
     map['parent_id'] = Variable<String>(parentId);
     map['description'] = Variable<String>(description);
     map['amount'] = Variable<double>(amount);
+    if (!nullToAbsent || category != null) {
+      map['category'] = Variable<String>(category);
+    }
     if (!nullToAbsent || companyId != null) {
       map['company_id'] = Variable<String>(companyId);
     }
@@ -10521,6 +10578,9 @@ class ExpenditureSubItem extends DataClass
       parentId: Value(parentId),
       description: Value(description),
       amount: Value(amount),
+      category: category == null && nullToAbsent
+          ? const Value.absent()
+          : Value(category),
       companyId: companyId == null && nullToAbsent
           ? const Value.absent()
           : Value(companyId),
@@ -10544,6 +10604,7 @@ class ExpenditureSubItem extends DataClass
       parentId: serializer.fromJson<String>(json['parentId']),
       description: serializer.fromJson<String>(json['description']),
       amount: serializer.fromJson<double>(json['amount']),
+      category: serializer.fromJson<String?>(json['category']),
       companyId: serializer.fromJson<String?>(json['companyId']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
       createdAt: serializer.fromJson<String?>(json['createdAt']),
@@ -10560,6 +10621,7 @@ class ExpenditureSubItem extends DataClass
       'parentId': serializer.toJson<String>(parentId),
       'description': serializer.toJson<String>(description),
       'amount': serializer.toJson<double>(amount),
+      'category': serializer.toJson<String?>(category),
       'companyId': serializer.toJson<String?>(companyId),
       'createdBy': serializer.toJson<String?>(createdBy),
       'createdAt': serializer.toJson<String?>(createdAt),
@@ -10574,6 +10636,7 @@ class ExpenditureSubItem extends DataClass
           String? parentId,
           String? description,
           double? amount,
+          Value<String?> category = const Value.absent(),
           Value<String?> companyId = const Value.absent(),
           Value<String?> createdBy = const Value.absent(),
           Value<String?> createdAt = const Value.absent(),
@@ -10585,6 +10648,7 @@ class ExpenditureSubItem extends DataClass
         parentId: parentId ?? this.parentId,
         description: description ?? this.description,
         amount: amount ?? this.amount,
+        category: category.present ? category.value : this.category,
         companyId: companyId.present ? companyId.value : this.companyId,
         createdBy: createdBy.present ? createdBy.value : this.createdBy,
         createdAt: createdAt.present ? createdAt.value : this.createdAt,
@@ -10599,6 +10663,7 @@ class ExpenditureSubItem extends DataClass
       description:
           data.description.present ? data.description.value : this.description,
       amount: data.amount.present ? data.amount.value : this.amount,
+      category: data.category.present ? data.category.value : this.category,
       companyId: data.companyId.present ? data.companyId.value : this.companyId,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -10615,6 +10680,7 @@ class ExpenditureSubItem extends DataClass
           ..write('parentId: $parentId, ')
           ..write('description: $description, ')
           ..write('amount: $amount, ')
+          ..write('category: $category, ')
           ..write('companyId: $companyId, ')
           ..write('createdBy: $createdBy, ')
           ..write('createdAt: $createdAt, ')
@@ -10626,8 +10692,8 @@ class ExpenditureSubItem extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(id, parentId, description, amount, companyId,
-      createdBy, createdAt, updatedAt, isActive, isSynced);
+  int get hashCode => Object.hash(id, parentId, description, amount, category,
+      companyId, createdBy, createdAt, updatedAt, isActive, isSynced);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -10636,6 +10702,7 @@ class ExpenditureSubItem extends DataClass
           other.parentId == this.parentId &&
           other.description == this.description &&
           other.amount == this.amount &&
+          other.category == this.category &&
           other.companyId == this.companyId &&
           other.createdBy == this.createdBy &&
           other.createdAt == this.createdAt &&
@@ -10649,6 +10716,7 @@ class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
   final Value<String> parentId;
   final Value<String> description;
   final Value<double> amount;
+  final Value<String?> category;
   final Value<String?> companyId;
   final Value<String?> createdBy;
   final Value<String?> createdAt;
@@ -10661,6 +10729,7 @@ class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
     this.parentId = const Value.absent(),
     this.description = const Value.absent(),
     this.amount = const Value.absent(),
+    this.category = const Value.absent(),
     this.companyId = const Value.absent(),
     this.createdBy = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -10674,6 +10743,7 @@ class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
     required String parentId,
     required String description,
     required double amount,
+    this.category = const Value.absent(),
     this.companyId = const Value.absent(),
     this.createdBy = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -10691,6 +10761,7 @@ class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
     Expression<String>? parentId,
     Expression<String>? description,
     Expression<double>? amount,
+    Expression<String>? category,
     Expression<String>? companyId,
     Expression<String>? createdBy,
     Expression<String>? createdAt,
@@ -10704,6 +10775,7 @@ class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
       if (parentId != null) 'parent_id': parentId,
       if (description != null) 'description': description,
       if (amount != null) 'amount': amount,
+      if (category != null) 'category': category,
       if (companyId != null) 'company_id': companyId,
       if (createdBy != null) 'created_by': createdBy,
       if (createdAt != null) 'created_at': createdAt,
@@ -10719,6 +10791,7 @@ class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
       Value<String>? parentId,
       Value<String>? description,
       Value<double>? amount,
+      Value<String?>? category,
       Value<String?>? companyId,
       Value<String?>? createdBy,
       Value<String?>? createdAt,
@@ -10731,6 +10804,7 @@ class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
       parentId: parentId ?? this.parentId,
       description: description ?? this.description,
       amount: amount ?? this.amount,
+      category: category ?? this.category,
       companyId: companyId ?? this.companyId,
       createdBy: createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
@@ -10755,6 +10829,9 @@ class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
     }
     if (amount.present) {
       map['amount'] = Variable<double>(amount.value);
+    }
+    if (category.present) {
+      map['category'] = Variable<String>(category.value);
     }
     if (companyId.present) {
       map['company_id'] = Variable<String>(companyId.value);
@@ -10787,6 +10864,7 @@ class ExpenditureSubItemsCompanion extends UpdateCompanion<ExpenditureSubItem> {
           ..write('parentId: $parentId, ')
           ..write('description: $description, ')
           ..write('amount: $amount, ')
+          ..write('category: $category, ')
           ..write('companyId: $companyId, ')
           ..write('createdBy: $createdBy, ')
           ..write('createdAt: $createdAt, ')
@@ -11522,6 +11600,607 @@ class TradingFileEntriesCompanion extends UpdateCompanion<TradingFileEntry> {
   }
 }
 
+class $FollowUpsTable extends FollowUps
+    with TableInfo<$FollowUpsTable, FollowUp> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FollowUpsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _clientNameMeta =
+      const VerificationMeta('clientName');
+  @override
+  late final GeneratedColumn<String> clientName = GeneratedColumn<String>(
+      'client_name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _followUpDateMeta =
+      const VerificationMeta('followUpDate');
+  @override
+  late final GeneratedColumn<DateTime> followUpDate = GeneratedColumn<DateTime>(
+      'follow_up_date', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _followUpTimeMeta =
+      const VerificationMeta('followUpTime');
+  @override
+  late final GeneratedColumn<String> followUpTime = GeneratedColumn<String>(
+      'follow_up_time', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+      'note', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('pending'));
+  static const VerificationMeta _companyIdMeta =
+      const VerificationMeta('companyId');
+  @override
+  late final GeneratedColumn<String> companyId = GeneratedColumn<String>(
+      'company_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _createdByMeta =
+      const VerificationMeta('createdBy');
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+      'created_by', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _isActiveMeta =
+      const VerificationMeta('isActive');
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+      'is_active', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
+      defaultValue: const Constant(true));
+  static const VerificationMeta _isSyncedMeta =
+      const VerificationMeta('isSynced');
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+      'is_synced', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_synced" IN (0, 1))'),
+      defaultValue: const Constant(true));
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        clientName,
+        followUpDate,
+        followUpTime,
+        note,
+        status,
+        companyId,
+        createdBy,
+        createdAt,
+        updatedAt,
+        isActive,
+        isSynced
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'follow_ups';
+  @override
+  VerificationContext validateIntegrity(Insertable<FollowUp> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('client_name')) {
+      context.handle(
+          _clientNameMeta,
+          clientName.isAcceptableOrUnknown(
+              data['client_name']!, _clientNameMeta));
+    } else if (isInserting) {
+      context.missing(_clientNameMeta);
+    }
+    if (data.containsKey('follow_up_date')) {
+      context.handle(
+          _followUpDateMeta,
+          followUpDate.isAcceptableOrUnknown(
+              data['follow_up_date']!, _followUpDateMeta));
+    } else if (isInserting) {
+      context.missing(_followUpDateMeta);
+    }
+    if (data.containsKey('follow_up_time')) {
+      context.handle(
+          _followUpTimeMeta,
+          followUpTime.isAcceptableOrUnknown(
+              data['follow_up_time']!, _followUpTimeMeta));
+    } else if (isInserting) {
+      context.missing(_followUpTimeMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+          _noteMeta, note.isAcceptableOrUnknown(data['note']!, _noteMeta));
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    }
+    if (data.containsKey('company_id')) {
+      context.handle(_companyIdMeta,
+          companyId.isAcceptableOrUnknown(data['company_id']!, _companyIdMeta));
+    } else if (isInserting) {
+      context.missing(_companyIdMeta);
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(_createdByMeta,
+          createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta));
+    } else if (isInserting) {
+      context.missing(_createdByMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('is_active')) {
+      context.handle(_isActiveMeta,
+          isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
+    }
+    if (data.containsKey('is_synced')) {
+      context.handle(_isSyncedMeta,
+          isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FollowUp map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FollowUp(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      clientName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}client_name'])!,
+      followUpDate: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}follow_up_date'])!,
+      followUpTime: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}follow_up_time'])!,
+      note: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}note']),
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      companyId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}company_id'])!,
+      createdBy: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}created_by'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+      isActive: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
+      isSynced: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_synced'])!,
+    );
+  }
+
+  @override
+  $FollowUpsTable createAlias(String alias) {
+    return $FollowUpsTable(attachedDatabase, alias);
+  }
+}
+
+class FollowUp extends DataClass implements Insertable<FollowUp> {
+  final String id;
+  final String clientName;
+  final DateTime followUpDate;
+  final String followUpTime;
+  final String? note;
+  final String status;
+  final String companyId;
+  final String createdBy;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool isActive;
+  final bool isSynced;
+  const FollowUp(
+      {required this.id,
+      required this.clientName,
+      required this.followUpDate,
+      required this.followUpTime,
+      this.note,
+      required this.status,
+      required this.companyId,
+      required this.createdBy,
+      required this.createdAt,
+      required this.updatedAt,
+      required this.isActive,
+      required this.isSynced});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['client_name'] = Variable<String>(clientName);
+    map['follow_up_date'] = Variable<DateTime>(followUpDate);
+    map['follow_up_time'] = Variable<String>(followUpTime);
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    map['status'] = Variable<String>(status);
+    map['company_id'] = Variable<String>(companyId);
+    map['created_by'] = Variable<String>(createdBy);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['is_active'] = Variable<bool>(isActive);
+    map['is_synced'] = Variable<bool>(isSynced);
+    return map;
+  }
+
+  FollowUpsCompanion toCompanion(bool nullToAbsent) {
+    return FollowUpsCompanion(
+      id: Value(id),
+      clientName: Value(clientName),
+      followUpDate: Value(followUpDate),
+      followUpTime: Value(followUpTime),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      status: Value(status),
+      companyId: Value(companyId),
+      createdBy: Value(createdBy),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      isActive: Value(isActive),
+      isSynced: Value(isSynced),
+    );
+  }
+
+  factory FollowUp.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FollowUp(
+      id: serializer.fromJson<String>(json['id']),
+      clientName: serializer.fromJson<String>(json['clientName']),
+      followUpDate: serializer.fromJson<DateTime>(json['followUpDate']),
+      followUpTime: serializer.fromJson<String>(json['followUpTime']),
+      note: serializer.fromJson<String?>(json['note']),
+      status: serializer.fromJson<String>(json['status']),
+      companyId: serializer.fromJson<String>(json['companyId']),
+      createdBy: serializer.fromJson<String>(json['createdBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'clientName': serializer.toJson<String>(clientName),
+      'followUpDate': serializer.toJson<DateTime>(followUpDate),
+      'followUpTime': serializer.toJson<String>(followUpTime),
+      'note': serializer.toJson<String?>(note),
+      'status': serializer.toJson<String>(status),
+      'companyId': serializer.toJson<String>(companyId),
+      'createdBy': serializer.toJson<String>(createdBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'isActive': serializer.toJson<bool>(isActive),
+      'isSynced': serializer.toJson<bool>(isSynced),
+    };
+  }
+
+  FollowUp copyWith(
+          {String? id,
+          String? clientName,
+          DateTime? followUpDate,
+          String? followUpTime,
+          Value<String?> note = const Value.absent(),
+          String? status,
+          String? companyId,
+          String? createdBy,
+          DateTime? createdAt,
+          DateTime? updatedAt,
+          bool? isActive,
+          bool? isSynced}) =>
+      FollowUp(
+        id: id ?? this.id,
+        clientName: clientName ?? this.clientName,
+        followUpDate: followUpDate ?? this.followUpDate,
+        followUpTime: followUpTime ?? this.followUpTime,
+        note: note.present ? note.value : this.note,
+        status: status ?? this.status,
+        companyId: companyId ?? this.companyId,
+        createdBy: createdBy ?? this.createdBy,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        isActive: isActive ?? this.isActive,
+        isSynced: isSynced ?? this.isSynced,
+      );
+  FollowUp copyWithCompanion(FollowUpsCompanion data) {
+    return FollowUp(
+      id: data.id.present ? data.id.value : this.id,
+      clientName:
+          data.clientName.present ? data.clientName.value : this.clientName,
+      followUpDate: data.followUpDate.present
+          ? data.followUpDate.value
+          : this.followUpDate,
+      followUpTime: data.followUpTime.present
+          ? data.followUpTime.value
+          : this.followUpTime,
+      note: data.note.present ? data.note.value : this.note,
+      status: data.status.present ? data.status.value : this.status,
+      companyId: data.companyId.present ? data.companyId.value : this.companyId,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FollowUp(')
+          ..write('id: $id, ')
+          ..write('clientName: $clientName, ')
+          ..write('followUpDate: $followUpDate, ')
+          ..write('followUpTime: $followUpTime, ')
+          ..write('note: $note, ')
+          ..write('status: $status, ')
+          ..write('companyId: $companyId, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isActive: $isActive, ')
+          ..write('isSynced: $isSynced')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      clientName,
+      followUpDate,
+      followUpTime,
+      note,
+      status,
+      companyId,
+      createdBy,
+      createdAt,
+      updatedAt,
+      isActive,
+      isSynced);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FollowUp &&
+          other.id == this.id &&
+          other.clientName == this.clientName &&
+          other.followUpDate == this.followUpDate &&
+          other.followUpTime == this.followUpTime &&
+          other.note == this.note &&
+          other.status == this.status &&
+          other.companyId == this.companyId &&
+          other.createdBy == this.createdBy &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.isActive == this.isActive &&
+          other.isSynced == this.isSynced);
+}
+
+class FollowUpsCompanion extends UpdateCompanion<FollowUp> {
+  final Value<String> id;
+  final Value<String> clientName;
+  final Value<DateTime> followUpDate;
+  final Value<String> followUpTime;
+  final Value<String?> note;
+  final Value<String> status;
+  final Value<String> companyId;
+  final Value<String> createdBy;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<bool> isActive;
+  final Value<bool> isSynced;
+  final Value<int> rowid;
+  const FollowUpsCompanion({
+    this.id = const Value.absent(),
+    this.clientName = const Value.absent(),
+    this.followUpDate = const Value.absent(),
+    this.followUpTime = const Value.absent(),
+    this.note = const Value.absent(),
+    this.status = const Value.absent(),
+    this.companyId = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  FollowUpsCompanion.insert({
+    required String id,
+    required String clientName,
+    required DateTime followUpDate,
+    required String followUpTime,
+    this.note = const Value.absent(),
+    this.status = const Value.absent(),
+    required String companyId,
+    required String createdBy,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.isActive = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        clientName = Value(clientName),
+        followUpDate = Value(followUpDate),
+        followUpTime = Value(followUpTime),
+        companyId = Value(companyId),
+        createdBy = Value(createdBy),
+        createdAt = Value(createdAt),
+        updatedAt = Value(updatedAt);
+  static Insertable<FollowUp> custom({
+    Expression<String>? id,
+    Expression<String>? clientName,
+    Expression<DateTime>? followUpDate,
+    Expression<String>? followUpTime,
+    Expression<String>? note,
+    Expression<String>? status,
+    Expression<String>? companyId,
+    Expression<String>? createdBy,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<bool>? isActive,
+    Expression<bool>? isSynced,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (clientName != null) 'client_name': clientName,
+      if (followUpDate != null) 'follow_up_date': followUpDate,
+      if (followUpTime != null) 'follow_up_time': followUpTime,
+      if (note != null) 'note': note,
+      if (status != null) 'status': status,
+      if (companyId != null) 'company_id': companyId,
+      if (createdBy != null) 'created_by': createdBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (isActive != null) 'is_active': isActive,
+      if (isSynced != null) 'is_synced': isSynced,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  FollowUpsCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? clientName,
+      Value<DateTime>? followUpDate,
+      Value<String>? followUpTime,
+      Value<String?>? note,
+      Value<String>? status,
+      Value<String>? companyId,
+      Value<String>? createdBy,
+      Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt,
+      Value<bool>? isActive,
+      Value<bool>? isSynced,
+      Value<int>? rowid}) {
+    return FollowUpsCompanion(
+      id: id ?? this.id,
+      clientName: clientName ?? this.clientName,
+      followUpDate: followUpDate ?? this.followUpDate,
+      followUpTime: followUpTime ?? this.followUpTime,
+      note: note ?? this.note,
+      status: status ?? this.status,
+      companyId: companyId ?? this.companyId,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isActive: isActive ?? this.isActive,
+      isSynced: isSynced ?? this.isSynced,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (clientName.present) {
+      map['client_name'] = Variable<String>(clientName.value);
+    }
+    if (followUpDate.present) {
+      map['follow_up_date'] = Variable<DateTime>(followUpDate.value);
+    }
+    if (followUpTime.present) {
+      map['follow_up_time'] = Variable<String>(followUpTime.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (companyId.present) {
+      map['company_id'] = Variable<String>(companyId.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FollowUpsCompanion(')
+          ..write('id: $id, ')
+          ..write('clientName: $clientName, ')
+          ..write('followUpDate: $followUpDate, ')
+          ..write('followUpTime: $followUpTime, ')
+          ..write('note: $note, ')
+          ..write('status: $status, ')
+          ..write('companyId: $companyId, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isActive: $isActive, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -11550,6 +12229,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ExpenditureSubItemsTable(this);
   late final $TradingFileEntriesTable tradingFileEntries =
       $TradingFileEntriesTable(this);
+  late final $FollowUpsTable followUps = $FollowUpsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -11574,7 +12254,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         clients,
         expenditures,
         expenditureSubItems,
-        tradingFileEntries
+        tradingFileEntries,
+        followUps
       ];
 }
 
@@ -16604,6 +17285,7 @@ typedef $$RemindersTableCreateCompanionBuilder = RemindersCompanion Function({
   required String reminderTime,
   required String notificationStatus,
   Value<bool> is_active,
+  Value<bool> isRead,
   required String createdAt,
   required String updatedAt,
   Value<bool> isSynced,
@@ -16620,6 +17302,7 @@ typedef $$RemindersTableUpdateCompanionBuilder = RemindersCompanion Function({
   Value<String> reminderTime,
   Value<String> notificationStatus,
   Value<bool> is_active,
+  Value<bool> isRead,
   Value<String> createdAt,
   Value<String> updatedAt,
   Value<bool> isSynced,
@@ -16684,6 +17367,9 @@ class $$RemindersTableFilterComposer
 
   ColumnFilters<bool> get is_active => $composableBuilder(
       column: $table.is_active, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isRead => $composableBuilder(
+      column: $table.isRead, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -16759,6 +17445,9 @@ class $$RemindersTableOrderingComposer
   ColumnOrderings<bool> get is_active => $composableBuilder(
       column: $table.is_active, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isRead => $composableBuilder(
+      column: $table.isRead, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -16828,6 +17517,9 @@ class $$RemindersTableAnnotationComposer
   GeneratedColumn<bool> get is_active =>
       $composableBuilder(column: $table.is_active, builder: (column) => column);
 
+  GeneratedColumn<bool> get isRead =>
+      $composableBuilder(column: $table.isRead, builder: (column) => column);
+
   GeneratedColumn<String> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -16892,6 +17584,7 @@ class $$RemindersTableTableManager extends RootTableManager<
             Value<String> reminderTime = const Value.absent(),
             Value<String> notificationStatus = const Value.absent(),
             Value<bool> is_active = const Value.absent(),
+            Value<bool> isRead = const Value.absent(),
             Value<String> createdAt = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
             Value<bool> isSynced = const Value.absent(),
@@ -16908,6 +17601,7 @@ class $$RemindersTableTableManager extends RootTableManager<
             reminderTime: reminderTime,
             notificationStatus: notificationStatus,
             is_active: is_active,
+            isRead: isRead,
             createdAt: createdAt,
             updatedAt: updatedAt,
             isSynced: isSynced,
@@ -16924,6 +17618,7 @@ class $$RemindersTableTableManager extends RootTableManager<
             required String reminderTime,
             required String notificationStatus,
             Value<bool> is_active = const Value.absent(),
+            Value<bool> isRead = const Value.absent(),
             required String createdAt,
             required String updatedAt,
             Value<bool> isSynced = const Value.absent(),
@@ -16940,6 +17635,7 @@ class $$RemindersTableTableManager extends RootTableManager<
             reminderTime: reminderTime,
             notificationStatus: notificationStatus,
             is_active: is_active,
+            isRead: isRead,
             createdAt: createdAt,
             updatedAt: updatedAt,
             isSynced: isSynced,
@@ -18369,6 +19065,7 @@ typedef $$ExpenditureSubItemsTableCreateCompanionBuilder
   required String parentId,
   required String description,
   required double amount,
+  Value<String?> category,
   Value<String?> companyId,
   Value<String?> createdBy,
   Value<String?> createdAt,
@@ -18383,6 +19080,7 @@ typedef $$ExpenditureSubItemsTableUpdateCompanionBuilder
   Value<String> parentId,
   Value<String> description,
   Value<double> amount,
+  Value<String?> category,
   Value<String?> companyId,
   Value<String?> createdBy,
   Value<String?> createdAt,
@@ -18430,6 +19128,9 @@ class $$ExpenditureSubItemsTableFilterComposer
 
   ColumnFilters<double> get amount => $composableBuilder(
       column: $table.amount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get category => $composableBuilder(
+      column: $table.category, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get companyId => $composableBuilder(
       column: $table.companyId, builder: (column) => ColumnFilters(column));
@@ -18488,6 +19189,9 @@ class $$ExpenditureSubItemsTableOrderingComposer
   ColumnOrderings<double> get amount => $composableBuilder(
       column: $table.amount, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get category => $composableBuilder(
+      column: $table.category, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get companyId => $composableBuilder(
       column: $table.companyId, builder: (column) => ColumnOrderings(column));
 
@@ -18544,6 +19248,9 @@ class $$ExpenditureSubItemsTableAnnotationComposer
 
   GeneratedColumn<double> get amount =>
       $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get category =>
+      $composableBuilder(column: $table.category, builder: (column) => column);
 
   GeneratedColumn<String> get companyId =>
       $composableBuilder(column: $table.companyId, builder: (column) => column);
@@ -18614,6 +19321,7 @@ class $$ExpenditureSubItemsTableTableManager extends RootTableManager<
             Value<String> parentId = const Value.absent(),
             Value<String> description = const Value.absent(),
             Value<double> amount = const Value.absent(),
+            Value<String?> category = const Value.absent(),
             Value<String?> companyId = const Value.absent(),
             Value<String?> createdBy = const Value.absent(),
             Value<String?> createdAt = const Value.absent(),
@@ -18627,6 +19335,7 @@ class $$ExpenditureSubItemsTableTableManager extends RootTableManager<
             parentId: parentId,
             description: description,
             amount: amount,
+            category: category,
             companyId: companyId,
             createdBy: createdBy,
             createdAt: createdAt,
@@ -18640,6 +19349,7 @@ class $$ExpenditureSubItemsTableTableManager extends RootTableManager<
             required String parentId,
             required String description,
             required double amount,
+            Value<String?> category = const Value.absent(),
             Value<String?> companyId = const Value.absent(),
             Value<String?> createdBy = const Value.absent(),
             Value<String?> createdAt = const Value.absent(),
@@ -18653,6 +19363,7 @@ class $$ExpenditureSubItemsTableTableManager extends RootTableManager<
             parentId: parentId,
             description: description,
             amount: amount,
+            category: category,
             companyId: companyId,
             createdBy: createdBy,
             createdAt: createdAt,
@@ -19043,6 +19754,278 @@ typedef $$TradingFileEntriesTableProcessedTableManager = ProcessedTableManager<
     ),
     TradingFileEntry,
     PrefetchHooks Function()>;
+typedef $$FollowUpsTableCreateCompanionBuilder = FollowUpsCompanion Function({
+  required String id,
+  required String clientName,
+  required DateTime followUpDate,
+  required String followUpTime,
+  Value<String?> note,
+  Value<String> status,
+  required String companyId,
+  required String createdBy,
+  required DateTime createdAt,
+  required DateTime updatedAt,
+  Value<bool> isActive,
+  Value<bool> isSynced,
+  Value<int> rowid,
+});
+typedef $$FollowUpsTableUpdateCompanionBuilder = FollowUpsCompanion Function({
+  Value<String> id,
+  Value<String> clientName,
+  Value<DateTime> followUpDate,
+  Value<String> followUpTime,
+  Value<String?> note,
+  Value<String> status,
+  Value<String> companyId,
+  Value<String> createdBy,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+  Value<bool> isActive,
+  Value<bool> isSynced,
+  Value<int> rowid,
+});
+
+class $$FollowUpsTableFilterComposer
+    extends Composer<_$AppDatabase, $FollowUpsTable> {
+  $$FollowUpsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get clientName => $composableBuilder(
+      column: $table.clientName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get followUpDate => $composableBuilder(
+      column: $table.followUpDate, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get followUpTime => $composableBuilder(
+      column: $table.followUpTime, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get note => $composableBuilder(
+      column: $table.note, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get companyId => $composableBuilder(
+      column: $table.companyId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+      column: $table.createdBy, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+      column: $table.isSynced, builder: (column) => ColumnFilters(column));
+}
+
+class $$FollowUpsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FollowUpsTable> {
+  $$FollowUpsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get clientName => $composableBuilder(
+      column: $table.clientName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get followUpDate => $composableBuilder(
+      column: $table.followUpDate,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get followUpTime => $composableBuilder(
+      column: $table.followUpTime,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get note => $composableBuilder(
+      column: $table.note, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get companyId => $composableBuilder(
+      column: $table.companyId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+      column: $table.createdBy, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+      column: $table.isActive, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+      column: $table.isSynced, builder: (column) => ColumnOrderings(column));
+}
+
+class $$FollowUpsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FollowUpsTable> {
+  $$FollowUpsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get clientName => $composableBuilder(
+      column: $table.clientName, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get followUpDate => $composableBuilder(
+      column: $table.followUpDate, builder: (column) => column);
+
+  GeneratedColumn<String> get followUpTime => $composableBuilder(
+      column: $table.followUpTime, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get companyId =>
+      $composableBuilder(column: $table.companyId, builder: (column) => column);
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+}
+
+class $$FollowUpsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $FollowUpsTable,
+    FollowUp,
+    $$FollowUpsTableFilterComposer,
+    $$FollowUpsTableOrderingComposer,
+    $$FollowUpsTableAnnotationComposer,
+    $$FollowUpsTableCreateCompanionBuilder,
+    $$FollowUpsTableUpdateCompanionBuilder,
+    (FollowUp, BaseReferences<_$AppDatabase, $FollowUpsTable, FollowUp>),
+    FollowUp,
+    PrefetchHooks Function()> {
+  $$FollowUpsTableTableManager(_$AppDatabase db, $FollowUpsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FollowUpsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FollowUpsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$FollowUpsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> clientName = const Value.absent(),
+            Value<DateTime> followUpDate = const Value.absent(),
+            Value<String> followUpTime = const Value.absent(),
+            Value<String?> note = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<String> companyId = const Value.absent(),
+            Value<String> createdBy = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<bool> isActive = const Value.absent(),
+            Value<bool> isSynced = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              FollowUpsCompanion(
+            id: id,
+            clientName: clientName,
+            followUpDate: followUpDate,
+            followUpTime: followUpTime,
+            note: note,
+            status: status,
+            companyId: companyId,
+            createdBy: createdBy,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            isActive: isActive,
+            isSynced: isSynced,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String clientName,
+            required DateTime followUpDate,
+            required String followUpTime,
+            Value<String?> note = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            required String companyId,
+            required String createdBy,
+            required DateTime createdAt,
+            required DateTime updatedAt,
+            Value<bool> isActive = const Value.absent(),
+            Value<bool> isSynced = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              FollowUpsCompanion.insert(
+            id: id,
+            clientName: clientName,
+            followUpDate: followUpDate,
+            followUpTime: followUpTime,
+            note: note,
+            status: status,
+            companyId: companyId,
+            createdBy: createdBy,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            isActive: isActive,
+            isSynced: isSynced,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$FollowUpsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $FollowUpsTable,
+    FollowUp,
+    $$FollowUpsTableFilterComposer,
+    $$FollowUpsTableOrderingComposer,
+    $$FollowUpsTableAnnotationComposer,
+    $$FollowUpsTableCreateCompanionBuilder,
+    $$FollowUpsTableUpdateCompanionBuilder,
+    (FollowUp, BaseReferences<_$AppDatabase, $FollowUpsTable, FollowUp>),
+    FollowUp,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -19087,4 +20070,6 @@ class $AppDatabaseManager {
       $$ExpenditureSubItemsTableTableManager(_db, _db.expenditureSubItems);
   $$TradingFileEntriesTableTableManager get tradingFileEntries =>
       $$TradingFileEntriesTableTableManager(_db, _db.tradingFileEntries);
+  $$FollowUpsTableTableManager get followUps =>
+      $$FollowUpsTableTableManager(_db, _db.followUps);
 }

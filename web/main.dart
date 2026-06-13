@@ -4,15 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
-import 'package:EasyRealtorsPro/core/utils/logger.dart';
-import 'package:EasyRealtorsPro/core/database/database_connection.dart';
-import 'package:EasyRealtorsPro/core/services/firebase_options.dart';
-import 'package:EasyRealtorsPro/core/services/auth_service.dart';
-import 'package:EasyRealtorsPro/core/app.dart';
+import 'package:easyrealtorspro/core/utils/logger.dart';
+import 'package:easyrealtorspro/core/database/database_connection.dart';
+import 'package:easyrealtorspro/core/services/firebase_options.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
+import 'package:easyrealtorspro/core/app.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:easyrealtorspro/core/services/auth/jwt_service.dart';
 
 /// Web-specific main entrypoint that properly initializes the real application
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   tzdata.initializeTimeZones();
 
   debugPrint('Starting web build with full application features');
@@ -66,7 +69,9 @@ void main() async {
 
     // 4. Run the real AdminApp - Same as desktop version
     debugPrint('Web: Starting AdminApp with full features');
-    runApp(const AdminApp());
+    final jwtService = JwtService();
+    await jwtService.initialize();
+    runApp(AdminApp(jwtService: jwtService));
     
   }, (error, stack) {
     // Comprehensive error handler for web

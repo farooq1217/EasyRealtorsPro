@@ -6,9 +6,10 @@ import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../../users/models/user_model.dart';
 import 'user_repository.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/sync_database_helper.dart';
 import '../../../firestore_sync_service.dart';
 import '../../../core/services/app_storage.dart';
@@ -52,7 +53,7 @@ class UserRepositoryImpl implements UserRepository {
 
   // Helper method to disable Firestore operations in SQLite-only mode
   bool _isFirestoreOperationAllowed() {
-    return !_sqliteOnlyMode;
+    return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
   }
 
   // Helper method to execute Firestore operations only if allowed
@@ -74,8 +75,13 @@ class UserRepositoryImpl implements UserRepository {
       String query;
       List<d.Variable<Object>> variables = [];
       
+      final isSuperAdmin = companyId == 'GLOBAL_ADMIN' || 
+                           companyId == null ||
+                           (AuthService.currentUser?['permissions']?.toString().contains('super_admin') ?? false) ||
+                           (RoleUtils.isSuperAdmin(AuthService.currentUser));
+      
       // CRITICAL FIX: Company Admin should only see users from their own company
-      if (companyId != null && companyId.isNotEmpty) {
+      if (companyId != null && companyId.isNotEmpty && !isSuperAdmin) {
         // Company Admin or regular user - only show users from their company
         query = '''
           SELECT id, username, user_id, name, email, contact_no, permissions, 
@@ -533,10 +539,19 @@ class UserRepositoryImpl implements UserRepository {
   @override
   Future<int> getActiveUserCount(String companyId) async {
     try {
-      final result = await db.customSelect(
-        "SELECT COUNT(*) as cnt FROM users WHERE company_id = ? AND (status = 'active' OR status IS NULL) AND (is_active = 1 OR is_active IS NULL)",
-        variables: <d.Variable<Object>>[d.Variable.withString(companyId)],
-      ).get();
+      final isSuperAdmin = companyId == 'GLOBAL_ADMIN' || 
+                           (AuthService.currentUser?['permissions']?.toString().contains('super_admin') ?? false) ||
+                           (RoleUtils.isSuperAdmin(AuthService.currentUser));
+      
+      final query = isSuperAdmin
+          ? "SELECT COUNT(*) as cnt FROM users WHERE (status = 'active' OR status IS NULL) AND (is_active = 1 OR is_active IS NULL)"
+          : "SELECT COUNT(*) as cnt FROM users WHERE company_id = ? AND (status = 'active' OR status IS NULL) AND (is_active = 1 OR is_active IS NULL)";
+          
+      final variables = isSuperAdmin
+          ? <d.Variable<Object>>[]
+          : <d.Variable<Object>>[d.Variable.withString(companyId)];
+          
+      final result = await db.customSelect(query, variables: variables).get();
       
       return int.tryParse(result.first.data['cnt'].toString() ?? '0') ?? 0;
     } catch (e) {
@@ -546,6 +561,7 @@ class UserRepositoryImpl implements UserRepository {
 
   @override
   Future<bool> canAddMoreUsers(String companyId) async {
+    if (companyId == 'GLOBAL_ADMIN') return true;
     try {
       // Get company's user limit
       final limitResult = await db.customSelect(
@@ -625,7 +641,10 @@ class UserRepositoryImpl implements UserRepository {
   @override
   Future<List<UserModel>> searchUsers(String? companyId, String query) async {
     try {
-      final isSuperAdmin = await _isSuperAdmin();
+      final isSuperAdmin = companyId == 'GLOBAL_ADMIN' || 
+                           companyId == null ||
+                           (AuthService.currentUser?['permissions']?.toString().contains('super_admin') ?? false) ||
+                           (RoleUtils.isSuperAdmin(AuthService.currentUser));
       final effectiveCompanyId = isSuperAdmin ? null : companyId;
       
       String sqlQuery;
@@ -704,10 +723,10 @@ class UserRepositoryImpl implements UserRepository {
     }
   }
 
-  // CRITICAL FIX: Immediate sync method for cross-device synchronization
-  Future<void> _syncUserToFirestore(UserModel user) async {
-    if (!_isFirestoreOperationAllowed()) {
-      debugPrint('UserRepository: Firestore sync not allowed in SQLite-only mode');
+   // CRITICAL FIX: Immediate sync method for cross-device synchronization
+   Future<void> _syncUserToFirestore(UserModel user) async {
+    if (Firebase.apps.isEmpty) {
+      debugPrint('UserRepository: Skipping Firestore sync - Firebase is not initialized');
       return;
     }
     
@@ -716,11 +735,9 @@ class UserRepositoryImpl implements UserRepository {
         final firestore = FirebaseFirestore.instance;
         final usersCollection = firestore.collection('users');
         
-        // Use email as document ID for consistency
         final firestoreDocId = user.email.toLowerCase().trim();
         debugPrint('UserRepository: Syncing user to Firestore: ${user.name} (doc: $firestoreDocId)');
         
-        // Convert user to Firestore format
         final firestoreData = {
           'id': user.id,
           'username': user.username,
@@ -732,7 +749,7 @@ class UserRepositoryImpl implements UserRepository {
           'company_id': user.companyId ?? '',
           'status': user.status ?? 'active',
           'is_active': user.isActive,
-          'is_synced': 1, // Mark as synced in Firestore
+          'is_synced': 1,
           'created_at': user.createdAt ?? DateTime.now().toIso8601String(),
           'updated_at': user.updatedAt,
           'password_hash': user.passwordHash ?? '',
@@ -742,32 +759,50 @@ class UserRepositoryImpl implements UserRepository {
           'profile_picture_path': user.profilePicturePath ?? '',
         };
         
-        // Set document in Firestore
-        await usersCollection.doc(firestoreDocId).set(firestoreData, SetOptions(merge: true));
+        // ✅ CRITICAL: Windows par timeout add karein
+        await usersCollection.doc(firestoreDocId).set(
+          firestoreData, 
+          SetOptions(merge: true)
+        ).timeout(
+          _isWindows ? const Duration(seconds: 8) : const Duration(seconds: 15),
+          onTimeout: () {
+            debugPrint('UserRepository: Firestore write timed out');
+          },
+        );
         
-        // Mark as synced in local SQLite
         await markUserAsSynced(user.id);
         
         debugPrint('UserRepository: User synced to Firestore successfully: ${user.name}');
       } catch (e) {
         debugPrint('UserRepository: Error syncing user to Firestore: $e');
-        // Enhanced error logging for network issues
         if (e.toString().contains('SocketException') || 
             e.toString().contains('TimeoutException') ||
             e.toString().contains('NetworkException')) {
           debugPrint('UserRepository: Network error detected - check internet connection');
         }
-        rethrow; // Re-throw to trigger proper error handling
       }
     });
   }
 
   @override
   Future<void> syncUsersFromFirestore() async {
-    if (!_isFirestoreOperationAllowed()) {
-      debugPrint('UserRepository: Firestore sync not allowed in SQLite-only mode');
+    if (Firebase.apps.isEmpty) {
+      debugPrint('UserRepository: Skipping Firestore sync - Firebase is not initialized');
       return;
     }
+    
+   if (_isWindows) {
+  debugPrint('UserRepository: Windows detected - performing safe Firestore sync...');
+  // Windows par sync karein lekin error handling ke saath
+  try {
+    await _syncUsersFromFirestoreWindows();
+    return;
+  } catch (e) {
+    debugPrint('UserRepository: Windows sync failed: $e');
+    // Continue anyway - app will work with local data
+    return;
+  }
+}
     
     await _executeFirestoreOperation(() async {
       debugPrint('UserRepository: Starting sync from Firestore...');
@@ -795,8 +830,11 @@ class UserRepositoryImpl implements UserRepository {
           return;
         }
         
-        // ✨ CRITICAL FIX: Add timeout for Windows to prevent hanging
-        final querySnapshot = await query.get().timeout(
+        // ✨ CRITICAL FIX: Run with thread safety and add timeout for Windows to prevent hanging
+        final querySnapshot = await FirebaseThreadingHandler.executeWithThreadSafety(
+          () => query.get(),
+          operationName: 'UserRepository syncUsersFromFirestore query',
+        ).timeout(
           _isWindows ? const Duration(seconds: 8) : const Duration(seconds: 15),
           onTimeout: () {
             debugPrint('UserRepository: Firestore query timed out - returning empty result');
@@ -901,8 +939,7 @@ class UserRepositoryImpl implements UserRepository {
         
         debugPrint('UserRepository: Successfully synced ${querySnapshot.docs.length} users from Firestore');
       } catch (e) {
-        debugPrint('UserRepository: Error syncing from Firestore: $e');
-        rethrow;
+        debugPrint('Offline mode active - UserRepository: Error syncing from Firestore: $e');
       }
     });
   }
@@ -1014,7 +1051,7 @@ class UserRepositoryImpl implements UserRepository {
       }
       
       // ✨ PRODUCTION FIX: Sync to Firestore immediately after SQLite update ✨
-      if (!_sqliteOnlyMode) {
+      if (_isFirestoreOperationAllowed()) {
         try {
           // ✨ FIX: Query SQLite to get user email for Firestore document ID ✨
           final userQuery = await db.customSelect(
@@ -1143,7 +1180,7 @@ class UserRepositoryImpl implements UserRepository {
       debugPrint('UserRepository: User archived locally: $userId (affected rows: $result)');
       
       // CRITICAL FIX: Sync to Firestore immediately
-      if (!_sqliteOnlyMode) {
+      if (_isFirestoreOperationAllowed()) {
         try {
           // Get user email for Firestore document ID
           final userQuery = await db.customSelect(
@@ -1202,7 +1239,10 @@ class UserRepositoryImpl implements UserRepository {
   @override
   Future<Map<String, dynamic>> getUserStatistics(String? companyId) async {
     try {
-      final isSuperAdmin = await _isSuperAdmin();
+      final isSuperAdmin = companyId == 'GLOBAL_ADMIN' || 
+                           companyId == null ||
+                           (AuthService.currentUser?['permissions']?.toString().contains('super_admin') ?? false) ||
+                           (RoleUtils.isSuperAdmin(AuthService.currentUser));
       final effectiveCompanyId = isSuperAdmin ? null : companyId;
       
       String query;
@@ -1284,4 +1324,138 @@ class UserRepositoryImpl implements UserRepository {
       return null;
     }
   }
+  /// ✅ NEW METHOD: Windows-specific safe sync
+Future<void> _syncUsersFromFirestoreWindows() async {
+  if (Firebase.apps.isEmpty) {
+    debugPrint('UserRepository: Skipping Firestore sync - Firebase is not initialized');
+    return;
+  }
+  
+  debugPrint('UserRepository: Starting Windows-safe Firestore sync...');
+  
+  try {
+    final firestore = FirebaseFirestore.instance;
+    final usersCollection = firestore.collection('users');
+    
+    // Get current user context
+    final currentUser = AuthService.currentUser;
+    final isSuperAdmin = RoleUtils.isSuperAdmin(currentUser) || PermissionHelper.isBypassUser(currentUser);
+    final userCompanyId = RoleUtils.getUserCompanyId(currentUser);
+    
+    Query query;
+    if (isSuperAdmin) {
+      query = usersCollection;
+      debugPrint('UserRepository: Windows - Super Admin sync - fetching all users');
+    } else if (userCompanyId != null && userCompanyId.isNotEmpty) {
+      query = usersCollection.where('company_id', isEqualTo: userCompanyId);
+      debugPrint('UserRepository: Windows - Company Admin sync - fetching users for company: $userCompanyId');
+    } else {
+      debugPrint('UserRepository: Windows - No company ID found - skipping sync');
+      return;
+    }
+    
+    // ✅ CRITICAL: Windows par timeout kam rakhein
+    final querySnapshot = await query.get().timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        debugPrint('UserRepository: Windows - Firestore query timed out');
+        throw TimeoutException('Firestore query timeout', const Duration(seconds: 10));
+      },
+    );
+    
+    debugPrint('UserRepository: Windows - Fetched ${querySnapshot.docs.length} users from Firestore');
+    
+    if (querySnapshot.docs.isEmpty) {
+      debugPrint('UserRepository: Windows - No users to sync');
+      return;
+    }
+    
+    // Begin transaction for bulk insert
+    await db.transaction(() async {
+      for (final doc in querySnapshot.docs) {
+        final rawData = doc.data();
+        if (rawData == null) continue;
+        
+        final data = rawData as Map<String, dynamic>;
+        
+        final isActiveRaw = data['is_active'];
+        final isFirstLoginRaw = data['is_first_login'];
+        final permissionsStr = data['permissions']?.toString() ?? '{}';
+        
+        String role = 'agent';
+        try {
+          if (permissionsStr.isNotEmpty) {
+            final decoded = jsonDecode(permissionsStr) as Map<String, dynamic>;
+            role = decoded['role']?.toString() ?? 'agent';
+          }
+        } catch (e) {
+          if (permissionsStr.contains('agent')) role = 'agent';
+        }
+        
+        final userMap = {
+          'id': doc.id,
+          'username': data['username']?.toString() ?? '',
+          'user_id': data['user_id']?.toString() ?? doc.id,
+          'name': data['name']?.toString() ?? '',
+          'email': data['email']?.toString() ?? '',
+          'contact_no': data['contact_no']?.toString() ?? '',
+          'permissions': permissionsStr,
+          'role': role,
+          'company_id': data['company_id']?.toString() ?? '',
+          'status': data['status']?.toString() ?? 'active',
+          'is_active': (isActiveRaw == 1 || isActiveRaw == true) ? 1 : 0,
+          'is_synced': 1,
+          'created_at': data['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+          'updated_at': data['updated_at']?.toString() ?? DateTime.now().toIso8601String(),
+          'password_hash': data['password_hash']?.toString() ?? '',
+          'salt': data['salt']?.toString() ?? '',
+          'iterations': int.tryParse(data['iterations']?.toString() ?? '') ?? 10000,
+          'is_first_login': (isFirstLoginRaw == 1 || isFirstLoginRaw == true) ? 1 : 0,
+          'profile_picture_path': data['profile_picture_path']?.toString() ?? '',
+        };
+        
+        await db.customInsert(
+          '''INSERT OR REPLACE INTO users (
+            id, username, password_hash, salt, iterations, user_id, name, email, 
+            contact_no, role, permissions, company_id, status, is_first_login, 
+            is_active, profile_picture_path, created_at, updated_at, is_synced
+          ) VALUES (
+            :id, :username, :password_hash, :salt, :iterations, :user_id, :name, :email, 
+            :contact_no, :role, :permissions, :company_id, :status, :is_first_login, 
+            :is_active, :profile_picture_path, :created_at, :updated_at, :is_synced
+          )''',
+          variables: <d.Variable<Object>>[
+            d.Variable.withString(userMap['id']?.toString() ?? ''),
+            d.Variable.withString(userMap['username']?.toString() ?? ''),
+            d.Variable.withString(userMap['password_hash']?.toString() ?? ''),
+            d.Variable.withString(userMap['salt']?.toString() ?? ''),
+            d.Variable.withInt(int.tryParse(userMap['iterations']?.toString() ?? '') ?? 10000),
+            d.Variable.withString(userMap['user_id']?.toString() ?? ''),
+            d.Variable.withString(userMap['name']?.toString() ?? ''),
+            d.Variable.withString(userMap['email']?.toString() ?? ''),
+            d.Variable.withString(userMap['contact_no']?.toString() ?? ''),
+            d.Variable.withString(userMap['role']?.toString() ?? 'agent'),
+            d.Variable.withString(userMap['permissions']?.toString() ?? '{}'),
+            d.Variable.withString(userMap['company_id']?.toString() ?? ''),
+            d.Variable.withString(userMap['status']?.toString() ?? ''),
+            d.Variable.withInt(int.tryParse(userMap['is_first_login']?.toString() ?? '') ?? 1),
+            d.Variable.withInt(int.tryParse(userMap['is_active']?.toString() ?? '') ?? 1),
+            d.Variable.withString(userMap['profile_picture_path']?.toString() ?? ''),
+            d.Variable.withString(userMap['created_at']?.toString() ?? ''),
+            d.Variable.withString(userMap['updated_at']?.toString() ?? ''),
+            d.Variable.withInt(int.tryParse(userMap['is_synced']?.toString() ?? '') ?? 1),
+          ],
+        );
+        
+        debugPrint('UserRepository: Windows - Synced user: ${userMap['name']} (${userMap['email']})');
+      }
+    });
+    
+    debugPrint('UserRepository: Windows - Successfully synced ${querySnapshot.docs.length} users');
+  } catch (e) {
+    debugPrint('UserRepository: Windows - Sync error: $e');
+    // Don't rethrow - allow app to continue with local data
+  }
+}
+
 }

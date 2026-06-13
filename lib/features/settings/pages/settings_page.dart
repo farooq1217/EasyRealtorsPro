@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/font_utils.dart';
 import '../../../core/services/app_storage.dart' show AppStorage;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/shared_utils.dart' show TopRightSearch;
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../../core/role_utils.dart';

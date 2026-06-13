@@ -29,7 +29,11 @@ class AppStorage {
     if (!await file.exists()) return {};
     try {
       final text = await file.readAsString();
-      return jsonDecode(text) as Map<String, dynamic>;
+      final decoded = jsonDecode(text);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+      return {};
     } catch (_) {
       return {};
     }
@@ -43,13 +47,18 @@ class AppStorage {
 
   Future<String?> readLastExportTs(String module) async {
     final s = await _readExportState();
-    final m = s['last'] as Map<String, dynamic>?;
-    return m?[module] as String?;
+    final rawLast = s['last'];
+    if (rawLast is Map) {
+      final m = Map<String, dynamic>.from(rawLast);
+      return m[module] as String?;
+    }
+    return null;
   }
 
   Future<void> writeLastExportTs(String module, String ts) async {
     final s = await _readExportState();
-    final m = (s['last'] as Map<String, dynamic>? ?? <String, dynamic>{});
+    final rawLast = s['last'];
+    final Map<String, dynamic> m = rawLast is Map ? Map<String, dynamic>.from(rawLast) : {};
     m[module] = ts;
     s['last'] = m;
     await _writeExportState(s);
@@ -57,7 +66,8 @@ class AppStorage {
 
   Future<int> nextExportId(String module) async {
     final s = await _readExportState();
-    final m = (s['seq'] as Map<String, dynamic>? ?? <String, dynamic>{});
+    final rawSeq = s['seq'];
+    final Map<String, dynamic> m = rawSeq is Map ? Map<String, dynamic>.from(rawSeq) : {};
     final v = ((m[module] as int?) ?? 0) + 1;
     m[module] = v;
     s['seq'] = m;
@@ -135,7 +145,11 @@ class AppStorage {
       final file = io.File('${(await _appDir()).path}${io.Platform.pathSeparator}$_settingsFile');
       if (!await file.exists()) return {};
       final text = await file.readAsString();
-      return jsonDecode(text) as Map<String, dynamic>;
+      final decoded = jsonDecode(text);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+      return {};
     } catch (_) {
       return {};
     }

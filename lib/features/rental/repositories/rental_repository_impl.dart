@@ -3,6 +3,7 @@ import 'package:drift/drift.dart' as d;
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
+import 'package:firebase_core/firebase_core.dart';
 import 'package:shared/shared.dart' show AppDatabase;
 import '../../../core/services/firebase_threading_handler.dart';
 import 'rental_repository.dart';
@@ -12,7 +13,7 @@ class RentalRepositoryImpl implements RentalRepository {
   late final AppDatabase _database;
 
   // SQLite-only flag - disables all Firestore operations
-  static const bool _sqliteOnlyMode = true;
+  static const bool _sqliteOnlyMode = false;
 
   // Platform detection for thread safety
   static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
@@ -35,7 +36,7 @@ class RentalRepositoryImpl implements RentalRepository {
 
   // Helper method to disable Firestore operations in SQLite-only mode
   bool _isFirestoreOperationAllowed() {
-    return !_sqliteOnlyMode;
+    return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
   }
 
   // Helper method to execute Firestore operations only if allowed
@@ -151,7 +152,7 @@ class RentalRepositoryImpl implements RentalRepository {
       );
       
       // Mark as unsynced for Firestore sync
-      if (!_sqliteOnlyMode) {
+      if (_isFirestoreOperationAllowed()) {
         await markRentalItemAsUnsynced(id);
       }
       
@@ -190,6 +191,10 @@ class RentalRepositoryImpl implements RentalRepository {
         item['id'],
       ],
     );
+
+    if (_isFirestoreOperationAllowed()) {
+      await markRentalItemAsUnsynced(item['id']);
+    }
   }
 
   @override
@@ -200,6 +205,10 @@ class RentalRepositoryImpl implements RentalRepository {
       'UPDATE rental_items SET sale_status = ?, updated_at = ? WHERE id = ?',
       [status.displayName, now, id],
     );
+
+    if (_isFirestoreOperationAllowed()) {
+      await markRentalItemAsUnsynced(id);
+    }
   }
 
   @override
@@ -210,6 +219,10 @@ class RentalRepositoryImpl implements RentalRepository {
       'UPDATE rental_items SET is_active = 0, updated_at = ? WHERE id = ?',
       [now, id],
     );
+
+    if (_isFirestoreOperationAllowed()) {
+      await markRentalItemAsUnsynced(id);
+    }
   }
 
   @override

@@ -4,7 +4,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../../core/font_utils.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/role_utils.dart';
 import '../../../core/services/app_storage.dart';
 import '../trading/view_models/trading_view_model.dart';

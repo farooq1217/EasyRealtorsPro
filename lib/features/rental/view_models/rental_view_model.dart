@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import '../repositories/rental_repository.dart';
 import '../repositories/rental_repository_impl.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/permission_helper.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/shared_utils.dart';

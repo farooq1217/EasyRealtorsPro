@@ -1,10 +1,13 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:drift/drift.dart' as d;
 import 'package:uuid/uuid.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../../expenditure/models/expenditure_item.dart' as domain;
 import 'expenditure_repository.dart';
 import 'package:shared/shared.dart';
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
+import '../../../core/services/firebase_threading_handler.dart';
 
 class ExpenditureRepositoryImpl implements ExpenditureRepository {
   final AppDatabase db;
@@ -12,7 +15,22 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   final bool isSuperAdmin;
   final String? userId; // Add userId for Agent filtering
   
+  // Platform detection for thread safety
+  static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
+
   ExpenditureRepositoryImpl(this.db, {required this.companyId, required this.isSuperAdmin, this.userId});
+
+  // Helper method to wrap streams with platform thread safety
+  Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
+    if (_isWindows) {
+      debugPrint('ExpenditureRepository: Wrapping $streamName with Windows thread safety');
+      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+        stream,
+        streamName: 'ExpenditureRepository $streamName',
+      );
+    }
+    return stream;
+  }
 
   @override
   Future<List<domain.ExpenditureItem>> getExpenditures(String? companyId) async {
@@ -196,6 +214,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
           createdAt: d.Value(expenditureWithTimestamp.createdAt.toIso8601String()),
           updatedAt: expenditureWithTimestamp.updatedAt.toIso8601String(),
           isActive: d.Value(expenditureWithTimestamp.isActive),
+          isSynced: d.Value(Firebase.apps.isEmpty),
         ),
       );
       
@@ -204,10 +223,11 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       debugPrint('ExpenditureRepository: Error inserting expenditure: $e');
       // Fallback to customStatement if Drift fails - use the same timestamped variable
       try {
+        final isSyncedVal = Firebase.apps.isNotEmpty ? 0 : 1;
         await db.customStatement(
           '''INSERT INTO Expenditures 
-             (id, date, description, amount, category, category_type, company_id, created_by, created_at, updated_at, is_active)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+             (id, date, description, amount, category, category_type, company_id, created_by, created_at, updated_at, is_active, is_synced)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
           [
             expenditureWithTimestamp.id,
             expenditureWithTimestamp.date,
@@ -220,6 +240,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
             expenditureWithTimestamp.createdAt.toIso8601String(),
             expenditureWithTimestamp.updatedAt.toIso8601String(),
             expenditureWithTimestamp.isActive ? 1 : 0,
+            isSyncedVal,
           ],
         );
         debugPrint('ExpenditureRepository: Fallback insert successful for expenditure: ${expenditureWithTimestamp.id}');
@@ -246,6 +267,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
         categoryType: d.Value(updatedExpenditure.categoryType),
         updatedAt: d.Value(updatedExpenditure.updatedAt.toIso8601String()),
         isActive: d.Value(updatedExpenditure.isActive),
+        isSynced: d.Value(Firebase.apps.isEmpty),
       ));
       
       debugPrint('ExpenditureRepository: Successfully updated expenditure: ${updatedExpenditure.id}');
@@ -253,10 +275,11 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       debugPrint('ExpenditureRepository: Error updating expenditure: $e');
       // Fallback to customStatement if Drift fails
       try {
+        final isSyncedVal = Firebase.apps.isNotEmpty ? 0 : 1;
         await db.customStatement(
           '''UPDATE Expenditures SET 
              date = ?, description = ?, amount = ?, category = ?, category_type = ?, 
-             updated_at = ?, is_active = ? 
+             updated_at = ?, is_active = ?, is_synced = ? 
              WHERE id = ?''',
           [
             updatedExpenditure.date,
@@ -266,6 +289,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
             updatedExpenditure.categoryType,
             updatedExpenditure.updatedAt.toIso8601String(),
             updatedExpenditure.isActive ? 1 : 0,
+            isSyncedVal,
             updatedExpenditure.id,
           ],
         );
@@ -299,14 +323,18 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       
       // CRITICAL FIX: Use Drift's high-level API for proper stream notifications
       await (db.update(db.expenditures)..where((tbl) => tbl.id.equals(id)))
-          .write(const ExpendituresCompanion(isActive: d.Value(false)));
+          .write(ExpendituresCompanion(
+            isActive: const d.Value(false),
+            isSynced: d.Value(Firebase.apps.isEmpty),
+          ));
       
       debugPrint('ExpenditureRepository: Successfully deleted expenditure: $id');
     } catch (e) {
       debugPrint('ExpenditureRepository: Error deleting expenditure: $e');
       // Fallback to customStatement if Drift fails
       try {
-        await db.customStatement('UPDATE Expenditures SET is_active = 0 WHERE id = ?', [id]);
+        final isSyncedVal = Firebase.apps.isNotEmpty ? 0 : 1;
+        await db.customStatement('UPDATE Expenditures SET is_active = 0, is_synced = ? WHERE id = ?', [isSyncedVal, id]);
         debugPrint('ExpenditureRepository: Fallback delete successful for expenditure: $id');
       } catch (fallbackError) {
         debugPrint('ExpenditureRepository: Fallback delete also failed: $fallbackError');
@@ -315,6 +343,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     }
   }
 
+  @override
   @override
   Stream<List<domain.ExpenditureItem>> watchExpenditures(String? companyId) {
     // CRITICAL FIX: Strict company filtering for data leakage prevention
@@ -338,10 +367,11 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     
     query += ' ORDER BY date DESC';
     
-    return db
+    final stream = db
         .customSelect(query, variables: variables, readsFrom: {db.expenditures})
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
+    return _wrapStreamWithThreadSafety(stream, 'watchExpenditures');
   }
 
   @override
@@ -371,10 +401,11 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     
     query += ' ORDER BY date DESC';
     
-    return db
+    final stream = db
         .customSelect(query, variables: variables, readsFrom: {db.expenditures})
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
+    return _wrapStreamWithThreadSafety(stream, 'watchOfficeExpenses');
   }
 
   @override
@@ -405,10 +436,11 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     
     query += ' ORDER BY date DESC';
     
-    return db
+    final stream = db
         .customSelect(query, variables: variables, readsFrom: {db.expenditures})
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
+    return _wrapStreamWithThreadSafety(stream, 'watchProjectExpenses');
   }
 
   @override
@@ -474,10 +506,11 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
     
     sqlQuery += ' AND (LOWER(description) LIKE LOWER(?) OR LOWER(amount) LIKE LOWER(?) OR LOWER(date) LIKE LOWER(?)) ORDER BY date DESC';
     
-    return db
+    final stream = db
         .customSelect(sqlQuery, variables: variables, readsFrom: {db.expenditures})
         .watch()
         .map((rows) => rows.map((r) => domain.ExpenditureItem.fromMap(r.data)).toList());
+    return _wrapStreamWithThreadSafety(stream, 'watchSearchExpenditures');
   }
 
   @override
@@ -566,11 +599,13 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
   }
 
   @override
+  @override
   Stream<List<domain.ExpenditureSubItem>> watchExpenditureSubItems(String parentId) {
     try {
       // CRITICAL: First try with category column, fallback to without if it doesn't exist
+      Stream<List<domain.ExpenditureSubItem>> stream;
       try {
-        return db.customSelect(
+        stream = db.customSelect(
           'SELECT id, parent_id, description, amount, category, company_id, created_by, is_active, is_synced, created_at, updated_at '
           'FROM expenditure_sub_items '
           'WHERE parent_id = ? AND (is_active IS NULL OR is_active = 1) '
@@ -583,7 +618,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
       } catch (e) {
         // Fallback: Query without category column if it doesn't exist
         debugPrint('ExpenditureRepository: Category column missing, using fallback query');
-        return db.customSelect(
+        stream = db.customSelect(
           'SELECT id, parent_id, description, amount, company_id, created_by, is_active, is_synced, created_at, updated_at '
           'FROM expenditure_sub_items '
           'WHERE parent_id = ? AND (is_active IS NULL OR is_active = 1) '
@@ -598,6 +633,7 @@ class ExpenditureRepositoryImpl implements ExpenditureRepository {
           return domain.ExpenditureSubItem.fromMap(data);
         }).toList());
       }
+      return _wrapStreamWithThreadSafety(stream, 'watchExpenditureSubItems');
     } catch (e) {
       throw Exception('Failed to watch expenditure sub-items: $e');
     }

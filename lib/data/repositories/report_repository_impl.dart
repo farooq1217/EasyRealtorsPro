@@ -12,7 +12,7 @@ import 'package:shared/shared.dart' show AppDatabase, WorkingProgressData, Expen
 import 'package:drift/drift.dart' as d;
 import '../../domain/repositories/report_repository.dart';
 import '../../core/services/app_storage.dart' show AppStorage;
-import '../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 
 class ReportRepositoryImpl implements ReportRepository {
   final AppDatabase db;
@@ -278,7 +278,8 @@ class ReportRepositoryImpl implements ReportRepository {
       final vars = <d.Variable<String>>[];
       
       // Add company filter for non-super users
-      if (!isSuperAdmin && companyId != null) {
+      final skipCompanyFilter = isSuperAdmin || companyId == 'GLOBAL_ADMIN';
+      if (!skipCompanyFilter && companyId != null) {
         clauses.add('company_id = ?');
         vars.add(d.Variable.withString(companyId));
       }
@@ -345,7 +346,8 @@ class ReportRepositoryImpl implements ReportRepository {
       final vars = <d.Variable<String>>[];
       
       // Add company filter for non-super users
-      if (!isSuperAdmin && companyId != null) {
+      final skipCompanyFilter = isSuperAdmin || companyId == 'GLOBAL_ADMIN';
+      if (!skipCompanyFilter && companyId != null) {
         clauses.add('company_id = ?');
         vars.add(d.Variable.withString(companyId));
       }
@@ -447,7 +449,8 @@ class ReportRepositoryImpl implements ReportRepository {
       final vars = <d.Variable<String>>[];
       
       // Add company filter for non-super users
-      if (!isSuperAdmin && companyId != null) {
+      final skipCompanyFilter = isSuperAdmin || companyId == 'GLOBAL_ADMIN';
+      if (!skipCompanyFilter && companyId != null) {
         clauses.add('company_id = ?');
         vars.add(d.Variable.withString(companyId));
       }

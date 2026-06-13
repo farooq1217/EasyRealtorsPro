@@ -1,11 +1,13 @@
 import 'dart:io' if (dart.library.html) '../../web_stub.dart' as io;
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart' if (dart.library.html) '../../web_stub.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart' if (dart.library.html) '../../web_stub.dart';
 
+// Generated part file
 part 'schema.g.dart';
+
 
 class Companies extends Table {
   TextColumn get id => text()();
@@ -218,6 +220,7 @@ class Reminders extends Table {
   TextColumn get reminderTime => text()();
   TextColumn get notificationStatus => text()();
   BoolColumn get is_active => boolean().withDefault(const Constant(true))();
+  BoolColumn get isRead => boolean().withDefault(const Constant(false))();
   TextColumn get createdAt => text()();
   TextColumn get updatedAt => text()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(true))(); // true = synced to cloud, false = pending sync
@@ -339,6 +342,25 @@ class TradingFileEntries extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+
+class FollowUps extends Table {  // ✅ Ye class @DriftDatabase SE PEHLE honi chahiye
+  TextColumn get id => text()();
+  TextColumn get clientName => text()();
+  DateTimeColumn get followUpDate => dateTime()();
+  TextColumn get followUpTime => text()();
+  TextColumn get note => text().nullable()();
+  TextColumn get status => text().withDefault(const Constant('pending'))();
+  TextColumn get companyId => text()();
+  TextColumn get createdBy => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DriftDatabase(tables: [
   Companies,
   Users,
@@ -360,13 +382,17 @@ class TradingFileEntries extends Table {
   Expenditures,
   ExpenditureSubItems,
   TradingFileEntries,
+  FollowUps,
 ])
+
 class AppDatabase extends _$AppDatabase {
   AppDatabase(QueryExecutor e) : super(e);
+
 
   static Future<QueryExecutor> Function()? _openExecutor;
   static AppDatabase? _instance;
   static Future<AppDatabase>? _instanceFuture;
+  static final ValueNotifier<int> _badgeNotificationsNotifier = ValueNotifier<int>(0);
 
   static AppDatabase? get instanceIfInitialized => _instance;
 
@@ -405,53 +431,20 @@ class AppDatabase extends _$AppDatabase {
     await db?.close();
   }
 
+  Future<void> _loadBadges() async {
+    final count = await (selectOnly(reminders)..addColumns([reminders.reminderId.count()])).getSingle().then((r) => r.read(reminders.reminderId.count()) ?? 0);
+    _badgeNotificationsNotifier.value = count;
+  }
+
   /// Development mode: Reset database to ensure fresh schema
   /// WARNING: This will delete all local data. Use only in development!
   static Future<void> resetDatabaseInDevMode() async {
-    try {
-      // Check if we're in debug mode
-      bool isDebugMode = false;
-      assert(isDebugMode = true);
-      
-      if (!isDebugMode) {
-        print('[DB] Database reset only allowed in debug mode');
-        return;
-      }
-      
-      print('[DB] Resetting database in development mode...');
-      
-      // Close existing instance
-      await closeInstance();
-      
-      // Get the database file path using path_provider (only on non-web platforms)
-      if (!kIsWeb) {
-        try {
-          final appDir = await getApplicationSupportDirectory();
-          final dbFile = io.File(p.join(appDir.path, 'data.sqlite'));
-          print('[DB] Deleting database file: ${dbFile.path}');
-          
-          // Delete the database file
-          if (await dbFile.exists()) {
-            await dbFile.delete();
-            print('[DB] Database file deleted successfully');
-          } else {
-            print('[DB] Database file not found, no deletion needed');
-          }
-        } catch (e) {
-          print('[DB] Error accessing database file: $e');
-        }
-      } else {
-        print('[DB] Database reset not supported on web platform');
-      }
-      
-      print('[DB] Database reset completed. Next app start will create fresh database.');
-    } catch (e) {
-      print('[DB] Error resetting database: $e');
-    }
+    // Disabled to prevent developer data loss
+    print('[DB] WARNING: resetDatabaseInDevMode was called but database file deletion has been disabled to prevent dev data loss.');
   }
 
   @override
-  int get schemaVersion => 37;
+  int get schemaVersion => 45;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -474,27 +467,6 @@ class AppDatabase extends _$AppDatabase {
             'updated_at TEXT NOT NULL'
             ')'
           );
-          // Ensure reminders table matches latest schema
-          await m.database.customStatement('DROP TABLE IF EXISTS reminders');
-          await m.database.customStatement(
-            'CREATE TABLE reminders ('
-            'reminder_id INTEGER PRIMARY KEY AUTOINCREMENT,'
-            'agent_id TEXT NOT NULL,'
-            'company_id TEXT,'
-            'client_name TEXT,'
-            'client_phone TEXT,'
-            'reminder_title TEXT NOT NULL,'
-            'reminder_details TEXT,'
-            'reminder_date TEXT NOT NULL,'
-            'reminder_time TEXT NOT NULL,'
-            'notification_status TEXT NOT NULL,'
-            'is_active INTEGER NOT NULL DEFAULT 1,'
-            'is_synced INTEGER NOT NULL DEFAULT 1,'
-            'created_at TEXT NOT NULL,'
-            'updated_at TEXT NOT NULL,'
-            'FOREIGN KEY(agent_id) REFERENCES users(id)'
-            ')'
-          );
         },
         beforeOpen: (details) async {
           // Ensure business tables exist even when version is unchanged or DB was manually deleted
@@ -503,6 +475,7 @@ class AppDatabase extends _$AppDatabase {
           // Ensure reminders table has company_id column for existing databases
           try {
             await this.customStatement('ALTER TABLE reminders ADD COLUMN company_id TEXT');
+           await this.customStatement('ALTER TABLE reminders ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0');
           } catch (e) {
             // Column might already exist, ignore error
           }
@@ -515,6 +488,19 @@ class AppDatabase extends _$AppDatabase {
           }
         },
         onUpgrade: (m, from, to) async {
+          // Ensure FollowUps table exists for older databases
+          if (from < 45) {
+            try {
+              await m.createTable(followUps);
+            } catch (e) {
+              // Table might already exist; ignore error
+            }
+            try {
+              await m.addColumn(reminders, reminders.isRead);
+            } catch (e) {
+              // Column might already exist; ignore error
+            }
+          }
           // Always make sure core business tables exist after upgrades too
           await _ensureBusinessTables(m.database);
           // v1 -> v2: ensure deletions exists and add transfer fields to working_progress
@@ -545,20 +531,19 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             await m.database.customStatement('DROP TABLE IF EXISTS reminders');
             await m.database.customStatement(
-              'CREATE TABLE reminders ('
-              'reminder_id INTEGER PRIMARY KEY AUTOINCREMENT,'
-              'agent_id TEXT NOT NULL,'
-              'client_name TEXT,'
-              'client_phone TEXT,'
-              'reminder_title TEXT NOT NULL,'
-              'reminder_details TEXT,'
+              'CREATE TABLE IF NOT EXISTS reminders ('
+              'id TEXT PRIMARY KEY,'
+              'client_name TEXT NOT NULL,'
               'reminder_date TEXT NOT NULL,'
               'reminder_time TEXT NOT NULL,'
+              'reminder_title TEXT NOT NULL,'
+              'reminder_details TEXT,'
               'notification_status TEXT NOT NULL,'
-              'is_synced INTEGER NOT NULL DEFAULT 1,'
+              'is_active INTEGER NOT NULL DEFAULT 1,'
+              'is_read INTEGER NOT NULL DEFAULT 0,'
               'created_at TEXT NOT NULL,'
               'updated_at TEXT NOT NULL,'
-              'FOREIGN KEY(agent_id) REFERENCES users(id)'
+              'is_synced INTEGER NOT NULL DEFAULT 1'
               ')'
             );
           }
@@ -629,6 +614,8 @@ class AppDatabase extends _$AppDatabase {
                   'updated_at TEXT NOT NULL'
                   ')'
                 );
+              await m.database.customStatement('ALTER TABLE reminders ADD COLUMN company_id TEXT');
+              await m.database.customStatement('ALTER TABLE reminders ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0');
               await m.database.customStatement('ALTER TABLE users ADD COLUMN company_id TEXT');
               await m.database.customStatement('ALTER TABLE users ADD COLUMN status TEXT');
             } catch (e) {
@@ -1102,9 +1089,28 @@ class AppDatabase extends _$AppDatabase {
               print('[MIGRATION] Version 37 - Error backfilling status column: $e');
             }
           }
+          if (from < 44) {
+            try {
+              await m.createTable(followUps);
+            } catch (e) {
+              // Table might already exist; ignore error
+            }
+            try {
+              await m.addColumn(reminders, reminders.isRead);
+            } catch (e) {
+              // Column might already exist; ignore error
+            }
+          }
         },
       );
 }
+
+
+
+
+
+
+
 
 /// Ensures non-Drift business tables exist (trading & expenditure) for fresh DBs or after deletion.
 Future<void> _ensureBusinessTables(dynamic db) async {

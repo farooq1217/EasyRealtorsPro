@@ -54,9 +54,6 @@ class FirestoreSyncService {
     String? orderBy,
     bool descending = false,
   }) {
-    if (_isWindows) {
-      return Stream.value([]);
-    }
     if (Firebase.apps.isEmpty) {
       return Stream.value([]);
     }
@@ -95,9 +92,7 @@ class FirestoreSyncService {
     bool descending = false,
     DocumentSnapshot? startAfter,
   }) async {
-    if (_isWindows) return _emptyPaginatedResult();
     if (Firebase.apps.isEmpty) return _emptyPaginatedResult();
-    if (kIsWeb == false && RootIsolateToken.instance == null) return _emptyPaginatedResult();
 
     // Ensure Firebase operations happen on main thread
     final completer = Completer<PaginatedResult>();
@@ -192,7 +187,6 @@ class FirestoreSyncService {
     required Map<String, dynamic> data,
     bool merge = true,
   }) async {
-    if (_isWindows) return false;
     if (Firebase.apps.isEmpty) return false;
     if (kIsWeb == false && RootIsolateToken.instance == null) return false;
     await _ensureAuthenticatedWithFreshToken();
@@ -223,7 +217,6 @@ class FirestoreSyncService {
     required String collection,
     required List<Map<String, dynamic>> documents,
   }) async {
-    if (_isWindows) return false;
     if (Firebase.apps.isEmpty) return false;
     if (kIsWeb == false && RootIsolateToken.instance == null) return false;
     await _ensureAuthenticatedWithFreshToken();
@@ -264,7 +257,6 @@ class FirestoreSyncService {
     required String collection,
     required String documentId,
   }) async {
-    if (_isWindows) return false;
     if (Firebase.apps.isEmpty) return false;
     if (kIsWeb == false && RootIsolateToken.instance == null) return false;
     await _ensureAuthenticatedWithFreshToken();
@@ -283,7 +275,7 @@ class FirestoreSyncService {
   }
 
   /// Check if Firestore is available and connected
-  bool get isAvailable => !_isWindows && Firebase.apps.isNotEmpty && RootIsolateToken.instance != null;
+  bool get isAvailable => Firebase.apps.isNotEmpty && RootIsolateToken.instance != null;
 
   /// Get Firestore instance (if available)
   FirebaseFirestore? get firestore {
@@ -293,7 +285,6 @@ class FirestoreSyncService {
 
   /// Wait until an authenticated user exists (or timeout).
   Future<void> waitForAuth({Duration timeout = const Duration(seconds: 10)}) async {
-    if (_isWindows) return;
     if (FirebaseAuth.instance.currentUser != null) return;
     final completer = Completer<void>();
     late StreamSubscription sub;
@@ -324,11 +315,6 @@ class FirestoreSyncService {
   /// Wait for a valid Firebase Auth user and refresh the ID token before Firestore ops.
   /// Enhanced with comprehensive platform thread safety.
   Future<void> _ensureAuthenticatedWithFreshToken({Duration delay = const Duration(seconds: 2)}) async {
-    if (_isWindows) {
-      await Future.delayed(delay);
-      debugPrint('FirestoreSyncService: Windows - Skipping ID token refresh to avoid platform thread errors');
-      return;
-    }
     
     if (FirebaseAuth.instance.currentUser == null) {
       await waitForAuth();

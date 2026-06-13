@@ -8,7 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../models/company_model.dart';
 import '../repositories/company_repository.dart';
 import '../repositories/company_repository_impl.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../core/professional_pdf_generator.dart';

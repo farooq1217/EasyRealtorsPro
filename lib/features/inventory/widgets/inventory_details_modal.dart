@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:shared/shared.dart';
 import '../../../../core/font_utils.dart';
 import '../../../../core/services/app_storage.dart' show AppStorage;
-import '../../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../../core/services/standardized_pdf_service.dart';
 import '../../../../core/professional_pdf_generator.dart';
 import '../models/inventory_item.dart';

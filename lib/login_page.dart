@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:io' if (dart.library.html) 'platform_stubs/io_stub.dart' as io;
 import '../core/font_utils.dart';
-import '../core/services/auth_service.dart';
+import '../core/utils/logger.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
+import 'package:easyrealtorspro/core/services/app_storage.dart';
 import '../core/services/permission_sync_service.dart';
 import '../core/services/permission_debug_helper.dart';
 import '../core/role_utils.dart' as local;
@@ -112,7 +114,18 @@ class _LoginPageState extends State<LoginPage> {
             
             try {
               final token = result['token'] as String?;
+              final sessionId = result['sessionId'] as String?;
               if (token != null) {
+                // Save session token and ID to AppStorage for route guards
+                final storage = AppStorage();
+                final settings = await storage.readSettings();
+                settings['authToken'] = token;
+                if (sessionId != null) {
+                  settings['currentSessionId'] = sessionId;
+                }
+                await storage.writeSettings(settings);
+                debugPrint('LoginPage: Saved token and sessionId to AppStorage settings');
+
                 debugPrint('LoginPage: Starting HYBRID permission loading...');
                 setState(() { _isLoading = true; });
                 
@@ -140,7 +153,11 @@ class _LoginPageState extends State<LoginPage> {
                       // TRIGGER BACKGROUND SYNC AFTER NAVIGATION (for HYBRID mode)
                       SchedulerBinding.instance.addPostFrameCallback((_) {
                         if (!mounted) return;
-                        Future.delayed(const Duration(seconds: 3), () async {
+                        Future.delayed(const Duration(seconds: 8), () async {
+                          if (isWindows) {
+                            debugPrint('LoginPage: Skipping post-login background sync on Windows platform');
+                            return;
+                          }
                           debugPrint('LoginPage: Triggering background sync for HYBRID mode...');
                           await AuthService.triggerBackgroundSyncAfterLogin();
                         });
@@ -245,9 +262,7 @@ class _LoginPageState extends State<LoginPage> {
           }
         }
       } catch (e) {
-        if (kDebugMode) {
-          print('Login error: $e');
-        }
+        Logger.error('Login error', tag: 'Login', error: e);
         setState(() {
           _isLoading = false;
         });

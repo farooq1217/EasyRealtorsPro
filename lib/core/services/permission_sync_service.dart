@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../role_utils.dart' as local;
 import 'app_storage.dart';
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
@@ -43,22 +43,28 @@ class PermissionSyncService {
       
       // STRATEGY 1: Try LOCAL database first (FAST - works OFFLINE)
       final localUser = await AuthService.getCurrentUser(token, waitForFirestore: false);
-      if (localUser != null && _hasValidPermissions(localUser)) {
-        debugPrint('✅ PermissionSyncService: Permissions loaded from LOCAL database (OFFLINE mode)');
-        _cacheUserPermissions(localUser, token);
-        return localUser;
+      if (localUser != null) {
+        final enriched = _ensurePermissionsMap(localUser);
+        if (_hasValidPermissions(enriched)) {
+          debugPrint('✅ PermissionSyncService: Permissions loaded from LOCAL database (OFFLINE mode)');
+          _cacheUserPermissions(enriched, token);
+          return enriched;
+        }
       }
       
       // STRATEGY 2: Try Firestore (ONLINE mode)
       try {
         debugPrint('⚡ PermissionSyncService: Local not available, trying Firestore (ONLINE mode)...');
         final firestoreUser = await AuthService.getCurrentUser(token, waitForFirestore: true);
-        if (firestoreUser != null && _hasValidPermissions(firestoreUser)) {
-          // CACHE to local database for OFFLINE use
-          await _cachePermissionsLocally(firestoreUser);
-          debugPrint('✅ PermissionSyncService: Permissions loaded from Firestore + CACHED locally (HYBRID mode)');
-          _cacheUserPermissions(firestoreUser, token);
-          return firestoreUser;
+        if (firestoreUser != null) {
+          final enriched = _ensurePermissionsMap(firestoreUser);
+          if (_hasValidPermissions(enriched)) {
+            // CACHE to local database for OFFLINE use
+            await _cachePermissionsLocally(enriched);
+            debugPrint('✅ PermissionSyncService: Permissions loaded from Firestore + CACHED locally (HYBRID mode)');
+            _cacheUserPermissions(enriched, token);
+            return enriched;
+          }
         }
       } catch (e) {
         debugPrint('⚠️ PermissionSyncService: Firestore unavailable: $e');
@@ -79,6 +85,96 @@ class PermissionSyncService {
     }
   }
   
+  /// Ensure user map has a top-level `permissionsMap` key.
+  /// Handles all nested/flat/role-based structures found in offline SQLite data.
+  static Map<String, dynamic> _ensurePermissionsMap(Map<String, dynamic> user) {
+    // Already has a valid top-level permissionsMap? Return as-is.
+    final existing = user['permissionsMap'];
+    if (existing is Map && existing.isNotEmpty) return user;
+    
+    // Try to extract from permissions field
+    final extracted = _extractPermissionsMap(user);
+    if (extracted != null && extracted.isNotEmpty) {
+      final result = Map<String, dynamic>.from(user);
+      result['permissionsMap'] = extracted;
+      // Also hoist role/companyId if available inside permissions
+      if (result['role'] == null) {
+        try {
+          final perms = user['permissions'];
+          Map<String, dynamic>? parsed;
+          if (perms is String) {
+            final raw = jsonDecode(perms);
+            if (raw is Map) parsed = Map<String, dynamic>.from(raw);
+          } else if (perms is Map) {
+            parsed = Map<String, dynamic>.from(perms);
+          }
+          if (parsed?['role'] != null) result['role'] = parsed!['role'];
+        } catch (_) {}
+      }
+      return result;
+    }
+    
+    // Synthesize from role if nothing else works
+    var role = user['role']?.toString().toLowerCase();
+    if (role == null && user['permissions'] != null) {
+      try {
+        final perms = user['permissions'];
+        Map<String, dynamic>? parsed;
+        if (perms is String) {
+          final raw = jsonDecode(perms);
+          if (raw is Map) parsed = Map<String, dynamic>.from(raw);
+        } else if (perms is Map) {
+          parsed = Map<String, dynamic>.from(perms);
+        }
+        if (parsed?['role'] != null) {
+          role = parsed!['role']?.toString().toLowerCase();
+        }
+      } catch (_) {}
+    }
+
+    if (role != null) {
+      Map<String, dynamic>? synthesized;
+      if (role == 'super_admin' || role == 'superadmin') {
+        synthesized = <String, dynamic>{
+          'users': 'full_access', 'companies': 'full_access',
+          'trading': 'full_access', 'inventory': 'full_access',
+          'rental': 'full_access', 'rental_items': 'full_access',
+          'expenditure': 'full_access', 'agent_working': 'full_access',
+          'reports': 'full_access', 'dashboard': 'full_access',
+          'settings': 'full_access', 'todo': 'full_access',
+        };
+      } else if (role == 'company_admin' || role == 'companyadmin') {
+        synthesized = <String, dynamic>{
+          'users': 'full_access', 'trading': 'view_add_edit',
+          'inventory': 'view_add_edit', 'rental': 'view_add_edit',
+          'rental_items': 'view_add_edit', 'expenditure': 'view_add_edit',
+          'agent_working': 'view_add_edit', 'reports': 'full_access',
+          'dashboard': 'view_add_edit', 'settings': 'view_add_edit',
+          'todo': 'view_add_edit',
+        };
+      } else if (role == 'agent') {
+        synthesized = <String, dynamic>{
+          'trading': 'view_add_edit', 'inventory': 'view_add_edit',
+          'rental': 'view_add_edit', 'rental_items': 'view_add_edit',
+          'expenditure': 'view_add_edit', 'agent_working': 'view_add_edit',
+          'dashboard': 'view_only', 'settings': 'view_only',
+          'todo': 'view_add_edit',
+        };
+      }
+      if (synthesized != null) {
+        debugPrint('PermissionSyncService: Synthesized permissionsMap from role=$role');
+        final result = Map<String, dynamic>.from(user);
+        result['permissionsMap'] = synthesized;
+        if (result['role'] == null) {
+          result['role'] = role;
+        }
+        return result;
+      }
+    }
+    
+    return user; // Return unchanged — _hasValidPermissions will handle the null case
+  }
+  
   /// Initialize permissions cache with immediate local data injection
   /// OPTIMIZED: No timeouts, immediate cache population from local database
   static Future<void> initializePermissionsCache(String? token) async {
@@ -94,9 +190,12 @@ class PermissionSyncService {
     }
     
     // Get user data immediately from local database (no Firestore wait)
-    final user = await AuthService.getCurrentUser(token, waitForFirestore: false);
+    final rawUser = await AuthService.getCurrentUser(token, waitForFirestore: false);
     
-    if (user != null) {
+    if (rawUser != null) {
+      // ✅ Ensure top-level permissionsMap (handles nested/flat/role-based structures)
+      final user = _ensurePermissionsMap(rawUser);
+      
       // Extract and cache permissionsMap immediately
       final permissionsMap = _extractPermissionsMap(user);
       
@@ -138,9 +237,12 @@ class PermissionSyncService {
       try {
         Map<String, dynamic>? perms;
         if (permissions is String) {
-          perms = jsonDecode(permissions) as Map<String, dynamic>?;
+          final decoded = jsonDecode(permissions);
+          if (decoded is Map) {
+            perms = Map<String, dynamic>.from(decoded);
+          }
         } else if (permissions is Map) {
-          perms = permissions as Map<String, dynamic>?;
+          perms = Map<String, dynamic>.from(permissions);
         }
         
         if (perms != null) {
@@ -210,12 +312,12 @@ class PermissionSyncService {
       if (email == null) return null;
       
       // Emergency: Basic permissions for authenticated user
-      final emergencyUser = {
+      final Map<String, dynamic> emergencyUser = {
         'id': email.toLowerCase(),
         'email': email,
         'name': payload['name'] ?? email.split('@')[0],
         'role': 'agent', // Safe default
-        'permissionsMap': {
+        'permissionsMap': <String, dynamic>{
           'dashboard': 'view_only',
           'settings': 'view_only',
         },
@@ -240,8 +342,12 @@ class PermissionSyncService {
       final padding = '=' * ((4 - payload.length % 4) % 4);
       final normalizedPayload = payload + padding;
       
-      final decoded = utf8.decode(base64.decode(normalizedPayload));
-      return jsonDecode(decoded) as Map<String, dynamic>;
+      final decoded = utf8.decode(base64Url.decode(normalizedPayload));
+      final decodedMap = jsonDecode(decoded);
+      if (decodedMap is Map) {
+        return Map<String, dynamic>.from(decodedMap);
+      }
+      return null;
     } catch (e) {
       debugPrint('PermissionSyncService: Error decoding JWT: $e');
       return null;
@@ -363,14 +469,20 @@ class PermissionSyncService {
   /// Check if user permissions are fully loaded and valid
   /// OPTIMIZED: Uses global cache first, minimal logging
   static bool arePermissionsFullyLoaded(Map<String, dynamic>? user) {
-    // First check global cache
-    if (_cachedPermissionsMap != null && _cachedPermissionsMap!.isNotEmpty) {
-      return true;
-    }
-    
-    // Fallback to user object check
     if (user == null) {
       return false;
+    }
+
+    // First check global cache, ensuring it matches the queried user
+    if (_cachedPermissionsMap != null && _cachedPermissionsMap!.isNotEmpty && _cachedUser != null) {
+      final cachedEmail = _cachedUser!['email']?.toString().toLowerCase();
+      final userEmail = user['email']?.toString().toLowerCase();
+      final cachedId = _cachedUser!['id']?.toString();
+      final userId = user['id']?.toString();
+      
+      if ((cachedEmail != null && cachedEmail == userEmail) || (cachedId != null && cachedId == userId)) {
+        return true;
+      }
     }
     
     final permissionsMap = _extractPermissionsMap(user);

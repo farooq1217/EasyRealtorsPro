@@ -7,8 +7,10 @@ import 'package:shared/shared.dart';
 import '../../firestore_sync_service.dart';
 import '../database/app_database_singleton.dart';
 import 'firebase_threading_handler.dart';
+import '../database/app_database_extensions.dart';
 import 'package:http/http.dart' as http;
 
+import 'package:shared/src/db/schema.dart';
 /// Background sync manager for incremental local-to-cloud sync
 /// Handles offline data synchronization when internet is restored
 class BackgroundSyncManager {
@@ -246,13 +248,18 @@ class BackgroundSyncManager {
   /// Enhanced with FirebaseThreadingHandler for Windows compatibility
   Future<void> _syncTable(AppDatabase db, String tableName, String collectionName) async {
     try {
-      // Enhanced with threading handler for Windows compatibility
-      await FirebaseThreadingHandler.executeWithThreadSafety(
-        () async {
-          await _performSyncTableOperation(db, tableName, collectionName);
-        },
-        operationName: 'Background sync - $tableName',
-      );
+      if (_isWindows) {
+        debugPrint('[SYNC] Background sync - $tableName executing directly on Windows main isolate');
+        await _performSyncTableOperation(db, tableName, collectionName);
+      } else {
+        // Enhanced with threading handler for Windows compatibility
+        await FirebaseThreadingHandler.executeWithThreadSafety(
+          () async {
+            await _performSyncTableOperation(db, tableName, collectionName);
+          },
+          operationName: 'Background sync - $tableName',
+        );
+      }
     } catch (e) {
       final status = _getSyncStatus(tableName);
       status.completeSync(success: false, error: 'Sync operation failed: $e');
@@ -279,21 +286,7 @@ class BackgroundSyncManager {
       return;
     }
     
-    // Check if we're in Windows SQLite-only mode (for non-users/companies tables)
-    bool isUsersTable = tableName == 'users';
-    bool isCompaniesTable = tableName == 'companies';
-    if (_firestoreSync.isWindows && !isUsersTable && !isCompaniesTable) {
-      // In SQLite-only mode for non-users/companies tables, mark all records as synced to prevent sync failures
-      await db.customStatement(
-        'UPDATE $tableName SET is_synced = 1 WHERE is_synced = 0 AND is_active = 1'
-      );
-      status.completeSync(success: true);
-      // OPTIMIZATION: Suppress Firestore sync logs in offline-only mode
-      if (kDebugMode) {
-        debugPrint('[SYNC] SQLite-only mode: Marked all $tableName records as synced');
-      }
-      return;
-    }
+
     
     // For users/companies tables or non-Windows platforms, perform actual Firestore sync
     // OPTIMIZATION: Only show Firestore sync logs when Firebase is actually available
@@ -348,13 +341,18 @@ class BackgroundSyncManager {
   /// Enhanced with FirebaseThreadingHandler for Windows compatibility
   Future<void> _syncBusinessTable(AppDatabase db, String tableName, String collectionName) async {
     try {
-      // Enhanced with threading handler for Windows compatibility
-      await FirebaseThreadingHandler.executeWithThreadSafety(
-        () async {
-          await _performSyncBusinessTableOperation(db, tableName, collectionName);
-        },
-        operationName: 'Background business sync - $tableName',
-      );
+      if (_isWindows) {
+        debugPrint('[SYNC] Background business sync - $tableName executing directly on Windows main isolate');
+        await _performSyncBusinessTableOperation(db, tableName, collectionName);
+      } else {
+        // Enhanced with threading handler for Windows compatibility
+        await FirebaseThreadingHandler.executeWithThreadSafety(
+          () async {
+            await _performSyncBusinessTableOperation(db, tableName, collectionName);
+          },
+          operationName: 'Background business sync - $tableName',
+        );
+      }
     } catch (e) {
       final status = _getSyncStatus(tableName);
       status.completeSync(success: false, error: 'Business sync operation failed: $e');
@@ -381,21 +379,7 @@ class BackgroundSyncManager {
       return;
     }
     
-    // Check if we're in Windows SQLite-only mode (for non-users/companies tables)
-    bool isUsersTable = tableName == 'users';
-    bool isCompaniesTable = tableName == 'companies';
-    if (_firestoreSync.isWindows && !isUsersTable && !isCompaniesTable) {
-      // In SQLite-only mode for non-users/companies tables, mark all records as synced to prevent sync failures
-      await db.customStatement(
-        'UPDATE $tableName SET is_synced = 1 WHERE is_synced = 0 AND is_active = 1'
-      );
-      status.completeSync(success: true);
-      // OPTIMIZATION: Suppress Firestore sync logs in offline-only mode
-      if (kDebugMode) {
-        debugPrint('[SYNC] SQLite-only mode: Marked all business $tableName records as synced');
-      }
-      return;
-    }
+
     
     // For users/companies tables or non-Windows platforms, perform actual Firestore sync
     // OPTIMIZATION: Only show Firestore sync logs when Firebase is actually available

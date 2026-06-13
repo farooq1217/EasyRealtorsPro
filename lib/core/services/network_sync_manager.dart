@@ -77,16 +77,21 @@ class NetworkSyncManager {
       }
 
       // Start periodic connectivity check
-      _startConnectivityCheck();
+      // Start periodic connectivity check (disabled on Windows)
+      if (!Platform.isWindows) {
+        _startConnectivityCheck();
 
-      // Listen to Firebase auth changes
-      _listenToFirebaseAuth();
+        // Listen to Firebase auth changes
+        _listenToFirebaseAuth();
 
-      // Check initial connectivity
-      await _checkConnectivity();
-      if (_isOnline) {
-        debugPrint('NetworkSyncManager: Internet available on initialization');
-        await _performInitialSync();
+        // Check initial connectivity
+        await _checkConnectivity();
+        if (_isOnline) {
+          debugPrint('NetworkSyncManager: Internet available on initialization');
+          await _performInitialSync();
+        }
+      } else {
+        debugPrint('NetworkSyncManager: Windows platform detected - automatic sync disabled.');
       }
 
       _isInitialized = true;
@@ -253,10 +258,20 @@ class NetworkSyncManager {
   }
 
   Future<void> _performInitialSync() async {
+    if (Platform.isWindows) {
+      debugPrint('NetworkSyncManager: Windows platform detected - initial sync disabled.');
+      return;
+    }
     if (!_isOnline) return;
 
-    debugPrint('NetworkSyncManager: Performing initial sync');
-    await _performFullSync();
+    debugPrint('NetworkSyncManager: Performing initial sync (throttled/delayed by 10s)');
+    Future.delayed(const Duration(seconds: 10), () async {
+      try {
+        await _performFullSync();
+      } catch (e) {
+        debugPrint('NetworkSyncManager: Initial full sync error: $e');
+      }
+    });
   }
 
   Future<void> _processSyncQueue() async {

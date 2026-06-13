@@ -8,7 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared/shared.dart' show AppDatabase;
 import '../../../core/services/app_storage.dart' show AppStorage;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../view_models/rental_view_model.dart';
 import '../../../professional_reports.dart' show loadReportBranding, savePdfBytesToDisk, generateReportSerial, logReportHistory, ReportBranding;
 

@@ -16,7 +16,7 @@ import '../../trading/repositories/trading_repository_impl.dart';
 import '../../expenditure/view_models/expenditure_view_model.dart';
 import '../../expenditure/repositories/expenditure_repository_impl.dart';
 import '../../settings/repositories/settings_repository_impl.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/app_storage.dart';
 import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;

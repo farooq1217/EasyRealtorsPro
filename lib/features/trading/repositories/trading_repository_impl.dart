@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
+import 'package:firebase_core/firebase_core.dart';
 import 'trading_repository.dart';
 import 'package:shared/shared.dart';
 import '../../../core/services/sync_database_helper.dart';
@@ -12,6 +13,7 @@ import '../../../firestore_sync_service.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/app_utils.dart';
 import '../../../core/services/firebase_threading_handler.dart';
+import '../../../core/utils/logger.dart';
 
 class AlreadyDeletedException implements Exception {
   final String message;
@@ -31,7 +33,7 @@ class TradingRepositoryImpl implements TradingRepository {
   final bool isSuperAdmin;
   
   // SQLite-only flag - disables all Firestore operations
-  static const bool _sqliteOnlyMode = true;
+  static const bool _sqliteOnlyMode = false;
 
   // Platform detection for thread safety
   static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
@@ -52,7 +54,7 @@ class TradingRepositoryImpl implements TradingRepository {
 
   // Helper method to disable Firestore operations in SQLite-only mode
   bool _isFirestoreOperationAllowed() {
-    return !_sqliteOnlyMode;
+    return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
   }
 
   // Helper method to execute Firestore operations only if allowed
@@ -528,7 +530,7 @@ class TradingRepositoryImpl implements TradingRepository {
       ]);
       
       // Mark as unsynced for Firestore sync
-      if (!_sqliteOnlyMode) {
+      if (_isFirestoreOperationAllowed()) {
         await markEntryAsUnsynced(map['id']);
       }
     } catch (e) {
@@ -549,15 +551,19 @@ class TradingRepositoryImpl implements TradingRepository {
       map['entry_type'], map['trade_type'], map['category'], map['date'], map['person_name'], map['mobile_no'], map['estate_name'],
       map['quantity'], map['unit_price'], map['image_path'], now, map['status'] ?? 'active', map['id']
     ]);
+
+    if (_isFirestoreOperationAllowed()) {
+      await markEntryAsUnsynced(map['id']);
+    }
   }
 
   @override
   Future<void> updateEntryStatus(String entryId, String newStatus) async {
     final now = DateTime.now().toIso8601String();
     
-    // Debug: Print the ID being updated
-    print('TradingRepository: Updating ID: $entryId');
-    print('TradingRepository: New status: $newStatus');
+    // Debug: Log the ID being updated
+    Logger.debug('TradingRepository: Updating ID: $entryId');
+    Logger.debug('TradingRepository: New status: $newStatus');
     
     // Check if entry exists in local SQLite cache before attempting update
     final currentResult = await db.customSelect(
@@ -566,18 +572,18 @@ class TradingRepositoryImpl implements TradingRepository {
     ).getSingleOrNull();
     
     if (currentResult == null) {
-      print('TradingRepository: Entry not found in local cache - ID: $entryId');
+      Logger.warning('TradingRepository: Entry not found in local cache - ID: $entryId');
       throw AlreadyDeletedException('Entry not found. It may have been deleted or does not exist.');
     }
     
     final isActive = currentResult.data['is_active'] as int? ?? 0;
     final currentStatus = currentResult.data['status']?.toString();
     
-    print('TradingRepository: Entry found - Active: $isActive, Status: $currentStatus');
+    Logger.debug('TradingRepository: Entry found - Active: $isActive, Status: $currentStatus');
     
     // Check if entry was already deleted (is_active = 0)
     if (isActive == 0) {
-      print('TradingRepository: Entry already deleted - ID: $entryId');
+      Logger.warning('TradingRepository: Entry already deleted - ID: $entryId');
       throw AlreadyDeletedException('Entry was already deleted and cannot be updated.');
     }
     
@@ -591,7 +597,11 @@ class TradingRepositoryImpl implements TradingRepository {
         status = ?, updated_at = ?
       WHERE id = ?''', [newStatus, now, entryId]);
     
-    print('TradingRepository: Successfully updated entry $entryId status to $newStatus');
+    if (_isFirestoreOperationAllowed()) {
+      await markEntryAsUnsynced(entryId);
+    }
+    
+    Logger.info('TradingRepository: Successfully updated entry $entryId status to $newStatus');
     debugPrint('TradingRepository: Updated entry $entryId status to $newStatus');
   }
 
@@ -600,6 +610,10 @@ class TradingRepositoryImpl implements TradingRepository {
     await db.customStatement('''
       UPDATE trading_entries SET is_active = 0, updated_at = ? WHERE id = ?
     ''', [DateTime.now().toIso8601String(), id]);
+
+    if (_isFirestoreOperationAllowed()) {
+      await markEntryAsUnsynced(id);
+    }
   }
 
   // Helper method to map database row to TradingEntry

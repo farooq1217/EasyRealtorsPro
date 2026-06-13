@@ -8,13 +8,14 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // ✨ CRITICAL FIX: Import for Firestore real-time listener ✨
+import 'package:firebase_core/firebase_core.dart';
 import '../../../core/role_utils.dart' as local;
 import '../../../core/windows_platform_fix.dart'; // ✨ CRITICAL FIX: Windows platform stability
 import 'package:shared/shared.dart';
 import '../models/user_model.dart';
 import '../repositories/user_repository.dart';
 import '../repositories/user_repository_impl.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/services/permission_helper.dart';
 import '../../../core/utils/logger.dart';
@@ -192,6 +193,10 @@ class UserViewModel extends ChangeNotifier {
 
   // ✨ CRITICAL FIX: Real-time Firestore listener setup with Windows safety ✨
   Future<void> _setupFirestoreListener() async {
+    if (Firebase.apps.isEmpty) {
+      debugPrint('UserViewModel: Firebase not initialized - skipping Firestore listener setup');
+      return;
+    }
     try {
       // Cancel existing subscription
       await _firestoreUsersSubscription?.cancel();
@@ -1145,9 +1150,9 @@ class UserViewModel extends ChangeNotifier {
       await _loadUsersFromRepository();  // Reload users from database
       notifyListeners();  // Trigger UI rebuild
       
-      print('✅ Agent permissions updated successfully');
+      Logger.info('Agent permissions updated successfully', tag: 'UserViewModel');
     } catch (e) {
-      print('❌ Error: $e');
+      Logger.error('Failed to update agent permissions', tag: 'UserViewModel', error: e);
       rethrow;
     }
   }

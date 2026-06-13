@@ -18,7 +18,7 @@ import 'package:shared/shared.dart';
 import '../../../core/role_utils.dart' as local;
 import 'package:drift/drift.dart' as d;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../shimmer_widgets.dart';
 import '../../../core/app_utils.dart';
 import '../../../core/shared_utils.dart' show InfoEntry, buildResponsiveInfoRow;
@@ -27,7 +27,6 @@ import '../../../core/shared_utils.dart' show InfoEntry, buildResponsiveInfoRow;
 // import '../../firestore_sync_service.dart';
 // Add back FirestoreSyncService for helper methods to work
 import '../../../firestore_sync_service.dart';
-import '../../../responsive_widgets.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
 import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../core/shared_utils.dart' show TopRightSearch;
@@ -56,7 +55,7 @@ class _ToDoPageState extends State<ToDoPage> {
   FirestoreSyncState _syncState = FirestoreSyncState();
 
   // SQLite-only flag - disables all Firestore operations
-  static const bool _sqliteOnlyMode = true;
+  static const bool _sqliteOnlyMode = false;
 
   // Helper method to disable Firestore operations in SQLite-only mode
   bool _isFirestoreOperationAllowed() {
@@ -133,11 +132,13 @@ class _ToDoPageState extends State<ToDoPage> {
       }
 
       // Quick check to verify Firestore is accessible
-      await FirebaseFirestore.instance
-          .collection('trading_entries')
-          .limit(1)
-          .get()
-          .timeout(const Duration(seconds: 3));
+      if (Firebase.apps.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('trading_entries')
+            .limit(1)
+            .get()
+            .timeout(const Duration(seconds: 3));
+      }
       
       if (!mounted) return;
       // REMOVED: Firestore state for SQLite-only operation

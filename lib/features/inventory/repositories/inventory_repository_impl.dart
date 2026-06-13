@@ -3,6 +3,7 @@ import '../../inventory/models/inventory_item.dart';
 import 'inventory_repository.dart';
 import 'package:drift/drift.dart' as d;
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 class InventoryRepositoryImpl implements InventoryRepository {
   final dynamic db;
@@ -116,33 +117,35 @@ class InventoryRepositoryImpl implements InventoryRepository {
         debugPrint('InventoryRepository: SECURITY - Adding item to company: $itemCompanyId');
       }
       
+      final isSyncedVal = Firebase.apps.isNotEmpty ? 0 : 1;
+      
       if (item.type == InventoryType.file) {
         await db.customStatement('''
           INSERT INTO files_table (
             id, name, client_name, file_no, reference_no, mobile_no, 
             society_id, block_id, sale_status, path, remarks, cnic,
-            updated_at, company_id, is_active, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            updated_at, company_id, is_active, created_by, is_synced
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
         ''', [
           map['id'], map['name'], map['client_name'], map['file_no'], 
           map['reference_no'], map['mobile_no'], map['society_id'], 
           map['block_id'], map['sale_status'], map['path'], 
           map['remarks'], map['cnic'], map['updated_at'], map['company_id'], 
-          map['created_by'] ?? ''
+          map['created_by'] ?? '', isSyncedVal
         ]);
       } else {
         await db.customStatement('''
           INSERT INTO properties (
             id, client_name, reference_no, property_name, demand, price,
             society_id, block_id, sale_status, remarks, cnic,
-            updated_at, company_id, is_active, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            updated_at, company_id, is_active, created_by, is_synced
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
         ''', [
           map['id'], map['client_name'], map['reference_no'], 
           map['property_name'], map['demand'], map['price'],
           map['society_id'], map['block_id'], map['sale_status'], 
           map['remarks'], map['cnic'], map['updated_at'], map['company_id'], 
-          map['created_by'] ?? ''
+          map['created_by'] ?? '', isSyncedVal
         ]);
       }
     } catch (e) {
@@ -155,31 +158,32 @@ class InventoryRepositoryImpl implements InventoryRepository {
   Future<void> updateItem(InventoryItem item) async {
     try {
       final map = item.toMap();
+      final isSyncedVal = Firebase.apps.isNotEmpty ? 0 : 1;
       
       if (item.type == InventoryType.file) {
         await db.customStatement('''
           UPDATE files_table SET 
             client_name = ?, file_no = ?, reference_no = ?, mobile_no = ?,
             society_id = ?, block_id = ?, sale_status = ?, path = ?,
-            remarks = ?, cnic = ?, updated_at = ?, company_id = ?
+            remarks = ?, cnic = ?, updated_at = ?, company_id = ?, is_synced = ?
           WHERE id = ?
         ''', [
           map['client_name'], map['file_no'], map['reference_no'], map['mobile_no'],
           map['society_id'], map['block_id'], map['sale_status'], map['path'],
-          map['remarks'], map['cnic'], map['updated_at'], map['company_id'], map['id']
+          map['remarks'], map['cnic'], map['updated_at'], map['company_id'], isSyncedVal, map['id']
         ]);
       } else {
         await db.customStatement('''
           UPDATE properties SET 
             client_name = ?, reference_no = ?, property_name = ?, demand = ?, price = ?,
             society_id = ?, block_id = ?, sale_status = ?, remarks = ?, cnic = ?,
-            updated_at = ?, company_id = ?
+            updated_at = ?, company_id = ?, is_synced = ?
           WHERE id = ?
         ''', [
           map['client_name'], map['reference_no'], map['property_name'], 
           map['demand'], map['price'], map['society_id'], map['block_id'], 
           map['sale_status'], map['remarks'], map['cnic'], 
-          map['updated_at'], map['company_id'], map['id']
+          map['updated_at'], map['company_id'], isSyncedVal, map['id']
         ]);
       }
     } catch (e) {
@@ -191,14 +195,15 @@ class InventoryRepositoryImpl implements InventoryRepository {
   @override
   Future<void> deleteItem(String id) async {
     try {
+      final isSyncedVal = Firebase.apps.isNotEmpty ? 0 : 1;
       // Try to delete from both tables (soft delete)
       await db.customStatement('''
-        UPDATE files_table SET is_active = 0, updated_at = ? WHERE id = ?
-      ''', [DateTime.now().toUtc().toIso8601String(), id]);
+        UPDATE files_table SET is_active = 0, updated_at = ?, is_synced = ? WHERE id = ?
+      ''', [DateTime.now().toUtc().toIso8601String(), isSyncedVal, id]);
       
       await db.customStatement('''
-        UPDATE properties SET is_active = 0, updated_at = ? WHERE id = ?
-      ''', [DateTime.now().toUtc().toIso8601String(), id]);
+        UPDATE properties SET is_active = 0, updated_at = ?, is_synced = ? WHERE id = ?
+      ''', [DateTime.now().toUtc().toIso8601String(), isSyncedVal, id]);
     } catch (e) {
       debugPrint('Error deleting inventory item: $e');
       rethrow;

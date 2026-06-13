@@ -7,9 +7,11 @@ import 'package:shared/shared.dart' show WorkingProgressData, WorkingComment, Ap
 import 'package:drift/drift.dart' as d;
 import 'dart:convert';
 import 'agent_repository.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../firestore_sync_service.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
+import '../../../core/services/firebase_threading_handler.dart';
 
 class AgentRepositoryImpl implements AgentRepository {
   final AppDatabase db;
@@ -17,9 +19,24 @@ class AgentRepositoryImpl implements AgentRepository {
   final bool isSuperAdmin;
   
   // SQLite-only flag - disables all Firestore operations
-  static const bool _sqliteOnlyMode = true;
+  static const bool _sqliteOnlyMode = false;
   
+  // Platform detection for thread safety
+  static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
+
   AgentRepositoryImpl(this.db, {required this.companyId, required this.isSuperAdmin});
+
+  // Helper method to wrap streams with platform thread safety
+  Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
+    if (_isWindows) {
+      debugPrint('AgentRepository: Wrapping $streamName with Windows thread safety');
+      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+        stream,
+        streamName: 'AgentRepository $streamName',
+      );
+    }
+    return stream;
+  }
 
   // Helper method to disable Firestore operations in SQLite-only mode
   bool _isFirestoreOperationAllowed() {
@@ -143,7 +160,7 @@ class AgentRepositoryImpl implements AgentRepository {
       
       final where = clauses.join(' AND ');
       
-      return db
+      final stream = db
           .customSelect(
             'SELECT * FROM working_progress WHERE $where ORDER BY updated_at DESC',
             variables: vars,
@@ -176,6 +193,7 @@ class AgentRepositoryImpl implements AgentRepository {
             debugPrint('AgentRepository: Stream updated transfers - ${transfers.length} items');
             return transfers;
           });
+      return _wrapStreamWithThreadSafety(stream, 'watchTransfers');
     } catch (e) {
       debugPrint('Error setting up transfers stream: $e');
       // Return empty stream in case of error
@@ -286,7 +304,7 @@ class AgentRepositoryImpl implements AgentRepository {
       
       final where = clauses.join(' AND ');
       
-      return db
+      final stream = db
           .customSelect(
             'SELECT * FROM working_progress WHERE $where ORDER BY updated_at DESC',
             variables: vars,
@@ -319,6 +337,7 @@ class AgentRepositoryImpl implements AgentRepository {
             debugPrint('AgentRepository: Stream updated client requirements - ${requirements.length} items');
             return requirements;
           });
+      return _wrapStreamWithThreadSafety(stream, 'watchClientRequirements');
     } catch (e) {
       debugPrint('Error setting up client requirements stream: $e');
       // Return empty stream in case of error

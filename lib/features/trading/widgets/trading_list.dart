@@ -88,8 +88,7 @@ class _TradingListState extends State<TradingList> {
     // Main content with error boundary
     try {
       return ListView.builder(
-        shrinkWrap: true, // CRITICAL: Required when inside SingleChildScrollView
-        physics: const NeverScrollableScrollPhysics(), // CRITICAL: Required when inside SingleChildScrollView
+        physics: const BouncingScrollPhysics(),
         itemCount: widget.entries.length,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         itemBuilder: (context, index) {
@@ -143,7 +142,7 @@ Row(
                   style: AppFonts.poppins(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: _getEstateNameColor(entry.tradeType, entry.status),
+                    color: _getEstateNameColor(context, entry.tradeType, entry.status),
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -504,7 +503,7 @@ Row(
   }
 
   // Helper method to get estate name color based on trade type
-  Color _getEstateNameColor(String? tradeType, String? status) {
+  Color _getEstateNameColor(BuildContext context, String? tradeType, String? status) {
     // If completed, use grey regardless of trade type
     if (status?.toLowerCase() == 'completed') {
       return Colors.grey.shade600;
@@ -517,7 +516,7 @@ Row(
       case 'sell':
         return const Color(0xFFC62828); // Deep Red
       default:
-        return Colors.black87; // Fallback
+        return Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87; // Fallback
     }
   }
 

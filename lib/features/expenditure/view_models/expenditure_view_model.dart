@@ -10,13 +10,14 @@ import 'package:uuid/uuid.dart';
 import '../models/expenditure_item.dart' as domain;
 import '../repositories/expenditure_repository.dart';
 import '../repositories/expenditure_repository_impl.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/services/permission_helper.dart';
 import '../../../core/services/firebase_threading_handler.dart';
 import '../../../core/windows_platform_fix.dart';
 import '../../../core/role_utils.dart' as local;
 import 'package:shared/shared.dart';
+import '../../../core/utils/logger.dart';
 
 enum ExpenditureTab { office, project }
 
@@ -26,6 +27,9 @@ class ExpenditureViewModel extends ChangeNotifier {
   final String? _passedCompanyId;
   final bool _passedIsSuperAdmin;
   final String? _passedUserId;
+  
+  // ✅ CRITICAL FIX: Track if already initialized to prevent duplicate setup
+  bool _isInitialized = false;
   
   ExpenditureViewModel(this._database, {String? companyId, bool? isSuperAdmin, String? userId}) 
       : _repository = ExpenditureRepositoryImpl(_database, 
@@ -41,19 +45,15 @@ class ExpenditureViewModel extends ChangeNotifier {
   Map<String, dynamic>? _user;
   ExpenditureTab _currentTab = ExpenditureTab.office;
   
-  // OPTIMIZATION: Cached user data to prevent initial null state
   String? _cachedCompanyId;
   bool? _cachedIsSuperAdmin;
   
-  // OPTIMIZATION: Initialize user data from cached AuthService to prevent initial null state
   void _initializeUserFromCache() {
     final cachedUser = AuthService.currentUser;
     if (cachedUser != null) {
       _cachedCompanyId = local.RoleUtils.getUserCompanyId(cachedUser);
       _cachedIsSuperAdmin = local.RoleUtils.isSuperAdmin(cachedUser);
       debugPrint('ExpenditureViewModel: Initialized from AuthService cache - companyId: $_cachedCompanyId, isSuper: $_cachedIsSuperAdmin');
-    } else {
-      debugPrint('ExpenditureViewModel: No cached user data available');
     }
   }
   
@@ -63,33 +63,28 @@ class ExpenditureViewModel extends ChangeNotifier {
   List<domain.ExpenditureItem> _filteredOfficeExpenses = [];
   List<domain.ExpenditureItem> _filteredProjectExpenses = [];
   
-  // Search
   String _searchQuery = '';
   
-  // Pagination state
   int _currentPage = 1;
   int _itemsPerPage = 10;
   
-  // Form data
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
   DateTime? _selectedDate;
   
-  // Sub-items functionality
   List<domain.ExpenditureSubItem> _subItems = [];
-  String? _currentExpenseId; // Track current expense ID for sub-item operations
+  String? _currentExpenseId;
   final TextEditingController _itemDescriptionController = TextEditingController();
   final TextEditingController _itemAmountController = TextEditingController();
-  final TextEditingController _itemCategoryController = TextEditingController(); // New category controller
-  String? _selectedItemCategory; // Track selected category for "Other" option
+  final TextEditingController _itemCategoryController = TextEditingController();
+  String? _selectedItemCategory;
   
-  // Stream subscriptions
   StreamSubscription<List<domain.ExpenditureItem>>? _officeExpensesSubscription;
   StreamSubscription<List<domain.ExpenditureItem>>? _projectExpensesSubscription;
   StreamSubscription<List<domain.ExpenditureSubItem>>? _subItemsSubscription;
   
-  // Getters
+  // Getters (same as before)
   bool get loading => _loading;
   Map<String, dynamic>? get user => _user;
   ExpenditureTab get currentTab => _currentTab;
@@ -105,11 +100,10 @@ class ExpenditureViewModel extends ChangeNotifier {
   List<domain.ExpenditureSubItem> get subItems => _subItems;
   TextEditingController get itemDescriptionController => _itemDescriptionController;
   TextEditingController get itemAmountController => _itemAmountController;
-  TextEditingController get itemCategoryController => _itemCategoryController; // New getter
-  String? get selectedItemCategory => _selectedItemCategory; // New getter
-  ExpenditureRepository get repository => _repository; // Expose repository
+  TextEditingController get itemCategoryController => _itemCategoryController;
+  String? get selectedItemCategory => _selectedItemCategory;
+  ExpenditureRepository get repository => _repository;
   
-  // Computed properties
   List<domain.ExpenditureItem> get currentExpenses {
     return _currentTab == ExpenditureTab.office ? _filteredOfficeExpenses : _filteredProjectExpenses;
   }
@@ -122,10 +116,8 @@ class ExpenditureViewModel extends ChangeNotifier {
     return _subItems.fold(0.0, (sum, item) => sum + item.amount);
   }
   
-  // Calculate grand total for a project (bucket amount + all sub-items)
   Future<double> getProjectGrandTotal(String projectId) async {
     try {
-      // Find the project/bucket item
       final project = _projectExpenses.firstWhere(
         (item) => item.id == projectId,
         orElse: () => domain.ExpenditureItem(
@@ -142,11 +134,9 @@ class ExpenditureViewModel extends ChangeNotifier {
         ),
       );
       
-      // Load all sub-items for this project
       final subItems = await _repository.getExpenditureSubItems(projectId);
       final subItemsTotal = subItems.fold(0.0, (sum, item) => sum + item.amount);
       
-      // Return bucket amount + sub-items total
       return project.amount + subItemsTotal;
     } catch (e) {
       debugPrint('Error calculating project grand total: $e');
@@ -156,19 +146,12 @@ class ExpenditureViewModel extends ChangeNotifier {
   
   bool get canAdd {
     if (_user == null) return false;
-    
-    // Super Admin always can add
     if (local.RoleUtils.isSuperAdmin(_user)) return true;
-    
-    // Company Admin always can add within their company
     if (local.RoleUtils.isCompanyAdmin(_user)) return true;
-    
-    // Check permission level for Agents
     final level = PermissionHelper.getModulePermissionLevel(_user, 'expenditure');
     return level == 'view_add' || level == 'view_add_edit' || level == 'full_access';
   }
 
-  // Pagination getters
   int get currentPage => _currentPage;
   int get itemsPerPage => _itemsPerPage;
   int get totalPages => (currentExpenses.length / _itemsPerPage).ceil();
@@ -177,81 +160,85 @@ class ExpenditureViewModel extends ChangeNotifier {
     return currentExpenses.skip(startIndex).take(_itemsPerPage).toList();
   }
 
-  // Initialization
+  // ✅ CRITICAL FIX: Make initialize() idempotent
   Future<void> initialize() async {
+    // ✅ Prevent duplicate initialization
+    if (_isInitialized) {
+      debugPrint('ExpenditureViewModel: Already initialized, skipping...');
+      return;
+    }
+    
     try {
-      // CRITICAL: Initialize Windows platform fixes to prevent stream interference
       WindowsPlatformFix.initialize();
       
       _loading = true;
-      // OPTIMIZATION: Initialize from cache first to prevent initial null state
       _initializeUserFromCache();
       notifyListeners();
       
-      // CRITICAL FIX: Load user first with timeout to prevent hanging
-      await _loadUser().timeout(
+      // ✅ CRITICAL FIX: Load user WITHOUT updating AuthService.currentUser
+      await _loadUserSafe().timeout(
         const Duration(seconds: 3),
         onTimeout: () {
-          debugPrint('ExpenditureViewModel: User loading timed out, proceeding with default values');
-          // FIXED: Wrap setState in postFrameCallback to prevent build phase errors
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _loading = false;
-            notifyListeners();
-          });
+          debugPrint('ExpenditureViewModel: User loading timed out');
         },
       );
       
-      // CRITICAL FIX: Set loading to false immediately to show UI
       _loading = false;
       notifyListeners();
       
-      // CRITICAL FIX: Move database checks to background with timeout to prevent hanging
+      // Background database checks
       Future.microtask(() async {
         try {
           debugPrint('ExpenditureViewModel: Starting background database checks...');
           await _repository.ensureExpenditureTableColumns().timeout(
             const Duration(seconds: 5),
             onTimeout: () {
-              debugPrint('ExpenditureViewModel: Database checks timed out, proceeding with streams');
+              debugPrint('ExpenditureViewModel: Database checks timed out');
             },
           );
           debugPrint('ExpenditureViewModel: Background database checks completed');
         } catch (e) {
           debugPrint('ExpenditureViewModel: Background database checks failed: $e');
-          // Don't rethrow - continue with streams even if checks fail
         }
       });
       
-      // CRITICAL FIX: Setup streams with timeout to prevent hanging
+      // Setup streams
       await _setupStreams().timeout(
         const Duration(seconds: 5),
         onTimeout: () {
-          debugPrint('ExpenditureViewModel: Stream setup timed out, UI should be visible');
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _loading = false;
-            notifyListeners();
-          });
+          debugPrint('ExpenditureViewModel: Stream setup timed out');
         },
       );
+      
+      // ✅ Mark as initialized
+      _isInitialized = true;
+      debugPrint('ExpenditureViewModel: Initialization complete');
     } catch (e) {
       debugPrint('Error initializing ExpenditureViewModel: $e');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _loading = false;
-        notifyListeners();
-      });
+      _loading = false;
       notifyListeners();
     }
   }
 
-  Future<void> _loadUser() async {
+  // ✅ CRITICAL FIX: New safe method that doesn't update AuthService.currentUser
+  Future<void> _loadUserSafe() async {
     try {
+      // ✅ Use cached user instead of calling getCurrentUser again
+      if (AuthService.currentUser != null) {
+        _user = AuthService.currentUser;
+        debugPrint('ExpenditureViewModel: Using cached user data');
+        return;
+      }
+      
+      // Only fetch if no cached user
       final storage = AppStorage();
       final settings = await storage.readSettings();
       final authToken = settings['authToken'] as String?;
       
       if (authToken != null) {
         _user = await AuthService.getCurrentUser(authToken);
-        AuthService.currentUser = _user;
+        // ✅ CRITICAL FIX: Don't update AuthService.currentUser here to prevent notifier update
+        // AuthService.currentUser = _user; // REMOVED THIS LINE
       }
     } catch (e) {
       debugPrint('Error loading user: $e');
@@ -259,105 +246,67 @@ class ExpenditureViewModel extends ChangeNotifier {
   }
 
   Future<void> _setupStreams() async {
-    // CRITICAL FIX: Use passed parameters but also detect role for Super Admin fallback
     var companyId = _passedCompanyId;
     var isSuperAdmin = _passedIsSuperAdmin;
     
-    // ROLE SYNC FIX: Re-detect role if passed parameters don't match user data
     if (_user != null) {
       final detectedRole = local.RoleUtils.getUserRole(_user);
       final detectedIsSuperAdmin = local.RoleUtils.isSuperAdmin(_user);
       
       debugPrint('ExpenditureViewModel: Role detection - Detected Role: $detectedRole, Detected isSuperAdmin: $detectedIsSuperAdmin');
-      debugPrint('ExpenditureViewModel: Passed parameters - isSuperAdmin: $isSuperAdmin, companyId: $companyId');
       
       isSuperAdmin = detectedIsSuperAdmin;
       
-      // CRITICAL FIX: Enhanced GLOBAL_ADMIN handling for Super Admin
       if (detectedIsSuperAdmin) {
-        // Super Admin should always be allowed to use GLOBAL_ADMIN
         if (companyId != 'GLOBAL_ADMIN') {
-          debugPrint('ExpenditureViewModel: ROLE SYNC FIX - Super Admin detected, setting companyId to GLOBAL_ADMIN');
           companyId = 'GLOBAL_ADMIN';
         }
-        // CRITICAL: Never clear GLOBAL_ADMIN for confirmed Super Admin
       } else {
-        // Only clear GLOBAL_ADMIN for confirmed non-super-admins
         if (companyId == 'GLOBAL_ADMIN') {
-          debugPrint('ExpenditureViewModel: ROLE SYNC FIX - Confirmed non-super-admin with GLOBAL_ADMIN, clearing to empty');
-          companyId = ''; // Clear to empty for non-super-admin
-        }
-      }
-    } else {
-      // If user is null, preserve original Super Admin status from passed parameters
-      debugPrint('ExpenditureViewModel: User data not available, using passed isSuperAdmin: $isSuperAdmin');
-      if (isSuperAdmin && companyId != 'GLOBAL_ADMIN') {
-        debugPrint('ExpenditureViewModel: Using passed Super Admin status, setting companyId to GLOBAL_ADMIN');
-        companyId = 'GLOBAL_ADMIN';
-      }
-    }
-    
-    // IMMEDIATE FALLBACK: Set default fallback for null companyId
-    if (companyId == null) {
-      // CRITICAL FIX: Try to get companyId from cached AuthService user first
-      final cachedUser = AuthService.currentUser;
-      if (cachedUser != null) {
-        final fallbackCompanyId = local.RoleUtils.getUserCompanyId(cachedUser);
-        if (fallbackCompanyId != null) {
-          companyId = fallbackCompanyId;
-          debugPrint('ExpenditureViewModel: FALLBACK - Using cached companyId from AuthService: $companyId');
-        } else {
-          // Final fallback for non-super-admin
-          if (isSuperAdmin) {
-            companyId = 'GLOBAL_ADMIN';
-            debugPrint('ExpenditureViewModel: FALLBACK - Set companyId to GLOBAL_ADMIN for Super Admin');
-          } else {
-            debugPrint('ExpenditureViewModel: FALLBACK - No companyId available, using empty string to prevent hanging');
-            companyId = '';
-          }
-        }
-      } else {
-        // No cached user available
-        if (isSuperAdmin) {
-          companyId = 'GLOBAL_ADMIN';
-          debugPrint('ExpenditureViewModel: FALLBACK - Set companyId to GLOBAL_ADMIN for Super Admin (no cached user)');
-        } else {
-          debugPrint('ExpenditureViewModel: FALLBACK - No cached user or companyId, using empty string');
           companyId = '';
         }
       }
     }
     
-    debugPrint('ExpenditureViewModel: Final parameters - isSuperAdmin: $isSuperAdmin, companyId: $companyId');
-    debugPrint('ExpenditureViewModel: User data - Email: ${_user?['email']}, Role: ${_user?['role']}, Permissions: ${_user?['permissions']}');
+    if (companyId == null) {
+      final cachedUser = AuthService.currentUser;
+      if (cachedUser != null) {
+        final fallbackCompanyId = local.RoleUtils.getUserCompanyId(cachedUser);
+        if (fallbackCompanyId != null) {
+          companyId = fallbackCompanyId;
+        } else {
+          companyId = isSuperAdmin ? 'GLOBAL_ADMIN' : '';
+        }
+      } else {
+        companyId = isSuperAdmin ? 'GLOBAL_ADMIN' : '';
+      }
+    }
     
-    // For Super Admin with GLOBAL_ADMIN, pass null to see all companies
+    debugPrint('ExpenditureViewModel: Final parameters - isSuperAdmin: $isSuperAdmin, companyId: $companyId');
+    
     final effectiveCompanyId = (isSuperAdmin && companyId == 'GLOBAL_ADMIN') ? null : companyId;
-    debugPrint('ExpenditureViewModel: Effective companyId for streams: $effectiveCompanyId (Super Admin: $isSuperAdmin)');
+    debugPrint('ExpenditureViewModel: Effective companyId for streams: $effectiveCompanyId');
 
-    // Cancel existing subscriptions
-    await _officeExpensesSubscription?.cancel();
-    await _projectExpensesSubscription?.cancel();
+    // ✅ CRITICAL FIX: Cancel subscriptions synchronously (no await)
+    _officeExpensesSubscription?.cancel();
+    _projectExpensesSubscription?.cancel();
 
     // Setup new streams
     _officeExpensesSubscription = _repository.watchOfficeExpenses(effectiveCompanyId).listen(
       (data) {
-        // CRITICAL: Set loading to false when stream data arrives
         if (_loading) {
           _loading = false;
-          debugPrint('ExpenditureViewModel: Loading set to false - office expenses stream data received');
         }
         
         _officeExpenses = data;
-        _applySearchFilter();
+        _applySearchFilter(); // ✅ This no longer calls notifyListeners()
         
-        debugPrint('ExpenditureViewModel: Office expenses stream updated - notifyListeners called');
-        notifyListeners();
+        debugPrint('ExpenditureViewModel: Office expenses stream updated - ${data.length} items');
+        notifyListeners(); // ✅ Only ONE notifyListeners() call
       },
       onError: (e) {
         if (_loading) {
           _loading = false;
-          debugPrint('ExpenditureViewModel: Loading set to false - office expenses stream error');
         }
         debugPrint('Error in office expenses stream: $e');
         notifyListeners();
@@ -366,22 +315,19 @@ class ExpenditureViewModel extends ChangeNotifier {
 
     _projectExpensesSubscription = _repository.watchProjectExpenses(effectiveCompanyId).listen(
       (data) {
-        // CRITICAL: Set loading to false when stream data arrives
         if (_loading) {
           _loading = false;
-          debugPrint('ExpenditureViewModel: Loading set to false - project expenses stream data received');
         }
         
         _projectExpenses = data;
-        _applySearchFilter();
+        _applySearchFilter(); // ✅ This no longer calls notifyListeners()
         
-        debugPrint('ExpenditureViewModel: Project expenses stream updated - notifyListeners called');
-        notifyListeners();
+        debugPrint('ExpenditureViewModel: Project expenses stream updated - ${data.length} items');
+        notifyListeners(); // ✅ Only ONE notifyListeners() call
       },
       onError: (e) {
         if (_loading) {
           _loading = false;
-          debugPrint('ExpenditureViewModel: Loading set to false - project expenses stream error');
         }
         debugPrint('Error in project expenses stream: $e');
         notifyListeners();
@@ -389,7 +335,6 @@ class ExpenditureViewModel extends ChangeNotifier {
     );
   }
 
-  // Tab management
   void setCurrentTab(ExpenditureTab tab) {
     if (tab != null) {
       _currentTab = tab;
@@ -397,24 +342,20 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // CRITICAL: Manual refresh method for immediate UI updates
-  // Enhanced with FirebaseThreadingHandler for Windows compatibility
+  // ✅ CRITICAL FIX: Simplified refreshData that doesn't re-setup streams
   Future<void> refreshData() async {
     try {
       _loading = true;
       notifyListeners();
       
-      // Enhanced with threading handler for Windows compatibility
-      await FirebaseThreadingHandler.executeWithThreadSafety(
-        () async {
-          // Re-setup streams to force immediate refresh
-          await _setupStreams();
-        },
-        operationName: 'Expenditure refreshData',
-      );
+      // ✅ Instead of re-setting up streams, just trigger a manual refresh
+      // The streams will automatically pick up database changes
+      await Future.delayed(const Duration(milliseconds: 100));
       
       _loading = false;
       notifyListeners();
+      
+      debugPrint('ExpenditureViewModel: Data refreshed');
     } catch (e) {
       debugPrint('Error refreshing expenditure data: $e');
       _loading = false;
@@ -422,13 +363,13 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // Search functionality
   void setSearchQuery(String query) {
     _searchQuery = query;
-    _currentPage = 1; // Reset to page 1 when search changes
+    _currentPage = 1;
     _applySearchFilter();
   }
 
+  // ✅ CRITICAL FIX: Removed notifyListeners() from here
   void _applySearchFilter() {
     if (_searchQuery.isEmpty) {
       _filteredOfficeExpenses = List.from(_officeExpenses);
@@ -452,10 +393,9 @@ class ExpenditureViewModel extends ChangeNotifier {
                date.contains(_searchQuery.toLowerCase());
       }).toList();
     }
-    notifyListeners();
+    // ✅ REMOVED: notifyListeners() - caller will handle this
   }
 
-  // Form operations
   void selectDate(DateTime date) {
     _selectedDate = date;
     _dateController.text = DateFormat('yyyy-MM-dd').format(date);
@@ -475,7 +415,6 @@ class ExpenditureViewModel extends ChangeNotifier {
       final description = _descriptionController.text.trim();
       final amountText = _amountController.text.trim();
       
-      // Validation
       if (description.isEmpty) {
         _showErrorSnackBar('Please enter a description');
         return false;
@@ -508,8 +447,8 @@ class ExpenditureViewModel extends ChangeNotifier {
         date: DateFormat('yyyy-MM-dd').format(_selectedDate!),
         description: description,
         amount: amount,
-        categoryType: type, // 'office' or 'project'
-        category: type == 'office' ? 'Office Expense' : 'Project Expense', // FIXED: Set proper category based on type
+        categoryType: type,
+        category: type == 'office' ? 'Office Expense' : 'Project Expense',
         companyId: companyId,
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
@@ -522,12 +461,7 @@ class ExpenditureViewModel extends ChangeNotifier {
       clearForm();
       _showSuccessSnackBar('$type expense added successfully');
       
-      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
-      // The streams will detect the database changes and update the UI instantly
       debugPrint('ExpenditureViewModel: Expense saved - streams will update UI automatically');
-      
-      // No need for manual refresh - streams will handle the update
-      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -537,12 +471,9 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // New method to add a project as a simple bucket (no amount, date, or category)
   Future<bool> addProject(String projectName) async {
     try {
-      // CRITICAL: Ensure Firebase calls are on main thread for Windows compatibility
       if (io.Platform.isWindows) {
-        // On Windows, ensure we're on the main thread for Firebase operations
         await WidgetsBinding.instance.endOfFrame;
       }
       
@@ -552,14 +483,13 @@ class ExpenditureViewModel extends ChangeNotifier {
         return false;
       }
       
-      // Create project as a special type of expenditure with zero amount and current date
       final project = domain.ExpenditureItem(
         id: const Uuid().v4(),
-        date: DateFormat('yyyy-MM-dd').format(DateTime.now()), // Current date for metadata only
-        description: projectName, // Project name as description
-        amount: 0.0, // Zero amount - projects are just buckets
-        categoryType: 'project_bucket', // New type to distinguish from project expenses
-        category: 'Project Bucket', // FIXED: Set proper category for project buckets
+        date: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+        description: projectName,
+        amount: 0.0,
+        categoryType: 'project_bucket',
+        category: 'Project Bucket',
         companyId: companyId,
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
@@ -568,19 +498,13 @@ class ExpenditureViewModel extends ChangeNotifier {
         updatedAt: DateTime.now(),
       );
       
-      print("Project Repository Save: ${project.toMap()}");
+      Logger.debug("Project Repository Save: ${project.toMap()}");
       
       await _repository.addExpenditure(project);
       
-      // Show success message
       _showSuccessSnackBar('Project "$projectName" created successfully');
       
-      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
-      // The streams will detect the database changes and update the UI instantly
       debugPrint('ExpenditureViewModel: Project created - streams will update UI automatically');
-      
-      // No need for manual refresh - streams will handle the update
-      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -590,16 +514,13 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // New method to save expense with category - accepts form data as parameters
   Future<bool> saveExpenseWithCategory(String type, String? category, {
     required String description,
     required double amount,
     required DateTime selectedDate,
   }) async {
     try {
-      // CRITICAL: Ensure Firebase calls are on main thread for Windows compatibility
       if (io.Platform.isWindows) {
-        // On Windows, ensure we're on the main thread for Firebase operations
         await WidgetsBinding.instance.endOfFrame;
       }
       
@@ -609,14 +530,13 @@ class ExpenditureViewModel extends ChangeNotifier {
         return false;
       }
       
-      // CRITICAL DEBUGGING: Create expenditure with proper office_expense type
       final expenditure = domain.ExpenditureItem(
         id: const Uuid().v4(),
         date: DateFormat('yyyy-MM-dd').format(selectedDate),
         description: description,
         amount: amount,
-        categoryType: type, // 'office_expense' or 'project_expense' - CRITICAL for proper filtering
-        category: category, // Category from dropdown
+        categoryType: type,
+        category: category,
         companyId: companyId,
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
@@ -625,23 +545,16 @@ class ExpenditureViewModel extends ChangeNotifier {
         updatedAt: DateTime.now(),
       );
       
-      // CRITICAL DEBUGGING: Print expenditure data before database save
-      print("Expenditure Repository Save: ${expenditure.toMap()}");
+      Logger.debug("Expenditure Repository Save: ${expenditure.toMap()}");
       
       await _repository.addExpenditure(expenditure);
       
-      // ENHANCED: Show success message for debugging
       if (kDebugMode) {
-        print('$type expense saved successfully with category: $category');
+        Logger.info('$type expense saved successfully with category: $category');
         _showSuccessSnackBar('$type expense added successfully');
       }
       
-      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
-      // The streams will detect the database changes and update the UI instantly
       debugPrint('ExpenditureViewModel: Expense saved with category - streams will update UI automatically');
-      
-      // No need for manual refresh - streams will handle the update
-      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -651,16 +564,13 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // Simplified method for instant expense saving from category grid - 1-step process with smart grouping
   Future<bool> saveInstantExpenseFromCategory(String type, String category, {
     required String description,
     required double amount,
     required DateTime selectedDate,
   }) async {
     try {
-      // CRITICAL: Ensure Firebase calls are on main thread for Windows compatibility
       if (io.Platform.isWindows) {
-        // On Windows, ensure we're on the main thread for Firebase operations
         await WidgetsBinding.instance.endOfFrame;
       }
       
@@ -672,22 +582,18 @@ class ExpenditureViewModel extends ChangeNotifier {
       
       final dateStr = DateFormat('yyyy-MM-dd').format(selectedDate);
       
-      // SMART GROUPING: Check if existing expense with same date and category exists
       if (type == 'office_expense') {
         debugPrint('ExpenditureViewModel: Smart grouping check for office expense - Date: $dateStr, Category: $category');
         
         final existingExpense = await _repository.findExistingOfficeExpense(dateStr, category, companyId);
         
         if (existingExpense != null) {
-          // EXISTING EXPENSE: Update amount and add as sub-item
           debugPrint('ExpenditureViewModel: Found existing expense, updating amount and adding sub-item');
           
           final newTotalAmount = existingExpense.amount + amount;
           
-          // Update the main expense amount
           await _repository.updateExpenditureAmount(existingExpense.id, newTotalAmount);
           
-          // Create sub-item for the new expense
           final subItem = domain.ExpenditureSubItem(
             id: const Uuid().v4(),
             parentId: existingExpense.id,
@@ -707,16 +613,15 @@ class ExpenditureViewModel extends ChangeNotifier {
           _showSuccessSnackBar('Expense added to existing entry');
           debugPrint('ExpenditureViewModel: Smart grouping completed - updated existing expense: ${existingExpense.id}');
         } else {
-          // NEW EXPENSE: Create new expenditure entry
           debugPrint('ExpenditureViewModel: No existing expense found, creating new entry');
           
           final expenditure = domain.ExpenditureItem(
             id: const Uuid().v4(),
             date: dateStr,
-            description: description, // Use the description as the main detail
+            description: description,
             amount: amount,
-            categoryType: type, // 'office_expense'
-            category: category, // Category from grid selection
+            categoryType: type,
+            category: category,
             companyId: companyId,
             createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
             isActive: true,
@@ -733,7 +638,6 @@ class ExpenditureViewModel extends ChangeNotifier {
           debugPrint('ExpenditureViewModel: New expense created: ${expenditure.id}');
         }
       } else {
-        // PROJECT EXPENSES: Create new entry as before (no grouping for projects)
         debugPrint('ExpenditureViewModel: Creating new project expense (no grouping)');
         
         final expenditure = domain.ExpenditureItem(
@@ -755,12 +659,7 @@ class ExpenditureViewModel extends ChangeNotifier {
         _showSuccessSnackBar('Project expense added successfully');
       }
       
-      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
-      // The streams will detect the database changes and update the UI instantly
       debugPrint('ExpenditureViewModel: Smart grouping completed - streams will update UI automatically');
-      
-      // No need for manual refresh - streams will handle the update
-      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -775,12 +674,7 @@ class ExpenditureViewModel extends ChangeNotifier {
       await _repository.deleteExpenditure(id);
       _showSuccessSnackBar('Expense deleted successfully');
       
-      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
-      // The streams will detect the database changes and update the UI instantly
       debugPrint('ExpenditureViewModel: Expense deleted - streams will update UI automatically');
-      
-      // No need for manual refresh - streams will handle the update
-      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -795,12 +689,7 @@ class ExpenditureViewModel extends ChangeNotifier {
       await _repository.updateExpenditure(expense);
       _showSuccessSnackBar('Expense updated successfully');
       
-      // STREAM-BASED UPDATE: Let streams handle the UI refresh automatically
-      // The streams will detect the database changes and update the UI instantly
       debugPrint('ExpenditureViewModel: Expense updated - streams will update UI automatically');
-      
-      // No need for manual refresh - streams will handle the update
-      // notifyListeners() is already called by stream listeners
       
       return true;
     } catch (e) {
@@ -810,13 +699,10 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // Sub-items operations
   Future<void> loadSubItems(String parentId) async {
     try {
-      // Set current expense ID for sub-item operations
       _currentExpenseId = parentId;
       
-      // CRITICAL: Ensure category column exists before loading sub-items
       try {
         await (_repository as ExpenditureRepositoryImpl).ensureExpenditureSubItemsCategoryColumn();
         debugPrint('ExpenditureViewModel: Category column ensured before loading sub-items');
@@ -839,12 +725,11 @@ class ExpenditureViewModel extends ChangeNotifier {
   void clearSubItemForm() {
     _itemDescriptionController.clear();
     _itemAmountController.clear();
-    _itemCategoryController.clear(); // Clear category controller
-    _selectedItemCategory = null; // Reset selected category
+    _itemCategoryController.clear();
+    _selectedItemCategory = null;
     notifyListeners();
   }
 
-  // Method to set selected sub-item category from dialog
   void setSelectedSubItemCategory(String? category) {
     _selectedItemCategory = category;
     notifyListeners();
@@ -858,10 +743,8 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
     
     try {
-      // Use the category that was set by the dialog
       final category = _selectedItemCategory;
           
-      // Category is optional - allow saving without it
       if (category != null && category.isEmpty) {
         _showErrorSnackBar('Invalid category');
         return false;
@@ -872,7 +755,7 @@ class ExpenditureViewModel extends ChangeNotifier {
         parentId: parentId,
         description: _itemDescriptionController.text.trim(),
         amount: double.parse(_itemAmountController.text.trim()),
-        category: category, // Category field (nullable)
+        category: category,
         companyId: local.RoleUtils.getUserCompanyId(_user) ?? '',
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
@@ -883,7 +766,6 @@ class ExpenditureViewModel extends ChangeNotifier {
       
       await _repository.addExpenditureSubItem(subItem);
       
-      // Clear form
       _itemDescriptionController.clear();
       _itemAmountController.clear();
       _itemCategoryController.clear();
@@ -897,8 +779,6 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // CRITICAL FIX: New method that accepts category as parameter
-  // This ensures the selected category is properly saved to database
   Future<bool> saveSubItemWithCategory(String parentId, {String? category}) async {
     if (_itemDescriptionController.text.trim().isEmpty ||
         _itemAmountController.text.trim().isEmpty) {
@@ -907,11 +787,8 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
     
     try {
-      // CRITICAL: Use category parameter directly instead of ViewModel state
-      // This ensures the selected category from dialog is saved correctly
       debugPrint('ExpenditureViewModel: Saving sub-item with category: $category');
           
-      // Category is optional - allow saving without it
       if (category != null && category.isEmpty) {
         _showErrorSnackBar('Invalid category');
         return false;
@@ -922,7 +799,7 @@ class ExpenditureViewModel extends ChangeNotifier {
         parentId: parentId,
         description: _itemDescriptionController.text.trim(),
         amount: double.parse(_itemAmountController.text.trim()),
-        category: category, // CRITICAL: Category from dialog parameter
+        category: category,
         companyId: local.RoleUtils.getUserCompanyId(_user) ?? '',
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
@@ -935,7 +812,6 @@ class ExpenditureViewModel extends ChangeNotifier {
       
       await _repository.addExpenditureSubItem(subItem);
       
-      // Clear form
       _itemDescriptionController.clear();
       _itemAmountController.clear();
       _itemCategoryController.clear();
@@ -943,16 +819,14 @@ class ExpenditureViewModel extends ChangeNotifier {
       
       debugPrint('ExpenditureViewModel: Sub-item saved successfully with category: $category');
       
-      // FOOLPROOF FIX: Manually fetch fresh sub-items and update state
-      // This ensures immediate UI update after adding sub-item
       try {
         final freshSubItems = await _repository.getExpenditureSubItems(subItem.parentId);
         _subItems = freshSubItems;
         debugPrint('ExpenditureViewModel: Manual refresh completed - sub-items: ${freshSubItems.length}');
-        notifyListeners(); // Force UI rebuild immediately
+        notifyListeners();
       } catch (e) {
         debugPrint('Error refreshing sub-items after save: $e');
-        notifyListeners(); // Still try to update UI even if refresh fails
+        notifyListeners();
       }
       
       return true;
@@ -970,24 +844,19 @@ class ExpenditureViewModel extends ChangeNotifier {
         return false;
       }
       
-      // First, get the sub-item details to know its amount and parent
       final subItems = await _repository.getExpenditureSubItems(_currentExpenseId!);
       final subItemToDelete = subItems.firstWhere((item) => item.id == id);
       
-      // Get the current main expense
       final mainExpense = await _repository.getExpenditureById(_currentExpenseId!);
       if (mainExpense == null) {
         _showErrorSnackBar('Main expense not found');
         return false;
       }
       
-      // Calculate new amount (subtract sub-item amount from main expense)
       final newAmount = mainExpense.amount - subItemToDelete.amount;
       
-      // Update the main expense amount first
       await _repository.updateExpenditureAmount(_currentExpenseId!, newAmount);
       
-      // Then delete the sub-item
       await _repository.deleteExpenditureSubItem(id);
       
       _showSuccessSnackBar('Sub-item deleted successfully');
@@ -999,7 +868,6 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // Statistics
   Future<double> getTotalOfficeExpenses() async {
     final companyId = local.RoleUtils.getUserCompanyId(_user);
     if (companyId == null) return 0.0;
@@ -1033,7 +901,6 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // Utility methods
   Future<domain.ExpenditureItem?> getExpenditureById(String id) async {
     try {
       return await _repository.getExpenditureById(id);
@@ -1043,18 +910,14 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  // Private helper methods
   void _showErrorSnackBar(String message) {
-    // This will be handled by the UI layer
     debugPrint('Error: $message');
   }
 
   void _showSuccessSnackBar(String message) {
-    // This will be handled by the UI layer
     debugPrint('Success: $message');
   }
 
-  // Pagination methods
   void setPage(int page) {
     if (page >= 1 && page <= totalPages) {
       _currentPage = page;
@@ -1065,7 +928,7 @@ class ExpenditureViewModel extends ChangeNotifier {
   void setItemsPerPage(int limit) {
     if (_itemsPerPage != limit) {
       _itemsPerPage = limit;
-      _currentPage = 1; // Reset to page 1 when items per page changes
+      _currentPage = 1;
       notifyListeners();
     }
   }
@@ -1081,7 +944,7 @@ class ExpenditureViewModel extends ChangeNotifier {
     _dateController.dispose();
     _itemDescriptionController.dispose();
     _itemAmountController.dispose();
-    _itemCategoryController.dispose(); // Dispose category controller
+    _itemCategoryController.dispose();
     
     super.dispose();
   }

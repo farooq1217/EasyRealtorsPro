@@ -8,11 +8,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../../../firestore_sync_service.dart';
 import '../../../core/services/app_storage.dart' show AppStorage;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import 'package:shared/shared.dart' show SocietiesCompanion, BlocksCompanion;
 import 'dart:convert';
-import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart';
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
 import 'package:csv/csv.dart';
+import '../../../core/services/firebase_threading_handler.dart';
 
 class SettingsRepositoryImpl implements SettingsRepository {
   final dynamic db;
@@ -21,10 +22,25 @@ class SettingsRepositoryImpl implements SettingsRepository {
   final SocietyRepository _societyRepository;
   
   // SQLite-only flag - disables all Firestore operations
-  static const bool _sqliteOnlyMode = true;
+  static const bool _sqliteOnlyMode = false;
+  
+  // Platform detection for thread safety
+  static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
   
   SettingsRepositoryImpl(this.db, {required this.companyId, required this.isSuperAdmin})
       : _societyRepository = SocietyRepositoryImpl(db, companyId: companyId, isSuperAdmin: isSuperAdmin);
+
+  // Helper method to wrap streams with platform thread safety
+  Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
+    if (_isWindows) {
+      debugPrint('SettingsRepository: Wrapping $streamName with Windows thread safety');
+      return FirebaseThreadingHandler.wrapStreamWithThreadSafety(
+        stream,
+        streamName: 'SettingsRepository $streamName',
+      );
+    }
+    return stream;
+  }
 
   // Helper method to disable Firestore operations in SQLite-only mode
   bool _isFirestoreOperationAllowed() {
@@ -176,7 +192,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
     }
     final where = clauses.isNotEmpty ? 'WHERE ${clauses.join(' AND ')}' : '';
     
-    return db
+    final stream = db
         .customSelect('SELECT id, name FROM societies $where ORDER BY name', variables: vars)
         .watch()
         .map((rows) {
@@ -189,6 +205,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
           }
           return societies;
         });
+    return _wrapStreamWithThreadSafety(stream, 'watchSocieties');
   }
 
   Stream<List<Map<String, String>>> watchBlocks(String? societyId) {
@@ -200,7 +217,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
     }
     final where = clauses.isNotEmpty ? 'WHERE ${clauses.join(' AND ')}' : '';
     
-    return db
+    final stream = db
         .customSelect('SELECT id, society_id, name FROM blocks $where ORDER BY name', variables: vars)
         .watch()
         .map((rows) {
@@ -214,6 +231,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
           }
           return blocks;
         });
+    return _wrapStreamWithThreadSafety(stream, 'watchBlocks');
   }
 
   @override
@@ -566,8 +584,8 @@ class SettingsRepositoryImpl implements SettingsRepository {
         ...tradeFiles.map((r) => r.data)..forEach((r) => r['entry_type'] = 'file'),
       ]);
 
-      final usersFile = File('${dir.path}/users_export_$ts.csv');
-      final tradingFile = File('${dir.path}/trading_export_$ts.csv');
+      final usersFile = io.File('${dir.path}/users_export_$ts.csv');
+      final tradingFile = io.File('${dir.path}/trading_export_$ts.csv');
       await usersFile.writeAsString(usersCsv);
       await tradingFile.writeAsString(tradesCsv);
     } catch (e) {

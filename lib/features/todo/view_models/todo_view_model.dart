@@ -54,6 +54,10 @@ class TodoViewModel extends ChangeNotifier {
   DateTime get selectedDate => _selectedDate;
   TaskSortOption get sortOption => _sortOption;
   String get searchQuery => _searchQuery;
+
+  // New getters for notification filtering
+  List<Reminder> get unreadReminders => _reminders.where((r) => !(r.isRead ?? false)).toList();
+  List<Reminder> get readReminders => _reminders.where((r) => r.isRead ?? false).toList();
   
   // Pagination getters
   int get currentPage => _currentPage;
@@ -107,7 +111,22 @@ class TodoViewModel extends ChangeNotifier {
           DateTime? dateA, dateB;
           
           if (a is Reminder) {
-            dateA = DateTime.parse('${a.reminderDate} ${a.reminderTime}');
+            // Safely parse reminder date and time (handles "9:00 AM" format)
+            final datePart = DateTime.tryParse(a.reminderDate);
+            DateTime? timePart;
+            final match = RegExp(r'(\d{1,2}):(\d{2})\s*([APMapm]{2})?').firstMatch(a.reminderTime);
+            if (datePart != null && match != null) {
+              int hour = int.parse(match.group(1)!);
+              int minute = int.parse(match.group(2)!);
+              final meridiem = match.group(3);
+              if (meridiem != null) {
+                final lower = meridiem.toLowerCase();
+                if (lower == 'pm' && hour < 12) hour += 12;
+                if (lower == 'am' && hour == 12) hour = 0;
+              }
+              timePart = DateTime(datePart.year, datePart.month, datePart.day, hour, minute);
+            }
+            dateA = timePart ?? datePart;
           } else if (a is Map<String, dynamic>) {
             // Try to extract date from aggregated task
             final dateStr = a['date']?.toString() ?? a['transfer_date']?.toString();
@@ -117,8 +136,24 @@ class TodoViewModel extends ChangeNotifier {
           }
           
           if (b is Reminder) {
-            dateB = DateTime.parse('${b.reminderDate} ${b.reminderTime}');
+            // Safely parse reminder date and time (handles "9:00 AM" format)
+            final datePart = DateTime.tryParse(b.reminderDate);
+            DateTime? timePart;
+            final match = RegExp(r'(\d{1,2}):(\d{2})\s*([APMapm]{2})?').firstMatch(b.reminderTime);
+            if (datePart != null && match != null) {
+              int hour = int.parse(match.group(1)!);
+              int minute = int.parse(match.group(2)!);
+              final meridiem = match.group(3);
+              if (meridiem != null) {
+                final lower = meridiem.toLowerCase();
+                if (lower == 'pm' && hour < 12) hour += 12;
+                if (lower == 'am' && hour == 12) hour = 0;
+              }
+              timePart = DateTime(datePart.year, datePart.month, datePart.day, hour, minute);
+            }
+            dateB = timePart ?? datePart;
           } else if (b is Map<String, dynamic>) {
+            // Try to extract date from aggregated task
             final dateStr = b['date']?.toString() ?? b['transfer_date']?.toString();
             if (dateStr != null) {
               dateB = DateTime.tryParse(dateStr);
@@ -199,12 +234,12 @@ class TodoViewModel extends ChangeNotifier {
             Logger.debug('TodoViewModel: UI notified of update', tag: 'TodoViewModel');
           });
         },
-        onError: (e) {
+        onError: (e, stackTrace) {
           // THREAD SAFETY: Wrap error handling in postFrameCallback
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!_mounted) return;
             
-            Logger.error('TodoViewModel: Stream error', tag: 'TodoViewModel', error: e);
+            Logger.error('TodoViewModel: Stream error', tag: 'TodoViewModel', error: e, stackTrace: stackTrace);
             _error = e.toString();
             notifyListeners();
           });
@@ -244,6 +279,19 @@ class TodoViewModel extends ChangeNotifier {
     }
   }
 
+  /// Mark a reminder as read
+  Future<void> markAsRead(int reminderId) async {
+    try {
+      await _repository.markAsRead(reminderId);
+      // The stream should emit updated reminders; ensure UI refresh
+      Logger.debug('TodoViewModel: Marked reminder $reminderId as read', tag: 'TodoViewModel');
+    } catch (e) {
+      Logger.error('TodoViewModel: Error marking reminder as read', tag: 'TodoViewModel', error: e);
+      _error = e.toString();
+      notifyListeners();
+    }
+  }
+
   Future<void> addReminder({
     required String userId,
     required String? companyId,
@@ -272,6 +320,7 @@ class TodoViewModel extends ChangeNotifier {
         is_active: true,
         createdAt: DateTime.now().toIso8601String(),
         updatedAt: DateTime.now().toIso8601String(),
+        isRead: false,
         isSynced: true,
       );
 

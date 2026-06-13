@@ -8,7 +8,7 @@ import '../../../widgets/platform_aware_image.dart';
 import '../../../widgets/adaptive_dialog.dart';
 import '../../../core/font_utils.dart';
 import '../../../core/services/app_storage.dart' show AppStorage;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/permission_helper.dart';
 import '../../../core/role_utils.dart';
 import '../../../core/services/permission_sync_service.dart';
@@ -20,6 +20,7 @@ import '../agents/view_models/agent_view_model.dart';
 import '../agents/repositories/agent_repository_impl.dart';
 import '../rental/pages/rental_page.dart' show RentalItemsPage;
 import '../todo/pages/todo_page.dart' show ToDoPage;
+import '../todo/pages/notifications_page.dart' show NotificationsPage;
 import '../settings/pages/settings_page.dart' show SettingsPageClean;
 import '../trading/pages/trading_page.dart';
 import '../trading/view_models/trading_view_model.dart';
@@ -40,13 +41,15 @@ import '../expenditure/pages/expenditure_page.dart';
 import '../users/pages/users_page.dart';
 import '../companies/pages/companies_page.dart';
 import '../reports/pages/reports_page.dart';
+import '../follow_up/pages/follow_up_page.dart';
 import 'package:shared/shared.dart' show AppDatabase;
+import '../follow_up/view_models/follow_up_view_model.dart';
 import 'dart:convert'; 
-
-
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
+import 'package:easyrealtorspro/core/services/foreground_sync_manager.dart';
 
 /// Main navigation page with sidebar and content area
-class MainNavigationPage extends StatefulWidget {
+class MainNavigationPage extends StatelessWidget {
   final AppDatabase db;
   final int initialIndex;
 
@@ -57,53 +60,154 @@ class MainNavigationPage extends StatefulWidget {
   });
 
   @override
-  State<MainNavigationPage> createState() => _MainNavigationPageState();
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<TradingViewModel>(
+          create: (context) => TradingViewModel.getInstance(TradingRepositoryImpl(
+            db,
+            companyId: RoleUtils.getUserCompanyId(AuthService.currentUser),
+            isSuperAdmin: RoleUtils.isSuperAdmin(AuthService.currentUser),
+          )),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<ExpenditureViewModel>(
+          create: (context) {
+            final user = AuthService.currentUser;
+            final userId = user?['id']?.toString() ?? user?['userId']?.toString();
+            final companyId = RoleUtils.getUserCompanyId(user);
+            final isSuperAdmin = RoleUtils.isSuperAdmin(user);
+            
+            debugPrint('MainNavigationPage: ExpenditureViewModel created with userId: $userId, companyId: $companyId, isSuperAdmin: $isSuperAdmin');
+            
+            return ExpenditureViewModel(
+              db,
+              companyId: companyId,
+              isSuperAdmin: isSuperAdmin,
+              userId: userId,
+            );
+          },
+          lazy: false,
+        ),
+        ChangeNotifierProvider<InventoryViewModel>(
+          create: (context) => InventoryViewModel(
+            InventoryRepositoryImpl(db, companyId: null, isSuperAdmin: false),
+            SettingsRepositoryImpl(db, companyId: null, isSuperAdmin: false),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<FollowUpViewModel>(
+          create: (context) => FollowUpViewModel(),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<RentalViewModel>(
+          create: (context) => RentalViewModel(
+            repository: RentalRepositoryImpl(db),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<UserViewModel>(
+          create: (context) => UserViewModel(
+            UserRepositoryImpl(db),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<TodoViewModel>(
+          create: (context) => TodoViewModel(
+            repository: TodoRepositoryImpl(db),
+            notificationService: NotificationService(),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<AgentViewModel>(
+          create: (context) => AgentViewModel(
+            AgentRepositoryImpl(
+              db,
+              companyId: null,
+              isSuperAdmin: false,
+            ),
+          ),
+          lazy: false,
+        ),
+      ],
+      child: _MainNavigationPageContent(
+        db: db,
+        initialIndex: initialIndex,
+      ),
+    );
+  }
 }
 
-class _MainNavigationPageState extends State<MainNavigationPage> {
+class _MainNavigationPageContent extends StatefulWidget {
+  final AppDatabase db;
+  final int initialIndex;
+
+  const _MainNavigationPageContent({
+    required this.db,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_MainNavigationPageContent> createState() => _MainNavigationPageContentState();
+}
+
+class _MainNavigationPageContentState extends State<_MainNavigationPageContent> {
   int _selectedIndex = 0;
-  bool _isSidebarOpen = true;
-  Map<String, dynamic>? _currentUser;
+  final ValueNotifier<bool> _isSidebarOpenNotifier = ValueNotifier(true);
   ThemeMode _themeMode = ThemeMode.system;
-  int? _badgeFiles;
-  int? _badgeRentals;
+  final ValueNotifier<int?> _badgeFilesNotifier = ValueNotifier(null);
+  final ValueNotifier<int?> _badgeRentalsNotifier = ValueNotifier(null);
   StreamSubscription<Map<String, dynamic>?>? _userStreamSubscription;
   Timer? _periodicPermissionCheckTimer;
   
+  List<Widget> _pages = [];
+
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
+    _initializePages();
     _loadUserData();
     _loadTheme();
     _loadBadges();
     
-
-   
-    // CRITICAL: Listen to user stream for reactive sidebar updates
     _userStreamSubscription = AuthService.currentUserStream.listen((user) {
-      if (mounted) {
-        // Only log and update when a valid user is detected (prevent redundant null logs)
-        if (user != null && user['email'] != null) {
-          debugPrint('MainNavigationPage: User stream update received - ${user['email']}');
-          setState(() {
-            _currentUser = user;
-          });
-          
-          // CRITICAL: Force permission refresh when user changes to ensure sidebar modules show up
-          _forcePermissionRefreshIfNeeded(user);
-        } else if (user == null && _currentUser != null) {
-          // Log when user is explicitly logged out (but not on initial null)
-          debugPrint('MainNavigationPage: User logged out, clearing current user');
-          setState(() {
-            _currentUser = user;
-          });
-        }
+      if (mounted && user != null && user['email'] != null) {
+        _forcePermissionRefreshIfNeeded(user);
       }
     });
     
-    // CRITICAL: Add periodic check as fallback to ensure permissions are loaded
     _startPeriodicPermissionCheck();
+    
+    // Windows par foreground sync manually trigger karein
+    _triggerForegroundSyncOnWindows();
+  }
+
+  void _initializePages() {
+    final user = AuthService.currentUser;
+    final companyId = RoleUtils.getUserCompanyId(user);
+    final isSuperAdmin = RoleUtils.isSuperAdmin(user);
+    final userId = user?['id']?.toString() ?? user?['userId']?.toString();
+
+    _pages = [
+      DashboardPage(db: widget.db),
+      InventoryPage(db: widget.db),
+      AgentWorkingPage(db: widget.db),
+      RentalItemsPage(db: widget.db),
+      ToDoPage(db: widget.db),
+      SettingsPageClean(db: widget.db),
+      TradingPage(db: widget.db),
+      TradingPage(db: widget.db),
+      ReportsPage(db: widget.db),
+      UsersPage(db: widget.db),
+      ExpenditurePage(
+        db: widget.db,
+        companyId: companyId,
+        isSuperAdmin: isSuperAdmin,
+        userId: userId,
+      ),
+      CompaniesPage(db: widget.db),
+    ];
   }
 
   Future<void> _loadUserData() async {
@@ -112,9 +216,9 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     final token = settings['authToken'] as String?;
     if (token != null) {
       final user = await AuthService.getCurrentUser(token);
-      if (mounted) {
+      if (mounted && user != null) {
         setState(() {
-          _currentUser = user;
+          _initializePages();
         });
       }
     }
@@ -133,17 +237,18 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
 
   @override
   void dispose() {
-    // CRITICAL: Clean up stream subscription and timer to prevent memory leaks
     _userStreamSubscription?.cancel();
     _periodicPermissionCheckTimer?.cancel();
+    _isSidebarOpenNotifier.dispose();
+    _badgeFilesNotifier.dispose();
+    _badgeRentalsNotifier.dispose();
     super.dispose();
   }
 
   /// Start periodic permission check as fallback
   void _startPeriodicPermissionCheck() {
-    // Check permissions every 2 seconds for the first 10 seconds after login
     int checkCount = 0;
-    const maxChecks = 5; // 5 checks over 10 seconds
+    const maxChecks = 5;
     
     _periodicPermissionCheckTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
       checkCount++;
@@ -153,13 +258,13 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         return;
       }
       
-      if (_currentUser != null && !PermissionSyncService.arePermissionsFullyLoaded(_currentUser)) {
+      final currentUser = AuthService.currentUser;
+      if (currentUser != null && !PermissionSyncService.arePermissionsFullyLoaded(currentUser)) {
         debugPrint('MainNavigationPage: Periodic check #$checkCount - Permissions not loaded, forcing refresh...');
-        await _forcePermissionRefreshIfNeeded(_currentUser!);
+        await _forcePermissionRefreshIfNeeded(currentUser);
       }
       
-      // Stop after max checks or when permissions are loaded
-      if (checkCount >= maxChecks || PermissionSyncService.arePermissionsFullyLoaded(_currentUser)) {
+      if (checkCount >= maxChecks || (currentUser != null && PermissionSyncService.arePermissionsFullyLoaded(currentUser))) {
         timer.cancel();
         debugPrint('MainNavigationPage: Periodic permission checks completed');
       }
@@ -168,7 +273,6 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
 
   /// Force permission refresh if permissions are not loaded
   Future<void> _forcePermissionRefreshIfNeeded(Map<String, dynamic> user) async {
-    // Check if permissions are loaded
     if (!PermissionSyncService.arePermissionsFullyLoaded(user)) {
       debugPrint('MainNavigationPage: Permissions not loaded, forcing refresh...');
       
@@ -178,14 +282,12 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         final token = settings['authToken'] as String?;
         
         if (token != null) {
-          // Force refresh permissions
           await PermissionSyncService.refreshUserPermissions(token);
           
-          // Update current user with fresh permissions
           final refreshedUser = await AuthService.getCurrentUser(token);
           if (refreshedUser != null && mounted) {
             setState(() {
-              _currentUser = refreshedUser;
+              _initializePages();
             });
             debugPrint('MainNavigationPage: Permissions refreshed and UI updated');
           }
@@ -197,7 +299,6 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   }
 
   Future<void> _loadBadges() async {
-    // Load badge counts for inventory and rentals
     try {
       final filesCount = await widget.db.customSelect(
         'SELECT COUNT(*) as count FROM files_table WHERE is_active = 1',
@@ -208,10 +309,8 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
       ).getSingle();
       
       if (mounted) {
-        setState(() {
-          _badgeFiles = filesCount.data['count'] as int?;
-          _badgeRentals = rentalsCount.data['count'] as int?;
-        });
+        _badgeFilesNotifier.value = filesCount.data['count'] as int?;
+        _badgeRentalsNotifier.value = rentalsCount.data['count'] as int?;
       }
     } catch (e) {
       // Silent fail for badge loading
@@ -233,9 +332,8 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   }
 
   void _onTradingTap() {
-    // Navigate to trading module
     setState(() {
-      _selectedIndex = 6; // Trading index
+      _selectedIndex = 6;
     });
   }
 
@@ -244,7 +342,6 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     final settings = await storage.readSettings();
     final sessionId = settings['currentSessionId'] as String?;
     
-    // CRITICAL: Use PermissionSyncService for comprehensive logout
     await PermissionSyncService.performLogout(sessionId);
     
     if (mounted) {
@@ -256,9 +353,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   }
 
   void _onToggleSidebar() {
-    setState(() {
-      _isSidebarOpen = !_isSidebarOpen;
-    });
+    _isSidebarOpenNotifier.value = !_isSidebarOpenNotifier.value;
   }
 
   void _onThemeChanged(String mode) {
@@ -268,177 +363,77 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     AdminApp.applyThemeSetting(mode);
   }
 
-  
-  Widget _buildCurrentPage() {
-    switch (_selectedIndex) {
-      case 0:
-        return DashboardPage(db: widget.db);
-      case 1:
-        return InventoryPage(db: widget.db);
-      case 2:
-        return AgentWorkingPage(db: widget.db);
-      case 3:
-        return RentalItemsPage(db: widget.db);
-      case 4:
-        return ToDoPage(db: widget.db);
-      case 5:
-        // PRE-FETCH CHECK: Get user context for SettingsPageClean
-        final user = AuthService.currentUser;
-        final companyId = RoleUtils.getUserCompanyId(user);
-        final isSuperAdmin = RoleUtils.isSuperAdmin(user);
-        debugPrint('MainNavigationPage: PRE-FETCH CHECK - Passing user context to Settings - CompanyId: $companyId, IsSuperAdmin: $isSuperAdmin');
-        return SettingsPageClean(db: widget.db); // Note: SettingsPageClean handles its own user context loading
-      case 6:
-        return TradingPage(db: widget.db);
-      case 7:
-        return TradingPage(db: widget.db); // Trading Form
-      case 8:
-        return ReportsPage(db: widget.db);
-      case 9:
-        return UsersPage(db: widget.db);
-      case 10:
-        // Get user context for ExpenditurePage
-        final user = AuthService.currentUser;
-        final companyId = RoleUtils.getUserCompanyId(user);
-        final isSuperAdmin = RoleUtils.isSuperAdmin(user);
-        final userId = user?['id']?.toString() ?? user?['userId']?.toString();
-        return ExpenditurePage(
-          db: widget.db,
-          companyId: companyId,
-          isSuperAdmin: isSuperAdmin,
-          userId: userId,
-        );
-      case 11:
-        return CompaniesPage(db: widget.db);
-      default:
-        return DashboardPage(db: widget.db);
+  // ✅ NEW METHOD: Windows par sync manually trigger karein
+  Future<void> _triggerForegroundSyncOnWindows() async {
+    final isWindows = !kIsWeb && io.Platform.isWindows;
+    
+    if (!isWindows) return;
+    
+    await Future.delayed(const Duration(seconds: 3));
+    
+    if (!mounted) return;
+    
+    try {
+      debugPrint('🔄 MainNavigationPage: Triggering foreground sync for Windows...');
+      await ForegroundSyncManager.instance.syncNow();
+      debugPrint('✅ MainNavigationPage: Foreground sync triggered successfully');
+    } catch (e) {
+      debugPrint('❌ MainNavigationPage: Foreground sync failed: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider<TradingViewModel>(
-          create: (context) => TradingViewModel.getInstance(TradingRepositoryImpl(
-            widget.db,
-            companyId: RoleUtils.getUserCompanyId(AuthService.currentUser),
-            isSuperAdmin: RoleUtils.isSuperAdmin(AuthService.currentUser),
-          )),
-          lazy: false, // Ensure ViewModel is created immediately and stays alive
-        ),
-        ChangeNotifierProvider<ExpenditureViewModel>(
-          create: (context) {
-            // Get current user for Agent filtering
-            final user = AuthService.currentUser;
-            final userId = user?['id']?.toString() ?? user?['userId']?.toString();
-            final companyId = RoleUtils.getUserCompanyId(user);
-            final isSuperAdmin = RoleUtils.isSuperAdmin(user);
-            
-            debugPrint('MainNavigationPage: ExpenditureViewModel created with userId: $userId, companyId: $companyId, isSuperAdmin: $isSuperAdmin');
-            
-            return ExpenditureViewModel(
-              widget.db,
-              companyId: companyId,
-              isSuperAdmin: isSuperAdmin,
-              userId: userId, // Pass userId for Agent filtering
-            );
-          },
-          lazy: false, // Ensure ViewModel is created immediately and stays alive
-        ),
-        ChangeNotifierProvider<InventoryViewModel>(
-          create: (context) => InventoryViewModel(
-            InventoryRepositoryImpl(widget.db, companyId: null, isSuperAdmin: false),
-            SettingsRepositoryImpl(widget.db, companyId: null, isSuperAdmin: false),
-          ),
-          lazy: false,
-        ),
-        ChangeNotifierProvider<RentalViewModel>(
-          create: (context) => RentalViewModel(
-            repository: RentalRepositoryImpl(widget.db),
-          ),
-          lazy: false,
-        ),
-        ChangeNotifierProvider<UserViewModel>(
-          create: (context) => UserViewModel(
-            UserRepositoryImpl(widget.db),
-          ),
-          lazy: false,
-        ),
-        ChangeNotifierProvider<TodoViewModel>(
-          create: (context) => TodoViewModel(
-            repository: TodoRepositoryImpl(widget.db),
-            notificationService: NotificationService(),
-          ),
-          lazy: false,
-        ),
-        ChangeNotifierProvider<AgentViewModel>(
-          create: (context) => AgentViewModel(
-            AgentRepositoryImpl(
-              widget.db,
-              companyId: null,
-              isSuperAdmin: false,
-            ),
-          ),
-          lazy: false,
-        ),
-        // Add other providers here as needed for different pages
-      ],
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF8F9FA),
-        body: _buildResponsiveLayout(),
-      ),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA),
+      body: _buildResponsiveLayout(),
     );
   }
 
-  /// Build responsive layout with original sidebar
   Widget _buildResponsiveLayout() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Use original sidebar on desktop, drawer on mobile
         final isDesktop = constraints.maxWidth > 768;
         
         if (isDesktop) {
-          // Original desktop layout with custom sidebar
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Original Sidebar
-             // ✅ Original Sidebar - with safe currentUser handling
-ValueListenableBuilder<Map<String, dynamic>?>(
-  valueListenable: AuthService.currentUserNotifier,
-  builder: (context, notifierUser, _) {
-    // ✅ Priority: Use stream-updated _currentUser, fallback to notifier
-    final effectiveUser = _currentUser ?? notifierUser;
-    
-    // ✅ Optional: Loading state if user is null
-    if (effectiveUser == null) {
-      return const SizedBox.shrink();
-    }
-    
-    // ✅ Debug logging (properly scoped inside builder)
-    if (kDebugMode) {
-      final role = effectiveUser['role'];
-      final perms = effectiveUser['permissions'];
-      debugPrint('🔍 MainNav: Sidebar user - role: $role, has permissions: ${perms != null}');
-    }
-    
-    // ✅ ModernSidebar with guaranteed non-null user
-    return ModernSidebar(
-      selectedIndex: _selectedIndex,
-      onDestinationSelected: _onDestinationSelected,
-      onTradingTap: _onTradingTap,
-      onLogout: _onLogout,
-      onToggle: _onToggleSidebar,
-      isOpen: _isSidebarOpen,
-      currentUser: effectiveUser,  // ✅ Single, clean parameter
-      badgeFiles: _badgeFiles,
-      badgeRentals: _badgeRentals,
-    );
-  },
-),
+              // Sidebar
+              ValueListenableBuilder<Map<String, dynamic>?>(
+                valueListenable: AuthService.currentUserNotifier,
+                builder: (context, effectiveUser, _) {
+                  if (effectiveUser == null) return const SizedBox.shrink();
+                  
+                  return ValueListenableBuilder<int?>(
+                    valueListenable: _badgeFilesNotifier,
+                    builder: (context, filesBadge, _) {
+                      return ValueListenableBuilder<int?>(
+                        valueListenable: _badgeRentalsNotifier,
+                        builder: (context, rentalsBadge, _) {
+                          return ValueListenableBuilder<bool>(
+                            valueListenable: _isSidebarOpenNotifier,
+                            builder: (context, isOpen, _) {
+                              return ModernSidebar(
+                                selectedIndex: _selectedIndex,
+                                onDestinationSelected: _onDestinationSelected,
+                                onTradingTap: _onTradingTap,
+                                onLogout: _onLogout,
+                                onToggle: _onToggleSidebar,
+                                isOpen: isOpen,
+                                currentUser: effectiveUser,
+                                badgeFiles: filesBadge,
+                                badgeRentals: rentalsBadge,
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
               
-              // Separation Gap
               const SizedBox(width: 8),
               
               // Main Content Area
@@ -447,271 +442,14 @@ ValueListenableBuilder<Map<String, dynamic>?>(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // Header Bar
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [
-                            const Color(0xFFFF6B35), // Orange on left
-                            const Color(0xFF4A90E2), // Blue on right
-                          ],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(16),
-                          topRight: Radius.circular(16),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          // Spacer for centering
-                          if (!_isSidebarOpen) const SizedBox(width: 16),
-                          
-                          // Branding - Centered (vertically centered)
-                          Expanded(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Real Estate Management System',
-                                    style: AppFonts.poppins(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                      letterSpacing: 0.5,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          
-                          // Dark Mode Toggle - Positioned in top-right corner
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Profile Picture
-                              PlatformAwareImage(
-                                imagePath: _currentUser?['profile_picture_path'],
-                                width: 32,
-                                height: 32,
-                                builder: (context, imageWidget) {
-                                  return CircleAvatar(
-                                    radius: 16,
-                                    backgroundColor: const Color(0xFF805AD5),
-                                    backgroundImage: _currentUser?['profile_picture_path'] != null
-                                        ? null
-                                        : null,
-                                    child: _currentUser?['profile_picture_path'] == null
-                                        ? Text(
-                                            (_currentUser?['name']?.isNotEmpty == true) 
-                                                ? _currentUser!['name'].substring(0, 1).toUpperCase() 
-                                                : 'U',
-                                            style: AppFonts.poppins(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : ClipOval(child: imageWidget),
-                                  );
-                                },
-                                placeholder: CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: const Color(0xFF805AD5),
-                                  child: Text(
-                                    (_currentUser?['name']?.isNotEmpty == true) 
-                                        ? _currentUser!['name'].substring(0, 1).toUpperCase() 
-                                        : 'U',
-                                    style: AppFonts.poppins(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                errorWidget: CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: const Color(0xFF805AD5),
-                                  child: Text(
-                                    (_currentUser?['name']?.isNotEmpty == true) 
-                                        ? _currentUser!['name'].substring(0, 1).toUpperCase() 
-                                        : 'U',
-                                    style: AppFonts.poppins(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Notification Bell
-                              Stack(
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.notifications_outlined,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                    onPressed: () {
-                                      // Handle notifications
-                                    },
-                                    style: IconButton.styleFrom(
-                                      minimumSize: const Size(32, 32),
-                                      padding: EdgeInsets.zero,
-                                    ),
-                                    tooltip: 'Notifications',
-                                  ),
-                                  Positioned(
-                                    top: 6,
-                                    right: 6,
-                                    child: Container(
-                                      width: 6,
-                                      height: 6,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.red,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(width: 8),
-                              // Refresh Permissions Button
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.2),
-                                    width: 1,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.white.withOpacity(0.1),
-                                      blurRadius: 8,
-                                      spreadRadius: 0.5,
-                                    ),
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(18),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                    child: IconButton(
-                                      icon: const Icon(
-                                        Icons.refresh,
-                                        color: Colors.white,
-                                        size: 16,
-                                      ),
-                                      onPressed: () async {
-                                        if (_currentUser != null) {
-                                          await _forcePermissionRefreshIfNeeded(_currentUser!);
-                                          if (mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(
-                                                content: Text('Permissions refreshed successfully'),
-                                                backgroundColor: Colors.green,
-                                                duration: Duration(seconds: 2),
-                                              ),
-                                            );
-                                          }
-                                        }
-                                      },
-                                      style: IconButton.styleFrom(
-                                        minimumSize: const Size(32, 32),
-                                        padding: EdgeInsets.zero,
-                                      ),
-                                      tooltip: 'Refresh Permissions',
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                margin: const EdgeInsets.only(top: 0, right: 0),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.2),
-                                    width: 1,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.white.withOpacity(0.1),
-                                      blurRadius: 8,
-                                      spreadRadius: 0.5,
-                                    ),
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(18),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                    child: IconButton(
-                                      icon: Icon(
-                                        _themeMode == ThemeMode.dark 
-                                          ? Icons.light_mode 
-                                          : Icons.dark_mode,
-                                        color: Colors.white,
-                                        size: 16,
-                                      ),
-                                      onPressed: () async {
-                                        final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
-                                        final s = await AppStorage().readSettings();
-                                        s['theme'] = newMode;
-                                        await AppStorage().writeSettings(s);
-                                        _onThemeChanged(newMode);
-                                      },
-                                      style: IconButton.styleFrom(
-                                        minimumSize: const Size(32, 32),
-                                        padding: EdgeInsets.zero,
-                                      ),
-                                      tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
+                    _buildHeaderBar(),
                     
-                    // 12px vertical gap separator
                     const SizedBox(height: 12),
                     
-                    // Page Content - Fixed layout constraints
                     Expanded(
-                      child: Container(
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              const Color(0xFFF8F9FA),
-                              const Color(0xFFF1F3F4),
-                            ],
-                          ),
-                        ),
-                        child: _buildCurrentPage(),
+                      child: IndexedStack(
+                        index: _selectedIndex,
+                        children: _pages,
                       ),
                     ),
                   ],
@@ -720,17 +458,12 @@ ValueListenableBuilder<Map<String, dynamic>?>(
             ],
           );
         } else {
-          // Mobile layout with drawer
+          // Mobile layout
           return Scaffold(
             body: _buildMobileContent(),
             drawer: _buildMobileDrawer(),
             appBar: AppBar(
-              title: Text(
-                _getNavigationTitle(),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              title: Text(_getNavigationTitle()),
               backgroundColor: const Color(0xFFFF6B35),
               foregroundColor: Colors.white,
               elevation: 0,
@@ -741,136 +474,324 @@ ValueListenableBuilder<Map<String, dynamic>?>(
     );
   }
 
-  /// Build mobile drawer with same styling as sidebar
-  Widget _buildMobileDrawer() {
-    return Drawer(
-      backgroundColor: const Color(0xFF2C3E50),
-      child: Column(
+  Widget _buildHeaderBar() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+        ),
+      ),
+      child: Row(
         children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF4A90E2).withOpacity(0.8),
-                  Color(0xFF2C3E50).withOpacity(0.95),
-                ],
-              ),
-            ),
-            child: SafeArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 24,
-                        backgroundColor: Colors.white.withOpacity(0.2),
-                        backgroundImage: _currentUser?['profile_picture_path'] != null
-                            ? null
-                            : null,
-                        child: _currentUser?['profile_picture_path'] == null
-                            ? Text(
-                                (_currentUser?['name']?.isNotEmpty == true)
-                                    ? _currentUser!['name'].substring(0, 1).toUpperCase()
-                                    : 'U',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _currentUser?['name'] ?? 'User',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              _currentUser?['email'] ?? 'user@example.com',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.8),
-                                fontSize: 12,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'EasyRealtorsPro',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _isSidebarOpenNotifier,
+            builder: (context, isOpen, _) {
+              return !isOpen ? const SizedBox(width: 16) : const SizedBox.shrink();
+            },
           ),
           
-          // Navigation Items (simplified version of sidebar)
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildMobileDrawerItem('Dashboard', Icons.dashboard, 0),
-                _buildMobileDrawerItem('Inventory', Icons.insert_drive_file, 1, badge: _badgeFiles),
-                _buildMobileDrawerItem('Agent Working', Icons.support_agent, 2),
-                _buildMobileDrawerItem('Rental Items', Icons.chair, 3, badge: _badgeRentals),
-                _buildMobileDrawerItem('To-Do', Icons.checklist, 4),
-                _buildMobileDrawerItem('Expenditure', Icons.payments, 10),
-                if (_currentUser != null && _currentUser!['role'] == 'super_admin')
-                  _buildMobileDrawerItem('User Management', Icons.people, 9),
-                if (_currentUser != null && _currentUser!['role'] == 'super_admin')
-                  _buildMobileDrawerItem('Company Management', Icons.business, 11),
-                _buildMobileDrawerItem('Reports', Icons.bar_chart, 8),
-                _buildMobileDrawerItem('Settings', Icons.settings, 5),
+                Expanded(
+                  child: Text(
+                    'Real Estate Management System',
+                    style: AppFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
               ],
             ),
           ),
           
-          // Logout
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: ListTile(
-              leading: const Icon(
-                Icons.logout,
-                color: Colors.red,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Profile Picture
+              ValueListenableBuilder<Map<String, dynamic>?>(
+                valueListenable: AuthService.currentUserNotifier,
+                builder: (context, user, _) {
+                  return CircleAvatar(
+                    radius: 16,
+                    backgroundColor: const Color(0xFF805AD5),
+                    child: Text(
+                      (user?['name']?.isNotEmpty == true) 
+                          ? user!['name'].substring(0, 1).toUpperCase() 
+                          : 'U',
+                      style: AppFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  );
+                },
               ),
-              title: const Text(
-                'Logout',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
+              const SizedBox(width: 8),
+              
+              // Notification Bell
+              Consumer<TodoViewModel>(
+                builder: (context, todoVM, child) {
+                  final hasUnread = todoVM.unreadReminders.isNotEmpty;
+                  return Stack(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 20),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ChangeNotifierProvider.value(
+                                value: todoVM,
+                                child: const NotificationsPage(),
+                              ),
+                            ),
+                          );
+                        },
+                        style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
+                        tooltip: 'Notifications',
+                      ),
+                      if (hasUnread)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+              
+              // Refresh Permissions Button
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.white, size: 16),
+                  onPressed: () async {
+                    final currentUser = AuthService.currentUser;
+                    if (currentUser != null) {
+                      await _forcePermissionRefreshIfNeeded(currentUser);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Permissions refreshed successfully'),
+                            backgroundColor: Colors.green,
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
+                  tooltip: 'Refresh Permissions',
                 ),
               ),
-              onTap: _onLogout,
-            ),
+              const SizedBox(width: 8),
+              
+              // Theme Toggle
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: IconButton(
+                  icon: Icon(
+                    _themeMode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  onPressed: () async {
+                    final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
+                    final s = await AppStorage().readSettings();
+                    s['theme'] = newMode;
+                    await AppStorage().writeSettings(s);
+                    _onThemeChanged(newMode);
+                  },
+                  style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
+                  tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  /// Build mobile drawer item
+  Widget _buildMobileDrawer() {
+    return Drawer(
+      backgroundColor: const Color(0xFF2C3E50),
+      child: ValueListenableBuilder<Map<String, dynamic>?>(
+        valueListenable: AuthService.currentUserNotifier,
+        builder: (context, currentUser, _) {
+          return Column(
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF4A90E2).withOpacity(0.8),
+                      const Color(0xFF2C3E50).withOpacity(0.95),
+                    ],
+                  ),
+                ),
+                child: SafeArea(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundColor: Colors.white.withOpacity(0.2),
+                            child: currentUser?['profile_picture_path'] == null
+                                ? Text(
+                                    (currentUser?['name']?.isNotEmpty == true)
+                                        ? currentUser!['name'].substring(0, 1).toUpperCase()
+                                        : 'U',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  )
+                                : ClipOval(
+                                    child: PlatformAwareImage(
+                                      imagePath: currentUser?['profile_picture_path'],
+                                      width: 48,
+                                      height: 48,
+                                    ),
+                                  ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  currentUser?['name'] ?? 'User',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  currentUser?['email'] ?? 'user@example.com',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 12,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'EasyRealtorsPro',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Navigation Items (simplified version of sidebar)
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  children: [
+                    _buildMobileDrawerItem('Dashboard', Icons.dashboard, 0),
+                    ValueListenableBuilder<int?>(
+                      valueListenable: _badgeFilesNotifier,
+                      builder: (context, badgeVal, _) =>
+                          _buildMobileDrawerItem('Inventory', Icons.insert_drive_file, 1, badge: badgeVal),
+                    ),
+                    _buildMobileDrawerItem('Agent Working', Icons.support_agent, 2),
+                    ValueListenableBuilder<int?>(
+                      valueListenable: _badgeRentalsNotifier,
+                      builder: (context, badgeVal, _) =>
+                          _buildMobileDrawerItem('Rental Items', Icons.chair, 3, badge: badgeVal),
+                    ),
+                    _buildMobileDrawerItem('To-Do', Icons.checklist, 4),
+                    _buildMobileDrawerItem('Expenditure', Icons.payments, 10),
+                    if (currentUser != null && currentUser['role'] == 'super_admin')
+                      _buildMobileDrawerItem('User Management', Icons.people, 9),
+                    if (currentUser != null && currentUser['role'] == 'super_admin')
+                      _buildMobileDrawerItem('Company Management', Icons.business, 11),
+                    _buildMobileDrawerItem('Reports', Icons.bar_chart, 8),
+                    _buildMobileDrawerItem('Settings', Icons.settings, 5),
+                  ],
+                ),
+              ),
+              
+              // Logout
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.logout,
+                    color: Colors.red,
+                  ),
+                  title: const Text(
+                    'Logout',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  onTap: _onLogout,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildMobileDrawerItem(String title, IconData icon, int index, {int? badge}) {
     final isSelected = _selectedIndex == index;
     
@@ -912,36 +833,31 @@ ValueListenableBuilder<Map<String, dynamic>?>(
     );
   }
 
-  /// Build mobile content (same as desktop content)
   Widget _buildMobileContent() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Header Bar (hidden on mobile since we have AppBar)
         const SizedBox(height: 0),
-        
-        // Page Content
         Expanded(
           child: Container(
             width: double.infinity,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  const Color(0xFFF8F9FA),
-                  const Color(0xFFF1F3F4),
-                ],
+                colors: [Color(0xFFF8F9FA), Color(0xFFF1F3F4)],
               ),
             ),
-            child: _buildCurrentPage(),
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: _pages,
+            ),
           ),
         ),
       ],
     );
   }
 
-  /// Get navigation title for mobile app bar
   String _getNavigationTitle() {
     switch (_selectedIndex) {
       case 0: return 'Dashboard';

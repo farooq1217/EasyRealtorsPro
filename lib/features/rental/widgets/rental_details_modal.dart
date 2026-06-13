@@ -5,7 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import '../../../../../core/font_utils.dart';
 import '../../../../../core/services/app_storage.dart' show AppStorage;
-import '../../../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../../../core/services/standardized_pdf_service.dart';
 import 'rental_receipt_generator.dart' show RentalReceiptGenerator;
 

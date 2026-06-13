@@ -16,6 +16,9 @@ abstract class TodoRepository {
   /// Update an existing reminder
   Future<void> updateReminder(Reminder reminder);
   
+  /// Mark a reminder as read
+  Future<void> markAsRead(int reminderId);
+
   /// Delete a reminder
   Future<void> deleteReminder(int reminderId);
   

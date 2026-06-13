@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:drift/drift.dart' as d;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/utils/logger.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/role_utils.dart' as local;

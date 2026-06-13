@@ -34,14 +34,13 @@ import '../../../core/services/firestore_cache_service.dart';
 import '../../../widgets/image_upload_widget.dart' show ImageUploadWidget;
 import '../../../widgets/primary_gradient_button.dart';
 import '../../../shimmer_widgets.dart';
-import '../../../responsive_widgets.dart';
 import '../../../core/app_utils.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:drive_client/drive_client.dart';
 import 'package:drive_client/retention.dart';
 import 'package:http/http.dart' as http;
 import 'package:system_tray/system_tray.dart' if (dart.library.html) '../../../platform_stubs/system_tray_stub.dart' hide AppWindow;
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../login_page.dart';
 import '../../../features/rental/view_models/rental_view_model.dart';
 import '../../../features/rental/repositories/rental_repository.dart';
@@ -96,7 +95,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
   // Property type state is now managed by RentalViewModel
 
   // SQLite-only flag
-  static const bool _sqliteOnlyMode = true;
+  static const bool _sqliteOnlyMode = false;
   
   // Pagination state
   int _currentPage = 1;

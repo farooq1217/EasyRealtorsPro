@@ -19,7 +19,7 @@ import 'package:shared/shared.dart';
 import 'core/role_utils.dart' as local;
 import 'package:drift/drift.dart' as d;
 
-import 'core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import 'features/users/models/user_model.dart';
 import 'features/expenditure/models/expenditure_item.dart';
 import 'image_cache_service.dart';

@@ -17,8 +17,9 @@ import '../view_models/expenditure_view_model.dart';
 import '../helpers/grouped_expense_logic.dart';
 import '../widgets/category_detail_sheet.dart';
 import '../widgets/category_selection_grid.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/app_storage.dart';
+import '../../../core/utils/logger.dart';
 
 class ExpenditurePage extends StatefulWidget {
   final AppDatabase db;
@@ -179,7 +180,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
               // Expenditure Module Content
               Expanded(
                 child: Scaffold(
-                  backgroundColor: Colors.grey.shade50,
+                  backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                   appBar: AppBar(
                     automaticallyImplyLeading: false,
                     centerTitle: true,
@@ -234,129 +235,127 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                       ),
                     ],
                   ),
-                  body: SingleChildScrollView(
-                    child: Container(
-                      constraints: BoxConstraints(
-                        minHeight: MediaQuery.of(context).size.height - 200, // Ensure minimum height for proper layout
+                  body: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          const Color(0xFFFF6B35).withOpacity(0.03),
+                          const Color(0xFF4A90E2).withOpacity(0.03),
+                        ],
                       ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            const Color(0xFFFF6B35).withOpacity(0.03),
-                            const Color(0xFF4A90E2).withOpacity(0.03),
-                          ],
-                        ),
-                        border: Border.all(
-                          color: Colors.grey.shade300.withOpacity(0.5),
-                          width: 1,
-                        ),
+                      border: Border.all(
+                        color: Colors.grey.shade300.withOpacity(0.5),
+                        width: 1,
                       ),
-                      child: Column(
-                        children: [
-                          // Tab Content using ViewModel state with proper height
-                          SizedBox(
-                            height: MediaQuery.of(context).size.height - 250, // Fixed height to prevent overflow
-                            child: TabBarView(
-                              controller: _tabController,
-                              children: [
-                                // Office Expenses Tab with Selector for better performance
-                                Selector<ExpenditureViewModel, List<domain.ExpenditureItem>>(
-                                  selector: (context, viewModel) => viewModel.filteredOfficeExpenses,
-                                  builder: (context, officeExpenses, child) {
-                                    return SingleChildScrollView(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          // Category Grid for Office Expense Tab
-                                          CategorySelectionGrid(
-                                            onCategorySelected: (category) => _showInstantExpenseDialog(context, viewModel, category),
-                                            enabled: viewModel.canAdd,
-                                          ),
-                                          const SizedBox(height: 16),
-                                          
-                                          // Expense List
-                                          _buildListView(context, officeExpenses, "Office"),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                                // Project Expenses Tab using Selector for better performance
-                                Selector<ExpenditureViewModel, List<domain.ExpenditureItem>>(
-                                  selector: (context, viewModel) => viewModel.filteredProjectExpenses,
-                                  builder: (context, projectExpenses, child) {
-                                    return SingleChildScrollView(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          // Add Project Button with Gradient Theme
-                                          if (viewModel.canAdd)
-                                            Container(
-                                              width: double.infinity,
-                                              margin: const EdgeInsets.only(bottom: 16),
-                                              decoration: BoxDecoration(
-                                                gradient: LinearGradient(
-                                                  colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
-                                                  begin: Alignment.topLeft,
-                                                  end: Alignment.bottomRight,
+                    ),
+                    child: Column(
+                      children: [
+                        // Tab Content using ViewModel state
+                        Expanded(
+                          child: TabBarView(
+                            controller: _tabController,
+                            children: [
+                              // Office Expenses Tab with Selector for better performance
+                              Selector<ExpenditureViewModel, List<domain.ExpenditureItem>>(
+                                selector: (context, viewModel) => viewModel.filteredOfficeExpenses,
+                                builder: (context, officeExpenses, child) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Category Grid for Office Expense Tab
+                                        CategorySelectionGrid(
+                                          onCategorySelected: (category) => _showInstantExpenseDialog(context, viewModel, category),
+                                          enabled: viewModel.canAdd,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        
+                                        // Expense List
+                                        Expanded(
+                                          child: _buildListView(context, officeExpenses, "Office"),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                              // Project Expenses Tab using Selector for better performance
+                              Selector<ExpenditureViewModel, List<domain.ExpenditureItem>>(
+                                selector: (context, viewModel) => viewModel.filteredProjectExpenses,
+                                builder: (context, projectExpenses, child) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Add Project Button with Gradient Theme
+                                        if (viewModel.canAdd)
+                                          Container(
+                                            width: double.infinity,
+                                            margin: const EdgeInsets.only(bottom: 8),
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                              ),
+                                              borderRadius: BorderRadius.circular(12),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black.withOpacity(0.1),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 4),
                                                 ),
-                                                borderRadius: BorderRadius.circular(12),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black.withOpacity(0.1),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 4),
+                                              ],
+                                            ),
+                                            child: ElevatedButton(
+                                              onPressed: () => _showProjectExpenseDialog(context, viewModel, 'General'),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.transparent,
+                                                shadowColor: Colors.transparent,
+                                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    Icons.add_circle_outline,
+                                                    color: Colors.white,
+                                                    size: 20,
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    'Add Project Expense',
+                                                    style: AppFonts.poppins(
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Colors.white,
+                                                    ),
                                                   ),
                                                 ],
                                               ),
-                                              child: ElevatedButton(
-                                                onPressed: () => _showProjectExpenseDialog(context, viewModel, 'General'),
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: Colors.transparent,
-                                                  shadowColor: Colors.transparent,
-                                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(12),
-                                                  ),
-                                                ),
-                                                child: Row(
-                                                  mainAxisAlignment: MainAxisAlignment.center,
-                                                  children: [
-                                                    Icon(
-                                                      Icons.add_circle_outline,
-                                                      color: Colors.white,
-                                                      size: 20,
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Text(
-                                                      'Add Project Expense',
-                                                      style: AppFonts.poppins(
-                                                        fontSize: 16,
-                                                        fontWeight: FontWeight.w600,
-                                                        color: Colors.white,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
                                             ),
-                                          
-                                          // Expense List
-                                          _buildListView(context, projectExpenses, "Project"),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
+                                          ),
+                                        
+                                        // Expense List
+                                        Expanded(
+                                          child: _buildListView(context, projectExpenses, "Project"),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                   // Removed FloatingActionButton - using Category Grid instead
@@ -385,7 +384,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
       style: AppFonts.poppins(
         fontSize: 16,
         fontWeight: FontWeight.bold,
-        color: Colors.black87,
+        color: Theme.of(context).textTheme.titleMedium?.color ?? Colors.black87,
       ),
     );
   }
@@ -400,7 +399,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
             item.description,
             style: AppFonts.poppins(
               fontSize: 13,
-              color: Colors.grey.shade700,
+              color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
               fontStyle: FontStyle.italic,
             ),
             maxLines: 2,
@@ -416,38 +415,40 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
   Widget _buildListView(BuildContext context, List<domain.ExpenditureItem> list, String type) {
     if (list.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              type == "Office" ? Icons.business_center : Icons.assignment,
-              size: 64,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              "No $type Records Found",
-              style: AppFonts.poppins(
-                fontSize: 16,
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w500,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                type == "Office" ? Icons.business_center : Icons.assignment,
+                size: 64,
+                color: Colors.grey.shade400,
               ),
-            ),
-            Consumer<ExpenditureViewModel>(
-              builder: (context, viewModel, child) {
-                if (viewModel.canAdd) {
-                  return Text(
-                    "Tap the + button to add your first expense",
-                    style: AppFonts.poppins(
-                      fontSize: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          ],
+              const SizedBox(height: 16),
+              Text(
+                "No $type Records Found",
+                style: AppFonts.poppins(
+                  fontSize: 16,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Consumer<ExpenditureViewModel>(
+                builder: (context, viewModel, child) {
+                  if (viewModel.canAdd) {
+                    return Text(
+                      "Tap the + button to add your first expense",
+                      style: AppFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.grey.shade500,
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -474,8 +475,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
       children: [
         // Total Amount Summary Card
         Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [const Color(0xFFFF6B35), const Color(0xFF4A90E2)],
@@ -516,126 +517,127 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
           ),
         ),
         // Expense List
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          itemCount: list.length,
-          itemBuilder: (context, i) {
-              final item = list[i];
-              
-              return InkWell(
-                onLongPress: () => _handleDelete(context, item),
-                onTap: () => _navigateToDetails(context, item),
-                child: Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            if (item.category != null && item.category!.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: type == "Office" ? Colors.orange.shade100 : Colors.blue.shade100,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  item.category!,
-                                  style: AppFonts.poppins(
-                                    fontSize: 12,
-                                    color: type == "Office" ? Colors.orange.shade700 : Colors.blue.shade700,
-                                    fontWeight: FontWeight.w600,
+        Expanded(
+          child: ListView.builder(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: list.length,
+            itemBuilder: (context, i) {
+                final item = list[i];
+                
+                return InkWell(
+                  onLongPress: () => _handleDelete(context, item),
+                  onTap: () => _navigateToDetails(context, item),
+                  child: Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              if (item.category != null && item.category!.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: type == "Office" ? Colors.orange.shade100 : Colors.blue.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    item.category!,
+                                    style: AppFonts.poppins(
+                                      fontSize: 12,
+                                      color: type == "Office" ? Colors.orange.shade700 : Colors.blue.shade700,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            const Spacer(),
-                            // Show Grand Total for Projects, Regular Amount for Office
-                            type == "Project" 
-                              ? FutureBuilder<double>(
-                                  future: _viewModel?.getProjectGrandTotal(item.id) ?? Future.value(0.0),
-                                  builder: (context, snapshot) {
-                                    if (snapshot.hasData) {
-                                      return Text(
-                                        f.format(snapshot.data!),
-                                        style: AppFonts.poppins(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 18,
-                                          color: Colors.red.shade600,
-                                        ),
-                                      );
-                                    } else if (snapshot.hasError) {
-                                      return Text(
-                                        f.format(item.amount), // Fallback to bucket amount
-                                        style: AppFonts.poppins(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 18,
-                                          color: Colors.red.shade600,
-                                        ),
-                                      );
-                                    } else {
-                                      return Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade600),
-                                            ),
+                              const Spacer(),
+                              // Show Grand Total for Projects, Regular Amount for Office
+                              type == "Project" 
+                                ? FutureBuilder<double>(
+                                    future: _viewModel?.getProjectGrandTotal(item.id) ?? Future.value(0.0),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.hasData) {
+                                        return Text(
+                                          f.format(snapshot.data!),
+                                          style: AppFonts.poppins(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                            color: Colors.red.shade600,
                                           ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            'Loading...',
-                                            style: AppFonts.poppins(
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 14,
-                                              color: Colors.grey.shade600,
-                                            ),
+                                        );
+                                      } else if (snapshot.hasError) {
+                                        return Text(
+                                          f.format(item.amount), // Fallback to bucket amount
+                                          style: AppFonts.poppins(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                            color: Colors.red.shade600,
                                           ),
-                                        ],
-                                      );
-                                    }
-                                  },
-                                )
-                              : Text(
-                                  f.format(item.amount),
-                                  style: AppFonts.poppins(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    color: Colors.red.shade600,
+                                        );
+                                      } else {
+                                        return Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade600),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              'Loading...',
+                                              style: AppFonts.poppins(
+                                                fontWeight: FontWeight.w500,
+                                                fontSize: 14,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      }
+                                    },
+                                  )
+                                : Text(
+                                    f.format(item.amount),
+                                    style: AppFonts.poppins(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      color: Colors.red.shade600,
+                                    ),
                                   ),
-                                ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // CRITICAL: Category Name as main title with enhanced styling
-                        _buildCategoryTitle(item, type),
-                        const SizedBox(height: 4),
-                        // Show description if it exists and is different from category
-                        _buildDescriptionWidget(item),
-                        Text(
-                          item.date,
-                          style: AppFonts.poppins(
-                            fontSize: 14,
-                            color: Colors.grey.shade600,
+                            ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          // CRITICAL: Category Name as main title with enhanced styling
+                          _buildCategoryTitle(item, type),
+                          const SizedBox(height: 4),
+                          // Show description if it exists and is different from category
+                          _buildDescriptionWidget(item),
+                          Text(
+                            item.date,
+                            style: AppFonts.poppins(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
+        ),
       ],
     );
   }
@@ -710,7 +712,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
         'date': DateFormat('yyyy-MM-dd').format(_selectedDate!),
         'categoryType': _currentFormType == 'office' ? 'office_expense' : 'project_expense',
       };
-      print("Expenditure Save Attempt: $expenseData");
+      Logger.debug("Expenditure Save Attempt: $expenseData");
       
       // Use ViewModel's saveExpenseWithCategory method with validated data
       final success = await viewModel.saveExpenseWithCategory(
@@ -775,7 +777,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
         'date': DateFormat('yyyy-MM-dd').format(_selectedDate!),
         'categoryType': _currentFormType == 'office' ? 'office_expense' : 'project_expense',
       };
-      print("Expenditure Save Attempt: $expenseData");
+      Logger.debug("Expenditure Save Attempt: $expenseData");
       
       // Use ViewModel's saveExpenseWithCategory method with validated data
       final success = await viewModel.saveExpenseWithCategory(
@@ -1055,7 +1057,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                             style: AppFonts.poppins(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: Colors.grey.shade700,
+                              color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -1066,7 +1068,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               decoration: BoxDecoration(
                                 border: Border.all(color: Colors.grey.shade300),
                                 borderRadius: BorderRadius.circular(12),
-                                color: Colors.grey.shade50,
+                                color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                               ),
                               child: Row(
                                 children: [
@@ -1079,7 +1081,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                           : 'Select Date',
                                       style: AppFonts.poppins(
                                         color: _selectedDate != null
-                                            ? Colors.black87
+                                            ? (Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87)
                                             : Colors.grey.shade500,
                                         fontWeight: FontWeight.w500,
                                       ),
@@ -1137,7 +1139,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               style: AppFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -1154,7 +1156,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                   borderSide: const BorderSide(color: Color(0xFFFF6B35)),
                                 ),
                                 filled: true,
-                                fillColor: Colors.grey.shade50,
+                                fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                               ),
                               style: AppFonts.poppins(fontWeight: FontWeight.w500),
                             ),
@@ -1168,7 +1170,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                             style: AppFonts.poppins(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: Colors.grey.shade700,
+                              color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -1187,7 +1189,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                 borderSide: const BorderSide(color: Color(0xFFFF6B35)),
                               ),
                               filled: true,
-                              fillColor: Colors.grey.shade50,
+                              fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                             ),
                           ),
                           const SizedBox(height: 24),
@@ -1200,7 +1202,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
+                      color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                       borderRadius: const BorderRadius.only(
                         bottomLeft: Radius.circular(16),
                         bottomRight: Radius.circular(16),
@@ -1221,7 +1223,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                             child: Text(
                               "Cancel",
                               style: AppFonts.poppins(
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.grey.shade700,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -1400,7 +1402,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                         style: AppFonts.poppins(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700,
+                          color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -1417,7 +1419,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                             borderSide: const BorderSide(color: Color(0xFFFF6B35)),
                           ),
                           filled: true,
-                          fillColor: Colors.grey.shade50,
+                          fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                         ),
                         style: AppFonts.poppins(fontWeight: FontWeight.w500),
                       ),
@@ -1457,7 +1459,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                   borderRadius: const BorderRadius.only(
                     bottomLeft: Radius.circular(16),
                     bottomRight: Radius.circular(16),
@@ -1478,7 +1480,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                           'Cancel',
                           style: AppFonts.poppins(
                             fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade600,
+                            color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.grey.shade600,
                           ),
                         ),
                       ),
@@ -1656,7 +1658,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               style: AppFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -1666,7 +1668,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               decoration: InputDecoration(
                                 prefixText: 'Rs ',
                                 prefixStyle: AppFonts.poppins(
-                                  color: Colors.grey.shade600,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6) ?? Colors.grey.shade600,
                                   fontWeight: FontWeight.w500,
                                 ),
                                 hintText: '0.00',
@@ -1679,6 +1681,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                   borderSide: BorderSide(color: Colors.orange.shade400),
                                 ),
                                 contentPadding: const EdgeInsets.all(16),
+                                filled: true,
+                                fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -1689,7 +1693,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               style: AppFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -1706,6 +1710,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                   borderSide: BorderSide(color: Colors.orange.shade400),
                                 ),
                                 contentPadding: const EdgeInsets.all(16),
+                                filled: true,
+                                fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -1716,7 +1722,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               style: AppFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -1727,7 +1733,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                 decoration: BoxDecoration(
                                   border: Border.all(color: Colors.grey.shade300),
                                   borderRadius: BorderRadius.circular(12),
-                                  color: Colors.grey.shade50,
+                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                                 ),
                                 child: Row(
                                   children: [
@@ -1740,8 +1746,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                             : 'Select date',
                                         style: AppFonts.poppins(
                                           color: _selectedDate != null 
-                                              ? Colors.black87 
-                                              : Colors.grey.shade600,
+                                              ? (Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87)
+                                              : (Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6) ?? Colors.grey.shade600),
                                         ),
                                       ),
                                     ),
@@ -1758,7 +1764,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               style: AppFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -1779,7 +1785,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                 decoration: BoxDecoration(
                                   border: Border.all(color: Colors.grey.shade300),
                                   borderRadius: BorderRadius.circular(12),
-                                  color: Colors.grey.shade50,
+                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                                 ),
                                 child: Row(
                                   children: [
@@ -1789,7 +1795,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                       child: Text(
                                         _selectedTime.format(context),
                                         style: AppFonts.poppins(
-                                          color: Colors.black87,
+                                          color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87,
                                         ),
                                       ),
                                     ),
@@ -1807,7 +1813,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
+                        color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                         borderRadius: const BorderRadius.only(
                           bottomLeft: Radius.circular(16),
                           bottomRight: Radius.circular(16),
@@ -1828,7 +1834,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                 'Cancel',
                                 style: AppFonts.poppins(
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade600,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.grey.shade600,
                                 ),
                               ),
                             ),
@@ -1969,7 +1975,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               style: AppFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -1986,6 +1992,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                   borderSide: BorderSide(color: Colors.blue.shade400),
                                 ),
                                 contentPadding: const EdgeInsets.all(16),
+                                filled: true,
+                                fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -1996,7 +2004,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               style: AppFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -2006,7 +2014,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               decoration: InputDecoration(
                                 prefixText: 'Rs ',
                                 prefixStyle: AppFonts.poppins(
-                                  color: Colors.grey.shade600,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6) ?? Colors.grey.shade600,
                                   fontWeight: FontWeight.w500,
                                 ),
                                 hintText: '0.00',
@@ -2019,6 +2027,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                   borderSide: BorderSide(color: Colors.blue.shade400),
                                 ),
                                 contentPadding: const EdgeInsets.all(16),
+                                filled: true,
+                                fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -2029,7 +2039,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               style: AppFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -2046,6 +2056,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                   borderSide: BorderSide(color: Colors.blue.shade400),
                                 ),
                                 contentPadding: const EdgeInsets.all(16),
+                                filled: true,
+                                fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -2056,7 +2068,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               style: AppFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -2067,7 +2079,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                 decoration: BoxDecoration(
                                   border: Border.all(color: Colors.grey.shade300),
                                   borderRadius: BorderRadius.circular(12),
-                                  color: Colors.grey.shade50,
+                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                                 ),
                                 child: Row(
                                   children: [
@@ -2080,8 +2092,8 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                             : 'Select date',
                                         style: AppFonts.poppins(
                                           color: _selectedDate != null 
-                                              ? Colors.black87 
-                                              : Colors.grey.shade600,
+                                              ? (Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87)
+                                              : (Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6) ?? Colors.grey.shade600),
                                         ),
                                       ),
                                     ),
@@ -2098,7 +2110,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                               style: AppFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
+                                color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -2119,7 +2131,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                 decoration: BoxDecoration(
                                   border: Border.all(color: Colors.grey.shade300),
                                   borderRadius: BorderRadius.circular(12),
-                                  color: Colors.grey.shade50,
+                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                                 ),
                                 child: Row(
                                   children: [
@@ -2129,7 +2141,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                       child: Text(
                                         _selectedTime.format(context),
                                         style: AppFonts.poppins(
-                                          color: Colors.black87,
+                                          color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87,
                                         ),
                                       ),
                                     ),
@@ -2147,7 +2159,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
+                        color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                         borderRadius: const BorderRadius.only(
                           bottomLeft: Radius.circular(16),
                           bottomRight: Radius.circular(16),
@@ -2168,7 +2180,7 @@ class _ExpenditurePageState extends State<ExpenditurePage> with AutomaticKeepAli
                                 'Cancel',
                                 style: AppFonts.poppins(
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade600,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.grey.shade600,
                                 ),
                               ),
                             ),
@@ -2564,7 +2576,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                 style: AppFonts.poppins(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade700,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -2814,7 +2826,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                               style: AppFonts.poppins(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.black87,
+                                color: Theme.of(context).textTheme.titleMedium?.color ?? Colors.black87,
                               ),
                             ),
                           ),
@@ -2839,7 +2851,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                 style: AppFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade700,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -2856,7 +2868,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                     borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
                                   ),
                                   filled: true,
-                                  fillColor: Colors.grey.shade50,
+                                  fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                                 ),
                               ),
@@ -2869,7 +2881,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                 style: AppFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade700,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -2886,7 +2898,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                     borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
                                   ),
                                   filled: true,
-                                  fillColor: Colors.grey.shade50,
+                                  fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                                 ),
                                 keyboardType: TextInputType.number,
@@ -2900,7 +2912,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                 style: AppFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade700,
+                                  color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -2917,7 +2929,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                     borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
                                   ),
                                   filled: true,
-                                  fillColor: Colors.grey.shade50,
+                                  fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                                 ),
                                 items: categoryItems.map((String category) {
@@ -2949,7 +2961,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                   style: AppFonts.poppins(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.grey.shade700,
+                                    color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7) ?? Colors.grey.shade700,
                                   ),
                                 ),
                                 const SizedBox(height: 12),
@@ -2966,7 +2978,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                       borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
                                     ),
                                     filled: true,
-                                    fillColor: Colors.grey.shade50,
+                                    fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                                   ),
                                 ),
@@ -2994,7 +3006,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                               'Cancel',
                               style: AppFonts.poppins(
                                 fontWeight: FontWeight.w500,
-                                color: Colors.grey.shade600,
+                                color: Theme.of(context).textTheme.bodyMedium?.color ?? Colors.grey.shade600,
                               ),
                             ),
                           ),
@@ -3217,7 +3229,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                 style: AppFonts.poppins(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.black87,
+                                  color: Theme.of(context).textTheme.titleMedium?.color ?? Colors.black87,
                                 ),
                               ),
                               const SizedBox(height: 4),

@@ -1,0 +1,527 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:ui';
+import 'package:provider/provider.dart';
+import 'dart:async';
+import '../../../widgets/custom_sidebar.dart';
+import '../../../widgets/platform_aware_image.dart';
+import '../../../widgets/adaptive_dialog.dart';
+import '../../../core/font_utils.dart';
+import '../../../core/services/app_storage.dart' show AppStorage;
+import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
+import '../../../core/services/permission_helper.dart';
+import '../../../core/role_utils.dart';
+import '../../../core/services/permission_sync_service.dart';
+import '../../../core/app.dart' show AdminApp;
+import '../dashboard/dashboard_page.dart';
+import '../inventory/pages/inventory_page.dart';
+import '../agent_working/pages/agent_working_page.dart';
+import '../agents/view_models/agent_view_model.dart';
+import '../agents/repositories/agent_repository_impl.dart';
+import '../rental/pages/rental_page.dart' show RentalItemsPage;
+import '../todo/pages/todo_page.dart' show ToDoPage;
+import '../todo/pages/notifications_page.dart' show NotificationsPage;
+import '../settings/pages/settings_page.dart' show SettingsPageClean;
+import '../trading/pages/trading_page.dart';
+import '../trading/view_models/trading_view_model.dart';
+import '../trading/repositories/trading_repository_impl.dart';
+import '../expenditure/view_models/expenditure_view_model.dart';
+import '../expenditure/repositories/expenditure_repository_impl.dart';
+import '../inventory/view_models/inventory_view_model.dart';
+import '../inventory/repositories/inventory_repository_impl.dart';
+import '../settings/repositories/settings_repository_impl.dart';
+import '../rental/view_models/rental_view_model.dart';
+import '../rental/repositories/rental_repository_impl.dart';
+import '../users/view_models/user_view_model.dart';
+import '../users/repositories/user_repository_impl.dart';
+import '../todo/view_models/todo_view_model.dart';
+import '../todo/repositories/todo_repository_impl.dart';
+import '../../../core/services/notification_service.dart';
+import '../expenditure/pages/expenditure_page.dart';
+import '../users/pages/users_page.dart';
+import '../companies/pages/companies_page.dart';
+import '../reports/pages/reports_page.dart';
+import '../follow_up/pages/follow_up_page.dart';
+import 'package:shared/shared.dart' show AppDatabase;
+import '../follow_up/view_models/follow_up_view_model.dart';
+import 'dart:convert'; 
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
+import '../../../core/services/foreground_sync_manager.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+
+
+/// Main navigation page with sidebar and content area
+class MainNavigationPage extends StatelessWidget {
+  final AppDatabase db;
+  final int initialIndex;
+
+  const MainNavigationPage({
+    super.key,
+    required this.db,
+    this.initialIndex = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<TradingViewModel>(
+          create: (context) => TradingViewModel.getInstance(TradingRepositoryImpl(
+            db,
+            companyId: RoleUtils.getUserCompanyId(AuthService.currentUser),
+            isSuperAdmin: RoleUtils.isSuperAdmin(AuthService.currentUser),
+          )),
+          lazy: false, // Ensure ViewModel is created immediately and stays alive
+        ),
+        ChangeNotifierProvider<ExpenditureViewModel>(
+          create: (context) {
+            // Get current user for Agent filtering
+            final user = AuthService.currentUser;
+            final userId = user?['id']?.toString() ?? user?['userId']?.toString();
+            final companyId = RoleUtils.getUserCompanyId(user);
+            final isSuperAdmin = RoleUtils.isSuperAdmin(user);
+            
+            debugPrint('MainNavigationPage: ExpenditureViewModel created with userId: $userId, companyId: $companyId, isSuperAdmin: $isSuperAdmin');
+            
+            return ExpenditureViewModel(
+              db,
+              companyId: companyId,
+              isSuperAdmin: isSuperAdmin,
+              userId: userId, // Pass userId for Agent filtering
+            );
+          },
+          lazy: false, // Ensure ViewModel is created immediately and stays alive
+        ),
+        ChangeNotifierProvider<InventoryViewModel>(
+          create: (context) => InventoryViewModel(
+            InventoryRepositoryImpl(db, companyId: null, isSuperAdmin: false),
+            SettingsRepositoryImpl(db, companyId: null, isSuperAdmin: false),
+          ),
+          lazy: false,
+        ),
+        // Follow Up ViewModel provider
+        ChangeNotifierProvider<FollowUpViewModel>(
+          create: (context) => FollowUpViewModel(),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<RentalViewModel>(
+          create: (context) => RentalViewModel(
+            repository: RentalRepositoryImpl(db),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<UserViewModel>(
+          create: (context) => UserViewModel(
+            UserRepositoryImpl(db),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<TodoViewModel>(
+          create: (context) => TodoViewModel(
+            repository: TodoRepositoryImpl(db),
+            notificationService: NotificationService(),
+          ),
+          lazy: false,
+        ),
+        ChangeNotifierProvider<AgentViewModel>(
+          create: (context) => AgentViewModel(
+            AgentRepositoryImpl(
+              db,
+              companyId: null,
+              isSuperAdmin: false,
+            ),
+          ),
+          lazy: false,
+        ),
+      ],
+      child: _MainNavigationPageContent(
+        db: db,
+        initialIndex: initialIndex,
+      ),
+    );
+  }
+}
+
+class _MainNavigationPageContent extends StatefulWidget {
+  final AppDatabase db;
+  final int initialIndex;
+
+  const _MainNavigationPageContent({
+    required this.db,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_MainNavigationPageContent> createState() => _MainNavigationPageContentState();
+}
+
+// ✅ Yeh variable state mein add karein (class ke top par)
+class _MainNavigationPageContentState extends State<_MainNavigationPageContent> {
+  int _selectedIndex = 0;
+  final ValueNotifier<bool> _isSidebarOpenNotifier = ValueNotifier(true);
+  ThemeMode _themeMode = ThemeMode.system;
+  final ValueNotifier<int?> _badgeFilesNotifier = ValueNotifier(null);
+  final ValueNotifier<int?> _badgeRentalsNotifier = ValueNotifier(null);
+  StreamSubscription<Map<String, dynamic>?>? _userStreamSubscription;
+  Timer? _periodicPermissionCheckTimer;
+  
+  // ✅ CRITICAL FIX: Cache all pages to prevent recreation on every build
+  late final List<Widget> _pages;
+
+  @override
+void initState() {
+  super.initState();
+  _selectedIndex = widget.initialIndex;
+  _loadUserData();
+  _loadTheme();
+  _loadBadges();
+  
+  _userStreamSubscription = AuthService.currentUserStream.listen((user) {
+    if (mounted && user != null && user['email'] != null) {
+      _forcePermissionRefreshIfNeeded(user);
+    }
+  });
+  
+  _startPeriodicPermissionCheck();
+  
+  // ✅ CRITICAL: Windows par foreground sync ko manually trigger karein
+  _triggerForegroundSyncOnWindows();
+}
+
+// ✅ NEW METHOD: Windows par sync manually trigger karein
+Future<void> _triggerForegroundSyncOnWindows() async {
+  final isWindows = !kIsWeb && io.Platform.isWindows;
+  
+  if (!isWindows) return;
+  
+  // 3 seconds wait karein (app stable hone dein)
+  await Future.delayed(const Duration(seconds: 3));
+  
+  if (!mounted) return;
+  
+  try {
+    debugPrint('🔄 MainNavigationPage: Triggering foreground sync for Windows...');
+    await ForegroundSyncManager.instance.syncNow();
+    debugPrint('✅ MainNavigationPage: Foreground sync triggered successfully');
+  } catch (e) {
+    debugPrint('❌ MainNavigationPage: Foreground sync failed: $e');
+  }
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA),
+      body: _buildResponsiveLayout(),
+    );
+  }
+
+  Widget _buildResponsiveLayout() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth > 768;
+        
+        if (isDesktop) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Sidebar (same as before)
+              ValueListenableBuilder<Map<String, dynamic>?>(
+                valueListenable: AuthService.currentUserNotifier,
+                builder: (context, effectiveUser, _) {
+                  if (effectiveUser == null) return const SizedBox.shrink();
+                  
+                  return ValueListenableBuilder<int?>(
+                    valueListenable: _badgeFilesNotifier,
+                    builder: (context, filesBadge, _) {
+                      return ValueListenableBuilder<int?>(
+                        valueListenable: _badgeRentalsNotifier,
+                        builder: (context, rentalsBadge, _) {
+                          return ValueListenableBuilder<bool>(
+                            valueListenable: _isSidebarOpenNotifier,
+                            builder: (context, isOpen, _) {
+                              return ModernSidebar(
+                                selectedIndex: _selectedIndex,
+                                onDestinationSelected: _onDestinationSelected,
+                                onTradingTap: _onTradingTap,
+                                onLogout: _onLogout,
+                                onToggle: _onToggleSidebar,
+                                isOpen: isOpen,
+                                currentUser: effectiveUser,
+                                badgeFiles: filesBadge,
+                                badgeRentals: rentalsBadge,
+                              );
+                            },
+                          );
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+              
+              const SizedBox(width: 8),
+              
+              // Main Content Area
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Header Bar (same as before, but remove BackdropFilter - see below)
+                    _buildHeaderBar(),
+                    
+                    const SizedBox(height: 12),
+                    
+                    // ✅ CRITICAL FIX: Use IndexedStack instead of _buildCurrentPage()
+                    Expanded(
+                      child: IndexedStack(
+                        index: _selectedIndex,
+                        children: _pages, // ← Pre-created pages, no recreation!
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        } else {
+          // Mobile layout (same as before)
+          return Scaffold(
+            body: _buildMobileContent(),
+            drawer: _buildMobileDrawer(),
+            appBar: AppBar(
+              title: Text(_getNavigationTitle()),
+              backgroundColor: const Color(0xFFFF6B35),
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  // ✅ NEW METHOD: Extract header bar to separate method
+  Widget _buildHeaderBar() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+        ),
+      ),
+      child: Row(
+        children: [
+          ValueListenableBuilder<bool>(
+            valueListenable: _isSidebarOpenNotifier,
+            builder: (context, isOpen, _) {
+              return !isOpen ? const SizedBox(width: 16) : const SizedBox.shrink();
+            },
+          ),
+          
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Real Estate Management System',
+                    style: AppFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Profile Picture
+              ValueListenableBuilder<Map<String, dynamic>?>(
+                valueListenable: AuthService.currentUserNotifier,
+                builder: (context, user, _) {
+                  return CircleAvatar(
+                    radius: 16,
+                    backgroundColor: const Color(0xFF805AD5),
+                    child: Text(
+                      (user?['name']?.isNotEmpty == true) 
+                          ? user!['name'].substring(0, 1).toUpperCase() 
+                          : 'U',
+                      style: AppFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+              
+              // Notification Bell
+              Consumer<TodoViewModel>(
+                builder: (context, todoVM, child) {
+                  final hasUnread = todoVM.unreadReminders.isNotEmpty;
+                  return Stack(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 20),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ChangeNotifierProvider.value(
+                                value: todoVM,
+                                child: const NotificationsPage(),
+                              ),
+                            ),
+                          );
+                        },
+                        style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
+                        tooltip: 'Notifications',
+                      ),
+                      if (hasUnread)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+              
+              // ✅ FIX: Remove BackdropFilter from Refresh button
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2), // ← Simple color instead of blur
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.white, size: 16),
+                  onPressed: () async {
+                    final currentUser = AuthService.currentUser;
+                    if (currentUser != null) {
+                      await _forcePermissionRefreshIfNeeded(currentUser);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Permissions refreshed successfully'),
+                            backgroundColor: Colors.green,
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
+                  tooltip: 'Refresh Permissions',
+                ),
+              ),
+              const SizedBox(width: 8),
+              
+              // ✅ FIX: Remove BackdropFilter from Theme toggle
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2), // ← Simple color instead of blur
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: IconButton(
+                  icon: Icon(
+                    _themeMode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  onPressed: () async {
+                    final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
+                    final s = await AppStorage().readSettings();
+                    s['theme'] = newMode;
+                    await AppStorage().writeSettings(s);
+                    _onThemeChanged(newMode);
+                  },
+                  style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
+                  tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ DELETE _buildCurrentPage() method completely - no longer needed!
+
+  // ✅ For mobile content, also use IndexedStack
+  Widget _buildMobileContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 0),
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFF8F9FA), Color(0xFFF1F3F4)],
+              ),
+            ),
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: _pages, // ← Same cached pages
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ... rest of the code remains same ...
+
+
+  /// Get navigation title for mobile app bar
+  String _getNavigationTitle() {
+    switch (_selectedIndex) {
+      case 0: return 'Dashboard';
+      case 1: return 'Inventory';
+      case 2: return 'Agent Working';
+      case 3: return 'Rental Items';
+      case 4: return 'To-Do';
+      case 5: return 'Settings';
+      case 8: return 'Reports';
+      case 9: return 'User Management';
+      case 10: return 'Expenditure';
+      case 11: return 'Company Management';
+      default: return 'EasyRealtorsPro';
+    }
+  }
+

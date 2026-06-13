@@ -17,30 +17,10 @@ class FirebaseThreadingHandler {
     String? operationName,
   }) async {
     if (_isWindows) {
-      // CRITICAL: On Windows, Firebase operations MUST be on main thread
-      debugPrint('FirebaseThreadingHandler: Starting ${operationName ?? 'operation'} on main thread');
-      
-      // Step 1: Wait for any pending UI operations
-      await WidgetsBinding.instance.endOfFrame;
-      
-      // Step 2: Execute on main thread with frame boundary
-      final result = await runZonedGuarded(() async {
-        return await operation();
-      }, (error, stack) {
-        debugPrint('FirebaseThreadingHandler: Error in ${operationName ?? 'operation'}: $error');
-        
-        // CRITICAL: Don't re-throw Firebase Auth errors on Windows - let them be handled by outer try-catch
-        final isFirebaseAuthError = error.toString().contains('firebase_auth') || 
-                                   error.toString().contains('unknown-error') ||
-                                   error.toString().contains('internal error');
-        
-        if (!isFirebaseAuthError) {
-          throw error; // Only re-throw non-Firebase Auth errors
-        }
-      });
-      
-      debugPrint('FirebaseThreadingHandler: ${operationName ?? 'operation'} completed on main thread');
-      return result as T;
+      // CRITICAL: On Windows, Firebase operations MUST run normally on the main Dart UI isolate.
+      // Custom threading wrappers, runZonedGuarded, or endOfFrame delays must be avoided.
+      debugPrint('FirebaseThreadingHandler: Windows detected - executing ${operationName ?? 'operation'} directly on main isolate');
+      return await operation();
     } else {
       // Non-Windows: Execute directly
       debugPrint('FirebaseThreadingHandler: ${operationName ?? 'operation'} on non-Windows platform');
@@ -63,8 +43,17 @@ class FirebaseThreadingHandler {
         
         if (criticalPatterns.any((pattern) => e.toString().contains(pattern))) {
           debugPrint('FirebaseThreadingHandler: Platform thread warning silenced for ${operationName ?? 'operation'}: ${e.runtimeType}');
-          // Don't rethrow platform thread warnings - they're non-critical
-          return await operation();
+          // Don't rethrow platform thread warnings - they're non-critical, retry with exponential backoff
+          const maxRetries = 3;
+          for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+              return await operation();
+            } catch (err) {
+              if (attempt == maxRetries - 1) rethrow;
+              await Future.delayed(Duration(milliseconds: 100 * (attempt + 1)));
+            }
+          }
+          rethrow;
         } else {
           debugPrint('FirebaseThreadingHandler: Error in ${operationName ?? 'operation'}: $e');
           rethrow;
@@ -79,54 +68,8 @@ class FirebaseThreadingHandler {
     Stream<T> stream, {
     String? streamName,
   }) {
-    if (!_isWindows) {
-      return stream;
-    }
-    
-    // On Windows, use a controller to ensure proper thread handling
-    final controller = StreamController<T>.broadcast();
-    
-    runZonedGuarded(() {
-      // Subscribe immediately without delay to ensure initial emissions
-      stream.listen(
-        (data) => controller.add(data),
-        onError: (error) {
-          // Enhanced error filtering for comprehensive platform warning
-          if (error.toString().contains('unknown-error')) {
-            debugPrint('FirebaseThreadingHandler: UNKNOWN ERROR DETECTED in ${streamName ?? 'stream'}: $error');
-            debugPrint('FirebaseThreadingHandler: This might be a issue affecting umershahzad596@gmail.com and shakeelahmed2161083@gmail.com');
-            debugPrint('FirebaseThreadingHandler: Error type: ${error.runtimeType}');
-            debugPrint('FirebaseThreadingHandler: Full error details: $error');
-            // Still pass error to controller for proper handling
-            controller.addError(error);
-          } else if ([
-            'channel sent a message',
-            'non-platform thread',
-            'Platform channel',
-            'background_fetch',
-            'flutter_background_fetch',
-            'path_provider',
-            'sqflite',
-            'shared_preferences',
-            'firebase_auth_plugin',
-            'id-token',
-          ].any((pattern) => error.toString().contains(pattern))) {
-              debugPrint('FirebaseThreadingHandler: Stream platform thread warning silenced for ${streamName ?? 'stream'}: ${error.runtimeType}');
-            } else {
-              debugPrint('FirebaseThreadingHandler: Stream error in ${streamName ?? 'stream'}: $error');
-              controller.addError(error);
-            }
-        },
-        onDone: () {
-          controller.close();
-        },
-      );
-    }, (error, stack) {
-      debugPrint('FirebaseThreadingHandler: Stream wrapper error for ${streamName ?? 'stream'}: $error');
-      controller.addError(error);
-    });
-    
-    return controller.stream;
+    debugPrint('FirebaseThreadingHandler: Returning original stream directly for ${streamName ?? 'stream'}');
+    return stream;
   }
   
   /// Execute Firestore queries with proper thread safety
@@ -155,27 +98,20 @@ class FirebaseThreadingHandler {
   /// CRITICAL: ID token refreshes must be on main thread
   static Future<String?> executeIdTokenRefreshWithThreadSafety() async {
     if (_isWindows) {
-      // CRITICAL: ID token refreshes MUST be on main thread on Windows
-      debugPrint('FirebaseThreadingHandler: Starting ID token refresh on main thread');
-      
-      // Step 1: Wait for any pending UI operations
-      await WidgetsBinding.instance.endOfFrame;
-      
-      // Step 2: Execute on main thread with frame boundary
-      final result = await runZonedGuarded(() async {
+      // For Windows, do NOT force token refresh (getIdToken(true)).
+      // Let the Firebase SDK handle its own token lifecycle by passing false or check if token is near expiry.
+      debugPrint('FirebaseThreadingHandler: Retrieving ID token on Windows without forcing refresh');
+      try {
         if (FirebaseAuth.instance.currentUser != null) {
-          final idToken = await FirebaseAuth.instance.currentUser!.getIdToken(true);
-          debugPrint('FirebaseThreadingHandler: ID token refreshed successfully');
+          final idToken = await FirebaseAuth.instance.currentUser!.getIdToken(false);
+          debugPrint('FirebaseThreadingHandler: ID token retrieved successfully (cached/refreshed by SDK)');
           return idToken;
         }
         return null;
-      }, (error, stack) {
-        debugPrint('FirebaseThreadingHandler: ID token refresh error: $error');
+      } catch (e) {
+        debugPrint('FirebaseThreadingHandler: ID token retrieval error on Windows: $e');
         return null;
-      });
-      
-      debugPrint('FirebaseThreadingHandler: ID token refresh completed on main thread');
-      return result;
+      }
     } else {
       // Non-Windows: Execute directly
       debugPrint('FirebaseThreadingHandler: ID token refresh on non-Windows platform');
