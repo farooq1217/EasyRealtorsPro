@@ -24,7 +24,7 @@ class SettingsPageClean extends StatefulWidget {
 
 class _SettingsPageCleanState extends State<SettingsPageClean> {
   SettingsViewModel? _viewModel;
-  Map<String, dynamic>? user; // Store user data for access in build method
+  Map<String, dynamic>? user;
   final TextEditingController _societyNameController = TextEditingController();
   final TextEditingController _blockNameController = TextEditingController();
   final TextEditingController _fullNameController = TextEditingController();
@@ -33,9 +33,9 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
   final TextEditingController _emailController = TextEditingController();
   final GlobalKey<FormState> _profileFormKey = GlobalKey<FormState>();
   bool _mounted = true;
-  bool _initialized = false; // Track initialization state
+  bool _initialized = false;
+  bool _isDeleting = false; // ✅ NEW: Track delete operation
   
-  // CRITICAL FIX: Add timeout mechanism to prevent infinite loading
   DateTime? _loadingStartTime;
   static const Duration _maxLoadingTime = Duration(seconds: 10);
 
@@ -43,9 +43,6 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
   void initState() {
     super.initState();
     _loadingStartTime = DateTime.now();
-    
-    // PRE-FETCH CHECK: Initialize ViewModel immediately to prevent hanging
-    // This ensures the ViewModel is ready before the navigation animation completes
     _initializeViewModel();
   }
 
@@ -63,7 +60,6 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
   }
 
   Future<void> _initializeViewModel() async {
-    // Prevent duplicate initialization
     if (_initialized) {
       debugPrint('SettingsPage: Already initialized, skipping duplicate call');
       return;
@@ -78,11 +74,9 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
       user = await AuthService.getCurrentUser(token);
     }
     
-    // ROLE SYNC FIX: Enhanced role detection
     final isSuper = RoleUtils.isSuperAdmin(user) || PermissionHelper.isBypassUser(user);
     var companyId = RoleUtils.getUserCompanyId(user);
     
-    // IMMEDIATE FALLBACK: Set default fallback for null companyId
     if (companyId == null) {
       if (isSuper) {
         companyId = 'GLOBAL_ADMIN';
@@ -107,27 +101,23 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
     if (_mounted) {
       setState(() {});
       
-      // CRITICAL FIX: Initialize with proper error handling and ensure loading state is resolved
       try {
         await _viewModel!.initialize();
       } catch (e) {
         debugPrint('SettingsViewModel initialization error: $e');
-        // Force loading state to false even if initialization fails
         if (_mounted && _viewModel != null) {
           _viewModel!.forceLoadingComplete();
         }
       }
       
-      // SAFETY CHECK: Ensure loading is definitely false after initialization
       if (_mounted && _viewModel != null && _viewModel!.loading) {
         debugPrint('SettingsPage: Loading still true after initialization, forcing completion');
         _viewModel!.forceLoadingComplete();
       }
       
       _initialized = true;
-      setState(() {}); // Trigger rebuild with initialized ViewModel
+      setState(() {});
       
-      // Sync form after initialization is complete
       if (_mounted && _viewModel != null) {
         _viewModel!.syncProfileForm(
           fullNameController: _fullNameController,
@@ -263,62 +253,105 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
     }
   }
 
-  Future<void> _deleteSociety(String societyId) async {
-    if (_viewModel == null) return;
+  // ✅ FIXED: Simplified delete society - no pre-clearing
+Future<void> _deleteSociety(String societyId, String societyName) async {
+  if (_viewModel == null || _isDeleting) return;
+  
+  if (societyId.isEmpty) {
+    debugPrint('SettingsPage: Cannot delete society - empty ID');
+    return;
+  }
+  
+  final messenger = ScaffoldMessenger.of(context);
+  
+  final confirmed = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Delete Society'),
+      content: Text('Are you sure you want to delete "$societyName"? All its blocks will also be deleted.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed != true || !_mounted) return;
+
+  setState(() {
+    _isDeleting = true;
+  });
+
+  try {
+    debugPrint('SettingsPage: Starting delete operation for society: $societyId');
     
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Society'),
-        content: const Text('Are you sure you want to delete this society? All its blocks will also be deleted.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      await _viewModel!.deleteSociety(societyId);
-      
-      if (_mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Society deleted successfully'), backgroundColor: Colors.green),
-        );
-      }
-    } catch (e) {
-      if (_mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting society: $e'), backgroundColor: Colors.red),
-        );
-      }
+    // ✅ CRITICAL FIX: Sirf deleteSociety call karein, setSelectedSociety nahi
+    // deleteSociety method khud selection clear karega agar zaroorat ho
+    await _viewModel!.deleteSociety(societyId);
+    
+    debugPrint('SettingsPage: Delete operation completed successfully');
+    
+    if (_mounted) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Society deleted successfully'), 
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  } catch (e, stackTrace) {
+    debugPrint('SettingsPage: Error deleting society: $e');
+    debugPrint('SettingsPage: Stack trace: $stackTrace');
+    
+    if (_mounted) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Error deleting society: ${e.toString()}'), 
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  } finally {
+    if (_mounted) {
+      setState(() {
+        _isDeleting = false;
+      });
     }
   }
+}
 
-  Future<void> _deleteBlock(String blockId) async {
-    if (_viewModel == null) return;
+  // ✅ FIXED: Delete block with complete safety
+  Future<void> _deleteBlock(String blockId, String blockName) async {
+    if (_viewModel == null || _isDeleting) return;
+    
+    if (blockId.isEmpty) {
+      debugPrint('SettingsPage: Cannot delete block - empty ID');
+      return;
+    }
+    
+    final messenger = ScaffoldMessenger.of(context);
     
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Delete Block'),
-        content: const Text('Are you sure you want to delete this block?'),
+        content: Text('Are you sure you want to delete "$blockName"?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
           ),
@@ -326,21 +359,44 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true || !_mounted) return;
+
+    setState(() {
+      _isDeleting = true;
+    });
 
     try {
+      debugPrint('SettingsPage: Starting delete operation for block: $blockId');
+      
       await _viewModel!.deleteBlock(blockId);
       
+      debugPrint('SettingsPage: Block delete completed successfully');
+      
       if (_mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Block deleted successfully'), backgroundColor: Colors.green),
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Block deleted successfully'), 
+            backgroundColor: Colors.green,
+          ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('SettingsPage: Error deleting block: $e');
+      debugPrint('SettingsPage: Stack trace: $stackTrace');
+      
       if (_mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting block: $e'), backgroundColor: Colors.red),
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Error deleting block: ${e.toString()}'), 
+            backgroundColor: Colors.red,
+          ),
         );
+      }
+    } finally {
+      if (_mounted) {
+        setState(() {
+          _isDeleting = false;
+        });
       }
     }
   }
@@ -367,27 +423,23 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
 
   @override
   Widget build(BuildContext context) {
-  final actualCompanyId = RoleUtils.getUserCompanyId(user) ?? 'GLOBAL_ADMIN';
-final actualIsSuperAdmin = RoleUtils.isSuperAdmin(user);
+    final actualCompanyId = RoleUtils.getUserCompanyId(user) ?? 'GLOBAL_ADMIN';
+    final actualIsSuperAdmin = RoleUtils.isSuperAdmin(user);
 
-final viewModel = _viewModel ?? SettingsViewModel(
-  SettingsRepositoryImpl(
-    widget.db,
-    companyId: actualCompanyId,  // ✅ Dynamic value
-    isSuperAdmin: actualIsSuperAdmin,  // ✅ Dynamic value
-  ),
-);
+    final viewModel = _viewModel ?? SettingsViewModel(
+      SettingsRepositoryImpl(
+        widget.db,
+        companyId: actualCompanyId,
+        isSuperAdmin: actualIsSuperAdmin,
+      ),
+    );
     
-    // ViewModel initialization is now handled only in initState() to prevent duplicates
-    // No fallback needed as initState() ensures proper initialization
-    
-    // CRITICAL FIX: Check for infinite loading and force resolution
     if (_loadingStartTime != null && 
         DateTime.now().difference(_loadingStartTime!) > _maxLoadingTime &&
         viewModel.loading) {
       debugPrint('SettingsPage: Loading timeout reached, forcing completion');
       viewModel.forceLoadingComplete();
-      _loadingStartTime = null; // Prevent repeated checks
+      _loadingStartTime = null;
     }
     
     if (viewModel.loading) {
@@ -403,8 +455,8 @@ final viewModel = _viewModel ?? SettingsViewModel(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xFFFF6B35), // Orange
-                  Color(0xFF4A90E2), // Blue
+                  Color(0xFFFF6B35),
+                  Color(0xFF4A90E2),
                 ],
               ),
             ),
@@ -424,32 +476,24 @@ final viewModel = _viewModel ?? SettingsViewModel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Export button
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
-                // CRITICAL FIX: Add unique key to prevent GlobalKey duplication
                 child: ElevatedButton.icon(
                   key: ValueKey('export_data_${DateTime.now().millisecondsSinceEpoch}'),
-                  onPressed: _exportData,
+                  onPressed: _isDeleting ? null : _exportData,
                   icon: const Icon(Icons.download),
                   label: const Text('Export Data'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF6B35),
                     foregroundColor: Colors.white,
-                    // CRITICAL FIX: Fix TextStyle interpolation
                     textStyle: Theme.of(context).textTheme.labelMedium,
                   ),
                 ),
               ),
-              // Profile Section
               _buildProfileSection(),
               const SizedBox(height: 24),
-              
-              // Societies Section
               _buildSocietiesSection(),
               const SizedBox(height: 24),
-              
-              // Blocks Section
               _buildBlocksSection(),
             ],
           ),
@@ -472,7 +516,7 @@ final viewModel = _viewModel ?? SettingsViewModel(
                 Row(
                   children: [
                     GestureDetector(
-                      onTap: _pickProfilePhoto,
+                      onTap: _isDeleting ? null : _pickProfilePhoto,
                       child: CircleAvatar(
                         radius: 40,
                         backgroundColor: Colors.grey.shade300,
@@ -516,6 +560,7 @@ final viewModel = _viewModel ?? SettingsViewModel(
                     children: [
                       TextFormField(
                         controller: _fullNameController,
+                        enabled: !_isDeleting,
                         decoration: const InputDecoration(
                           labelText: 'Full Name',
                           prefixIcon: Icon(Icons.person),
@@ -526,6 +571,7 @@ final viewModel = _viewModel ?? SettingsViewModel(
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _phoneController,
+                        enabled: !_isDeleting,
                         decoration: const InputDecoration(
                           labelText: 'Phone Number',
                           prefixIcon: Icon(Icons.phone),
@@ -536,7 +582,7 @@ final viewModel = _viewModel ?? SettingsViewModel(
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _emailController,
-                        enabled: false, // Email is typically not editable
+                        enabled: false,
                         decoration: const InputDecoration(
                           labelText: 'Email',
                           prefixIcon: Icon(Icons.email),
@@ -547,6 +593,7 @@ final viewModel = _viewModel ?? SettingsViewModel(
                       if (RoleUtils.isSuperAdmin(viewModel.currentUser))
                         TextFormField(
                           controller: _companyController,
+                          enabled: !_isDeleting,
                           decoration: const InputDecoration(
                             labelText: 'Company Name',
                             prefixIcon: Icon(Icons.business),
@@ -558,11 +605,10 @@ final viewModel = _viewModel ?? SettingsViewModel(
                         width: double.infinity,
                         child: ElevatedButton(
                           key: ValueKey('save_profile_${viewModel.currentUser?["id"] ?? "unknown"}'),
-                          onPressed: viewModel.savingProfile ? null : _saveProfile,
+                          onPressed: (viewModel.savingProfile || _isDeleting) ? null : _saveProfile,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFF6B35),
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            // CRITICAL FIX: Fix TextStyle interpolation by using consistent theme
                             textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -594,6 +640,10 @@ final viewModel = _viewModel ?? SettingsViewModel(
   Widget _buildSocietiesSection() {
     return Consumer<SettingsViewModel>(
       builder: (context, viewModel, child) {
+        // ✅ CRITICAL: Safe access to societies list
+        final societies = viewModel.societies ?? [];
+        final selectedId = viewModel.selectedSocietyId;
+        
         return Card(
           elevation: 4,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -612,6 +662,7 @@ final viewModel = _viewModel ?? SettingsViewModel(
                     Expanded(
                       child: TextField(
                         controller: _societyNameController,
+                        enabled: !_isDeleting,
                         decoration: const InputDecoration(
                           labelText: 'Society Name',
                           prefixIcon: Icon(Icons.location_city),
@@ -620,23 +671,30 @@ final viewModel = _viewModel ?? SettingsViewModel(
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // CRITICAL FIX: Add unique key to prevent GlobalKey duplication
                     ElevatedButton.icon(
                       key: ValueKey('add_society_${DateTime.now().millisecondsSinceEpoch}'),
-                      onPressed: _addSociety,
-                      icon: const Icon(Icons.add),
+                      onPressed: _isDeleting ? null : _addSociety,
+                      icon: _isDeleting 
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.add),
                       label: const Text('Add'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFFF6B35),
                         foregroundColor: Colors.white,
-                        // CRITICAL FIX: Fix TextStyle interpolation
                         textStyle: Theme.of(context).textTheme.labelMedium,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
-                if (viewModel.societies.isEmpty)
+                if (societies.isEmpty)
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -655,36 +713,39 @@ final viewModel = _viewModel ?? SettingsViewModel(
                     ),
                   )
                 else
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: viewModel.societies.length,
-                    itemBuilder: (context, index) {
-                      final society = viewModel.societies[index];
-                      // CRITICAL FIX: Add unique key to each ListTile to prevent GlobalKey duplication
-                      return ListTile(
-                        key: ValueKey('society_${society['id']}_$index'),
-                        title: Text(society['name'] ?? ''),
-                        subtitle: Text('ID: ${society['id'] ?? ''}'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          // CRITICAL FIX: Prevent horizontal overflow by constraining Row
-                          children: [
-                            // CRITICAL FIX: Add unique key to IconButton
+                  // ✅ CRITICAL: Use Column instead of ListView.builder for better stability
+                  ...societies.map((society) {
+                    final societyId = society['id']?.toString() ?? '';
+                    final societyName = society['name']?.toString() ?? 'Unknown';
+                    final isSelected = selectedId == societyId;
+                    
+                    return ListTile(
+                      key: ValueKey('society_$societyId'),
+                      title: Text(societyName),
+                      subtitle: Text('ID: $societyId'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_isDeleting)
+                            const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
                             IconButton(
-                              key: ValueKey('delete_society_${society['id']}_$index'),
+                              key: ValueKey('delete_society_$societyId'),
                               icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _deleteSociety(society['id'] ?? ''),
+                              onPressed: () => _deleteSociety(societyId, societyName),
                               tooltip: 'Delete Society',
                             ),
-                          ],
-                        ),
-                        selected: viewModel.selectedSocietyId == society['id'],
-                        selectedTileColor: Colors.orange.shade50,
-                        onTap: () => viewModel.setSelectedSociety(society['id']),
-                      );
-                    },
-                  ),
+                        ],
+                      ),
+                      selected: isSelected,
+                      selectedTileColor: Colors.orange.shade50,
+                      onTap: _isDeleting ? null : () => viewModel.setSelectedSociety(societyId),
+                    );
+                  }).toList(),
               ],
             ),
           ),
@@ -696,7 +757,11 @@ final viewModel = _viewModel ?? SettingsViewModel(
   Widget _buildBlocksSection() {
     return Consumer<SettingsViewModel>(
       builder: (context, viewModel, child) {
-        final hasSelectedSociety = viewModel.selectedSocietyId != null;
+        // ✅ CRITICAL: Safe access to all properties
+        final hasSelectedSociety = viewModel.selectedSocietyId != null && 
+                                    viewModel.selectedSocietyId!.isNotEmpty;
+        final blocks = viewModel.blocks ?? [];
+        final isLoadingBlocks = viewModel.isLoadingBlocks;
         
         return Card(
           elevation: 4,
@@ -736,6 +801,7 @@ final viewModel = _viewModel ?? SettingsViewModel(
                       Expanded(
                         child: TextField(
                           controller: _blockNameController,
+                          enabled: !_isDeleting,
                           decoration: const InputDecoration(
                             labelText: 'Block Name',
                             prefixIcon: Icon(Icons.apartment),
@@ -744,23 +810,30 @@ final viewModel = _viewModel ?? SettingsViewModel(
                         ),
                       ),
                       const SizedBox(width: 12),
-                      // CRITICAL FIX: Add unique key to prevent GlobalKey duplication
                       ElevatedButton.icon(
                         key: ValueKey('add_block_${viewModel.selectedSocietyId}_${DateTime.now().millisecondsSinceEpoch}'),
-                        onPressed: _addBlock,
-                        icon: const Icon(Icons.add),
+                        onPressed: _isDeleting ? null : _addBlock,
+                        icon: _isDeleting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.add),
                         label: const Text('Add'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFFF6B35),
                           foregroundColor: Colors.white,
-                          // CRITICAL FIX: Fix TextStyle interpolation
                           textStyle: Theme.of(context).textTheme.labelMedium,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  if (viewModel.isLoadingBlocks)
+                  if (isLoadingBlocks)
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -785,7 +858,7 @@ final viewModel = _viewModel ?? SettingsViewModel(
                         ],
                       ),
                     )
-                  else if (viewModel.blocks.isEmpty)
+                  else if (blocks.isEmpty)
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -804,26 +877,29 @@ final viewModel = _viewModel ?? SettingsViewModel(
                       ),
                     )
                   else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: viewModel.blocks.length,
-                      itemBuilder: (context, index) {
-                        final block = viewModel.blocks[index];
-                        // CRITICAL FIX: Add unique key to each ListTile to prevent GlobalKey duplication
-                        return ListTile(
-                          key: ValueKey('block_${block['id']}_$index'),
-                          title: Text(block['name'] ?? ''),
-                          subtitle: Text('ID: ${block['id'] ?? ''}'),
-                          trailing: IconButton(
-                            key: ValueKey('delete_block_${block['id']}_$index'),
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _deleteBlock(block['id'] ?? ''),
-                            tooltip: 'Delete Block',
-                          ),
-                        );
-                      },
-                    ),
+                    // ✅ CRITICAL: Use Column instead of ListView.builder
+                    ...blocks.map((block) {
+                      final blockId = block['id']?.toString() ?? '';
+                      final blockName = block['name']?.toString() ?? 'Unknown';
+                      
+                      return ListTile(
+                        key: ValueKey('block_$blockId'),
+                        title: Text(blockName),
+                        subtitle: Text('ID: $blockId'),
+                        trailing: _isDeleting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : IconButton(
+                                key: ValueKey('delete_block_$blockId'),
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => _deleteBlock(blockId, blockName),
+                                tooltip: 'Delete Block',
+                              ),
+                      );
+                    }).toList(),
                 ],
               ],
             ),

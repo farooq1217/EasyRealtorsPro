@@ -51,6 +51,24 @@ AuthService._fallback()
   static Stream<Map<String, dynamic>?> get currentUserStream => _userStreamController.stream;
 
   // === DELEGATE TO INJECTED SERVICES ===
+
+  static Future<Map<String, dynamic>> createLocalAdmin({
+  required String email,
+  required String password,
+  required String name,
+}) {
+  if (_instance == null) {
+    return Future.value({
+      'success': false,
+      'message': 'AuthService not initialized',
+    });
+  }
+  return instance._repository.createLocalAdmin(
+    email: email,
+    password: password,
+    name: name,
+  );
+}
   
   static Future<Map<String, dynamic>> register({
     required String email,

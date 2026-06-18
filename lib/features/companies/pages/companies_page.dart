@@ -359,6 +359,7 @@ class _CompaniesPageState extends State<CompaniesPage> {
   // Floating Action Button
   Widget _buildFloatingActionButton(CompanyViewModel viewModel) {
     return FloatingActionButton(
+       heroTag: 'companies_page_fab',
       onPressed: _shouldEnableAddButton(viewModel)
           ? () => _showAddCompanyDialog(context, viewModel)
           : null,

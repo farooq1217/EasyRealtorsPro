@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'dart:ui';
 import 'package:provider/provider.dart';
 import 'dart:async';
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
+import 'dart:convert';
 import '../../../widgets/custom_sidebar.dart';
 import '../../../widgets/platform_aware_image.dart';
 import '../../../widgets/adaptive_dialog.dart';
@@ -44,9 +46,8 @@ import '../reports/pages/reports_page.dart';
 import '../follow_up/pages/follow_up_page.dart';
 import 'package:shared/shared.dart' show AppDatabase;
 import '../follow_up/view_models/follow_up_view_model.dart';
-import 'dart:convert'; 
-import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
-import 'package:easyrealtorspro/core/services/foreground_sync_manager.dart';
+import '../../../core/services/foreground_sync_manager.dart';
+import '../../../core/services/rest_sync_manager.dart';
 
 /// Main navigation page with sidebar and content area
 class MainNavigationPage extends StatelessWidget {
@@ -77,8 +78,6 @@ class MainNavigationPage extends StatelessWidget {
             final userId = user?['id']?.toString() ?? user?['userId']?.toString();
             final companyId = RoleUtils.getUserCompanyId(user);
             final isSuperAdmin = RoleUtils.isSuperAdmin(user);
-            
-            debugPrint('MainNavigationPage: ExpenditureViewModel created with userId: $userId, companyId: $companyId, isSuperAdmin: $isSuperAdmin');
             
             return ExpenditureViewModel(
               db,
@@ -160,13 +159,17 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
   StreamSubscription<Map<String, dynamic>?>? _userStreamSubscription;
   Timer? _periodicPermissionCheckTimer;
   
-  List<Widget> _pages = [];
+  // ✅ CRITICAL FIX: Cache all pages to prevent recreation on every build
+  late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
-    _initializePages();
+    
+    // ✅ Initialize pages ONCE
+    _pages = _initializePages();
+    
     _loadUserData();
     _loadTheme();
     _loadBadges();
@@ -179,48 +182,67 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
     
     _startPeriodicPermissionCheck();
     
-    // Windows par foreground sync manually trigger karein
+    // ✅ CRITICAL: Windows par foreground sync ko manually trigger karein
     _triggerForegroundSyncOnWindows();
   }
 
-  void _initializePages() {
+  // ✅ NEW METHOD: Create all pages ONCE
+  List<Widget> _initializePages() {
     final user = AuthService.currentUser;
     final companyId = RoleUtils.getUserCompanyId(user);
     final isSuperAdmin = RoleUtils.isSuperAdmin(user);
     final userId = user?['id']?.toString() ?? user?['userId']?.toString();
 
-    _pages = [
-      DashboardPage(db: widget.db),
-      InventoryPage(db: widget.db),
-      AgentWorkingPage(db: widget.db),
-      RentalItemsPage(db: widget.db),
-      ToDoPage(db: widget.db),
-      SettingsPageClean(db: widget.db),
-      TradingPage(db: widget.db),
-      TradingPage(db: widget.db),
-      ReportsPage(db: widget.db),
-      UsersPage(db: widget.db),
-      ExpenditurePage(
+    return [
+    DashboardPage(db: widget.db),       
+  InventoryPage(db: widget.db),
+  AgentWorkingPage(db: widget.db),
+  RentalItemsPage(db: widget.db),
+   ToDoPage(db: widget.db),
+  SettingsPageClean(db: widget.db),
+  TradingPage(db: widget.db),
+  FollowUpPage(db: widget.db),
+  ReportsPage(db: widget.db),
+  UsersPage(db: widget.db),
+   ExpenditurePage(
         db: widget.db,
         companyId: companyId,
         isSuperAdmin: isSuperAdmin,
         userId: userId,
       ),
-      CompaniesPage(db: widget.db),
+  CompaniesPage(db: widget.db),
     ];
+    
   }
 
+ // ✅ DISABLED: Windows par sync temporarily disable kiya (crash prevention)
+Future<void> _triggerForegroundSyncOnWindows() async {
+  final isWindows = !kIsWeb && io.Platform.isWindows;
+  
+  if (!isWindows) {
+    // Non-Windows platforms par sync trigger karein
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+    
+    try {
+      debugPrint('🔄 MainNavigationPage: Triggering foreground sync...');
+      await ForegroundSyncManager.instance.syncNow();
+      debugPrint('✅ MainNavigationPage: Foreground sync triggered successfully');
+    } catch (e) {
+      debugPrint('❌ MainNavigationPage: Foreground sync failed: $e');
+    }
+  } else {
+    // ✅ Windows par sync skip karein (crash prevention)
+    debugPrint('⏸️ MainNavigationPage: Windows detected - Firestore sync disabled (temporary)');
+    debugPrint('💡 Note: Data sync will be available after Firebase REST API integration');
+  }
+}
   Future<void> _loadUserData() async {
     final storage = AppStorage();
     final settings = await storage.readSettings();
     final token = settings['authToken'] as String?;
     if (token != null) {
-      final user = await AuthService.getCurrentUser(token);
-      if (mounted && user != null) {
-        setState(() {
-          _initializePages();
-        });
-      }
+      await AuthService.getCurrentUser(token);
     }
   }
 
@@ -235,6 +257,23 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
     }
   }
 
+  Future<void> _loadBadges() async {
+    try {
+      final filesCount = await widget.db.customSelect(
+        'SELECT COUNT(*) as count FROM files_table WHERE is_active = 1',
+      ).getSingle();
+      
+      final rentalsCount = await widget.db.customSelect(
+        'SELECT COUNT(*) as count FROM rental_items WHERE is_active = 1 AND status = "rented"',
+      ).getSingle();
+      
+      _badgeFilesNotifier.value = filesCount.data['count'] as int?;
+      _badgeRentalsNotifier.value = rentalsCount.data['count'] as int?;
+    } catch (e) {
+      // Silent fail for badge loading
+    }
+  }
+
   @override
   void dispose() {
     _userStreamSubscription?.cancel();
@@ -245,7 +284,6 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
     super.dispose();
   }
 
-  /// Start periodic permission check as fallback
   void _startPeriodicPermissionCheck() {
     int checkCount = 0;
     const maxChecks = 5;
@@ -260,22 +298,17 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
       
       final currentUser = AuthService.currentUser;
       if (currentUser != null && !PermissionSyncService.arePermissionsFullyLoaded(currentUser)) {
-        debugPrint('MainNavigationPage: Periodic check #$checkCount - Permissions not loaded, forcing refresh...');
         await _forcePermissionRefreshIfNeeded(currentUser);
       }
       
-      if (checkCount >= maxChecks || (currentUser != null && PermissionSyncService.arePermissionsFullyLoaded(currentUser))) {
+      if (checkCount >= maxChecks || PermissionSyncService.arePermissionsFullyLoaded(currentUser)) {
         timer.cancel();
-        debugPrint('MainNavigationPage: Periodic permission checks completed');
       }
     });
   }
 
-  /// Force permission refresh if permissions are not loaded
   Future<void> _forcePermissionRefreshIfNeeded(Map<String, dynamic> user) async {
     if (!PermissionSyncService.arePermissionsFullyLoaded(user)) {
-      debugPrint('MainNavigationPage: Permissions not loaded, forcing refresh...');
-      
       try {
         final storage = AppStorage();
         final settings = await storage.readSettings();
@@ -283,37 +316,11 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
         
         if (token != null) {
           await PermissionSyncService.refreshUserPermissions(token);
-          
-          final refreshedUser = await AuthService.getCurrentUser(token);
-          if (refreshedUser != null && mounted) {
-            setState(() {
-              _initializePages();
-            });
-            debugPrint('MainNavigationPage: Permissions refreshed and UI updated');
-          }
+          await AuthService.getCurrentUser(token);
         }
       } catch (e) {
         debugPrint('MainNavigationPage: Error refreshing permissions: $e');
       }
-    }
-  }
-
-  Future<void> _loadBadges() async {
-    try {
-      final filesCount = await widget.db.customSelect(
-        'SELECT COUNT(*) as count FROM files_table WHERE is_active = 1',
-      ).getSingle();
-      
-      final rentalsCount = await widget.db.customSelect(
-        'SELECT COUNT(*) as count FROM rental_items WHERE is_active = 1 AND status = "rented"',
-      ).getSingle();
-      
-      if (mounted) {
-        _badgeFilesNotifier.value = filesCount.data['count'] as int?;
-        _badgeRentalsNotifier.value = rentalsCount.data['count'] as int?;
-      }
-    } catch (e) {
-      // Silent fail for badge loading
     }
   }
 
@@ -333,7 +340,7 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
 
   void _onTradingTap() {
     setState(() {
-      _selectedIndex = 6;
+      _selectedIndex = 6; 
     });
   }
 
@@ -363,25 +370,6 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
     AdminApp.applyThemeSetting(mode);
   }
 
-  // ✅ NEW METHOD: Windows par sync manually trigger karein
-  Future<void> _triggerForegroundSyncOnWindows() async {
-    final isWindows = !kIsWeb && io.Platform.isWindows;
-    
-    if (!isWindows) return;
-    
-    await Future.delayed(const Duration(seconds: 3));
-    
-    if (!mounted) return;
-    
-    try {
-      debugPrint('🔄 MainNavigationPage: Triggering foreground sync for Windows...');
-      await ForegroundSyncManager.instance.syncNow();
-      debugPrint('✅ MainNavigationPage: Foreground sync triggered successfully');
-    } catch (e) {
-      debugPrint('❌ MainNavigationPage: Foreground sync failed: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -399,7 +387,6 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Sidebar
               ValueListenableBuilder<Map<String, dynamic>?>(
                 valueListenable: AuthService.currentUserNotifier,
                 builder: (context, effectiveUser, _) {
@@ -436,16 +423,12 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
               
               const SizedBox(width: 8),
               
-              // Main Content Area
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Header Bar
                     _buildHeaderBar(),
-                    
                     const SizedBox(height: 12),
-                    
                     Expanded(
                       child: IndexedStack(
                         index: _selectedIndex,
@@ -458,7 +441,6 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
             ],
           );
         } else {
-          // Mobile layout
           return Scaffold(
             body: _buildMobileContent(),
             drawer: _buildMobileDrawer(),
@@ -530,7 +512,6 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Profile Picture
               ValueListenableBuilder<Map<String, dynamic>?>(
                 valueListenable: AuthService.currentUserNotifier,
                 builder: (context, user, _) {
@@ -552,7 +533,6 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
               ),
               const SizedBox(width: 8),
               
-              // Notification Bell
               Consumer<TodoViewModel>(
                 builder: (context, todoVM, child) {
                   final hasUnread = todoVM.unreadReminders.isNotEmpty;
@@ -589,7 +569,6 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
               ),
               const SizedBox(width: 8),
               
-              // Refresh Permissions Button
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
@@ -618,7 +597,6 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
               ),
               const SizedBox(width: 8),
               
-              // Theme Toggle
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
@@ -641,6 +619,85 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
                   tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
                 ),
               ),
+                            const SizedBox(width: 8),
+              
+              // ✅ NEW: Manual Sync Button
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.sync, color: Colors.white, size: 16),
+                onPressed: () async {
+  debugPrint('🔄 Manual sync triggered (REST API)...');
+  
+  // Show loading snackbar
+  if (mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 12),
+            Text('Syncing data from cloud...'),
+          ],
+        ),
+        backgroundColor: Colors.blue,
+        duration: Duration(seconds: 30),
+      ),
+    );
+  }
+  
+  try {
+    // ✅ REST API use karein - NO CRASH!
+    final result = await RestSyncManager.instance.syncAllData();
+    
+    if (mounted) {
+      // Hide loading snackbar
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ Synced: ${result['users']} users, ${result['companies']} companies'
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Sync failed: ${result['message']}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Sync error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+},
+                  tooltip: 'Sync Data from Cloud',
+                ),
+              ),
             ],
           ),
         ],
@@ -648,16 +705,40 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
     );
   }
 
+  Widget _buildMobileContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 0),
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFF8F9FA), Color(0xFFF1F3F4)],
+              ),
+            ),
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: _pages,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMobileDrawer() {
     return Drawer(
       backgroundColor: const Color(0xFF2C3E50),
-      child: ValueListenableBuilder<Map<String, dynamic>?>(
-        valueListenable: AuthService.currentUserNotifier,
-        builder: (context, currentUser, _) {
-          return Column(
-            children: [
-              // Header
-              Container(
+      child: Column(
+        children: [
+          ValueListenableBuilder<Map<String, dynamic>?>(
+            valueListenable: AuthService.currentUserNotifier,
+            builder: (context, currentUser, _) {
+              return Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -689,13 +770,7 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
                                       fontWeight: FontWeight.bold,
                                     ),
                                   )
-                                : ClipOval(
-                                    child: PlatformAwareImage(
-                                      imagePath: currentUser?['profile_picture_path'],
-                                      width: 48,
-                                      height: 48,
-                                    ),
-                                  ),
+                                : null,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -736,58 +811,63 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
                     ],
                   ),
                 ),
-              ),
-              
-              // Navigation Items (simplified version of sidebar)
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  children: [
-                    _buildMobileDrawerItem('Dashboard', Icons.dashboard, 0),
-                    ValueListenableBuilder<int?>(
-                      valueListenable: _badgeFilesNotifier,
-                      builder: (context, badgeVal, _) =>
-                          _buildMobileDrawerItem('Inventory', Icons.insert_drive_file, 1, badge: badgeVal),
-                    ),
-                    _buildMobileDrawerItem('Agent Working', Icons.support_agent, 2),
-                    ValueListenableBuilder<int?>(
+              );
+            },
+          ),
+          
+          Expanded(
+            child: ValueListenableBuilder<Map<String, dynamic>?>(
+              valueListenable: AuthService.currentUserNotifier,
+              builder: (context, currentUser, _) {
+                return ValueListenableBuilder<int?>(
+                  valueListenable: _badgeFilesNotifier,
+                  builder: (context, filesBadge, _) {
+                    return ValueListenableBuilder<int?>(
                       valueListenable: _badgeRentalsNotifier,
-                      builder: (context, badgeVal, _) =>
-                          _buildMobileDrawerItem('Rental Items', Icons.chair, 3, badge: badgeVal),
-                    ),
-                    _buildMobileDrawerItem('To-Do', Icons.checklist, 4),
-                    _buildMobileDrawerItem('Expenditure', Icons.payments, 10),
-                    if (currentUser != null && currentUser['role'] == 'super_admin')
-                      _buildMobileDrawerItem('User Management', Icons.people, 9),
-                    if (currentUser != null && currentUser['role'] == 'super_admin')
-                      _buildMobileDrawerItem('Company Management', Icons.business, 11),
-                    _buildMobileDrawerItem('Reports', Icons.bar_chart, 8),
-                    _buildMobileDrawerItem('Settings', Icons.settings, 5),
-                  ],
+                      builder: (context, rentalsBadge, _) {
+                        return ListView(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          children: [
+                            _buildMobileDrawerItem('Dashboard', Icons.dashboard, 0),
+                            _buildMobileDrawerItem('Inventory', Icons.insert_drive_file, 1, badge: filesBadge),
+                            _buildMobileDrawerItem('Agent Working', Icons.support_agent, 2),
+                            _buildMobileDrawerItem('Rental Items', Icons.chair, 3, badge: rentalsBadge),
+                            _buildMobileDrawerItem('To-Do', Icons.checklist, 4),
+                            _buildMobileDrawerItem('Expenditure', Icons.payments, 10),
+                            if (currentUser != null && currentUser['role'] == 'super_admin')
+                              _buildMobileDrawerItem('User Management', Icons.people, 9),
+                            if (currentUser != null && currentUser['role'] == 'super_admin')
+                              _buildMobileDrawerItem('Company Management', Icons.business, 11),
+                            _buildMobileDrawerItem('Reports', Icons.bar_chart, 8),
+                            _buildMobileDrawerItem('Settings', Icons.settings, 5),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: ListTile(
+              leading: const Icon(
+                Icons.logout,
+                color: Colors.red,
+              ),
+              title: const Text(
+                'Logout',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              
-              // Logout
-              Container(
-                padding: const EdgeInsets.all(16),
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.logout,
-                    color: Colors.red,
-                  ),
-                  title: const Text(
-                    'Logout',
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  onTap: _onLogout,
-                ),
-              ),
-            ],
-          );
-        },
+              onTap: _onLogout,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -828,33 +908,8 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
       selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
       onTap: () {
         _onDestinationSelected(index);
-        Navigator.of(context).pop(); // Close drawer
+        Navigator.of(context).pop();
       },
-    );
-  }
-
-  Widget _buildMobileContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 0),
-        Expanded(
-          child: Container(
-            width: double.infinity,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFF8F9FA), Color(0xFFF1F3F4)],
-              ),
-            ),
-            child: IndexedStack(
-              index: _selectedIndex,
-              children: _pages,
-            ),
-          ),
-        ),
-      ],
     );
   }
 

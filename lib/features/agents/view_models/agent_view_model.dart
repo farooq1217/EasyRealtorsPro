@@ -1,8 +1,8 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:image_picker/image_picker.dart';
 import '../repositories/agent_repository.dart';
 import '../repositories/agent_repository_impl.dart';
@@ -13,6 +13,7 @@ import '../../../core/services/app_storage.dart' show AppStorage;
 import 'package:shared/shared.dart' show WorkingProgressData, WorkingComment;
 import '../../../core/role_utils.dart';
 import '../../../core/utils/logger.dart';
+import '../../../core/windows_platform_fix.dart';
 
 class AgentViewModel extends ChangeNotifier {
   final AgentRepository _repository;
@@ -225,24 +226,27 @@ class AgentViewModel extends ChangeNotifier {
             debugPrint('AgentViewModel: User loaded successfully from AuthService: ${user['email']}');
             
             // NOW: Try to enhance with permissions after basic user data is loaded
-            try {
-              // Ensure cache is properly initialized with user data already available
-              await PermissionSyncService.initializePermissionsCache(authToken);
-              
-              // Try to get enhanced user with permissions
-              final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(authToken)
-                  .timeout(const Duration(seconds: 3)); // Reduced timeout since we have basic user
-              
-              if (userWithPermissions != null && userWithPermissions['permissions'] != null) {
-                _currentUser = userWithPermissions;
-                debugPrint('AgentViewModel: User enhanced with permissions: ${userWithPermissions['email']}');
-              } else {
-                debugPrint('AgentViewModel: Permission enhancement returned null, using basic user data');
-              }
-            } catch (permError) {
-              debugPrint('AgentViewModel: Permission enhancement failed, using basic user data: $permError');
-              // Keep the basic user data we already loaded
-            }
+           // ✅ CRITICAL: Windows par PermissionSyncService calls skip karein (Firestore access karte hain)
+final isWindows = !kIsWeb && io.Platform.isWindows;
+if (!isWindows) {
+  try {
+    await PermissionSyncService.initializePermissionsCache(authToken);
+    
+    final userWithPermissions = await PermissionSyncService.getPermissionsInstantly(authToken)
+        .timeout(const Duration(seconds: 3));
+    
+    if (userWithPermissions != null && userWithPermissions['permissions'] != null) {
+      _currentUser = userWithPermissions;
+      debugPrint('AgentViewModel: User enhanced with permissions: ${userWithPermissions['email']}');
+    } else {
+      debugPrint('AgentViewModel: Permission enhancement returned null, using basic user data');
+    }
+  } catch (permError) {
+    debugPrint('AgentViewModel: Permission enhancement failed, using basic user data: $permError');
+  }
+} else {
+  debugPrint('AgentViewModel: Windows detected - PermissionSyncService skipped, using basic user data');
+}
           } else {
             debugPrint('AgentViewModel: AuthService returned null user');
             throw Exception('User authentication failed - no user data available');

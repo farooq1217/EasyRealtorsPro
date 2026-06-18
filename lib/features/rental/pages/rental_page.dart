@@ -1155,6 +1155,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
       ),
       ),
       floatingActionButton: FloatingActionButton(
+         heroTag: 'rental_page_fab',
         onPressed: () => _showAddFormDialog(),
         backgroundColor: const Color(0xFFFF6B35),
         child: const Icon(Icons.add),

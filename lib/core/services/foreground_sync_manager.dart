@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'dart:convert'; // ✅ Added for jsonEncode
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import 'package:easyrealtorspro/core/role_utils.dart';
 import 'package:shared/shared.dart' show AppDatabase;
-
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
 class ForegroundSyncManager {
   static final ForegroundSyncManager instance = ForegroundSyncManager._();
   ForegroundSyncManager._();
@@ -18,25 +19,31 @@ class ForegroundSyncManager {
   StreamSubscription? _inventoryListener;
   
   Future<void> syncNow() async {
-    if (_isSyncing || _isPaused) return;
-    if (Firebase.apps.isEmpty) return;
-    
-    _isSyncing = true;
-    debugPrint('🔄 ForegroundSyncManager: Starting foreground sync...');
-    
-    try {
-      await _syncUsers();
-      await _syncCompanies();
-      await _syncInventory();
-      _startPeriodicSync();
-      _startRealtimeListeners();
-      debugPrint('✅ ForegroundSyncManager: Sync completed successfully');
-    } catch (e) {
-      debugPrint('❌ ForegroundSyncManager: Sync failed: $e');
-    } finally {
-      _isSyncing = false;
-    }
+  
+  if (_isSyncing || _isPaused) return;
+  if (Firebase.apps.isEmpty) {
+    debugPrint('⚠️ ForegroundSyncManager: Firebase not initialized, skipping sync');
+    return;
   }
+  
+  _isSyncing = true;
+  debugPrint('🔄 ForegroundSyncManager: Starting foreground sync...');
+  
+  try {
+    await _syncUsers();
+    await _syncCompanies();
+    await _syncInventory();
+    
+    _startPeriodicSync();
+    _startRealtimeListeners();
+    
+    debugPrint('✅ ForegroundSyncManager: Sync completed successfully');
+  } catch (e) {
+    debugPrint('❌ ForegroundSyncManager: Sync failed: $e');
+  } finally {
+    _isSyncing = false;
+  }
+}
   
   Future<void> pauseSync() async {
     _isPaused = true;
@@ -59,7 +66,7 @@ class ForegroundSyncManager {
   void _startPeriodicSync() {
     _periodicSyncTimer?.cancel();
     _periodicSyncTimer = Timer.periodic(
-      const Duration(seconds: 30),
+      const Duration(seconds: 60), // ✅ Changed to 60s to reduce unnecessary load
       (_) async {
         if (!_isPaused && Firebase.apps.isNotEmpty) {
           debugPrint('🔄 ForegroundSyncManager: Periodic sync triggered');
@@ -79,8 +86,9 @@ class ForegroundSyncManager {
       final isSuperAdmin = RoleUtils.isSuperAdmin(currentUser);
       final userCompanyId = RoleUtils.getUserCompanyId(currentUser);
       
+      // ✅ Users Listener
       Query usersQuery = firestore.collection('users');
-      if (!isSuperAdmin && userCompanyId != null) {
+      if (!isSuperAdmin && userCompanyId != null && userCompanyId.isNotEmpty) {
         usersQuery = usersQuery.where('company_id', isEqualTo: userCompanyId);
       }
       
@@ -93,16 +101,21 @@ class ForegroundSyncManager {
         onError: (e) => debugPrint('❌ ForegroundSyncManager: Users listener error: $e'),
       );
       
-      if (isSuperAdmin) {
-        _companiesListener = firestore.collection('companies').snapshots().listen(
-          (snapshot) async {
-            if (_isPaused) return;
-            debugPrint('🔔 ForegroundSyncManager: Companies realtime update - ${snapshot.docs.length} docs');
-            await _saveCompaniesToLocal(snapshot.docs);
-          },
-          onError: (e) => debugPrint('❌ ForegroundSyncManager: Companies listener error: $e'),
-        );
+      // ✅ Companies Listener (Only for Super Admin, or filtered for Company Admin)
+      Query companiesQuery = firestore.collection('companies');
+      if (!isSuperAdmin && userCompanyId != null && userCompanyId.isNotEmpty) {
+        companiesQuery = companiesQuery.where('id', isEqualTo: userCompanyId);
       }
+      
+      _companiesListener = companiesQuery.snapshots().listen(
+        (snapshot) async {
+          if (_isPaused) return;
+          debugPrint('🔔 ForegroundSyncManager: Companies realtime update - ${snapshot.docs.length} docs');
+          await _saveCompaniesToLocal(snapshot.docs);
+        },
+        onError: (e) => debugPrint('❌ ForegroundSyncManager: Companies listener error: $e'),
+      );
+      
       debugPrint('✅ ForegroundSyncManager: Realtime listeners started');
     } catch (e) {
       debugPrint('❌ ForegroundSyncManager: Error starting realtime listeners: $e');
@@ -117,11 +130,11 @@ class ForegroundSyncManager {
       final userCompanyId = RoleUtils.getUserCompanyId(currentUser);
       
       Query query = firestore.collection('users');
-      if (!isSuperAdmin && userCompanyId != null) {
+      if (!isSuperAdmin && userCompanyId != null && userCompanyId.isNotEmpty) {
         query = query.where('company_id', isEqualTo: userCompanyId);
       }
       
-      final snapshot = await query.get().timeout(const Duration(seconds: 10));
+      final snapshot = await query.get().timeout(const Duration(seconds: 15));
       debugPrint('📥 ForegroundSyncManager: Fetched ${snapshot.docs.length} users from Firestore');
       await _saveUsersToLocal(snapshot.docs);
     } catch (e) {
@@ -132,7 +145,17 @@ class ForegroundSyncManager {
   Future<void> _syncCompanies() async {
     try {
       final firestore = FirebaseFirestore.instance;
-      final snapshot = await firestore.collection('companies').get().timeout(const Duration(seconds: 10));
+      final currentUser = AuthService.currentUser;
+      final isSuperAdmin = RoleUtils.isSuperAdmin(currentUser);
+      final userCompanyId = RoleUtils.getUserCompanyId(currentUser);
+      
+      Query query = firestore.collection('companies');
+      // ✅ Filter companies for non-super admins
+      if (!isSuperAdmin && userCompanyId != null && userCompanyId.isNotEmpty) {
+        query = query.where('id', isEqualTo: userCompanyId);
+      }
+      
+      final snapshot = await query.get().timeout(const Duration(seconds: 15));
       debugPrint('📥 ForegroundSyncManager: Fetched ${snapshot.docs.length} companies from Firestore');
       await _saveCompaniesToLocal(snapshot.docs);
     } catch (e) {
@@ -142,6 +165,7 @@ class ForegroundSyncManager {
   
   Future<void> _syncInventory() async {
     try {
+      // TODO: Implement inventory sync logic here when ready
       debugPrint('📥 ForegroundSyncManager: Inventory sync (placeholder)');
     } catch (e) {
       debugPrint('❌ ForegroundSyncManager: Inventory sync failed: $e');
@@ -149,11 +173,22 @@ class ForegroundSyncManager {
   }
   
   Future<void> _saveUsersToLocal(List<QueryDocumentSnapshot> docs) async {
+    if (docs.isEmpty) return;
+    
     try {
       final db = await AppDatabase.instance();
       await db.transaction(() async {
         for (final doc in docs) {
           final data = doc.data() as Map<String, dynamic>;
+          
+          // ✅ Safe JSON conversion for permissions
+          String permsStr = '{}';
+          if (data['permissions'] is String) {
+            permsStr = data['permissions'] as String;
+          } else if (data['permissions'] is Map) {
+            permsStr = jsonEncode(data['permissions']);
+          }
+          
           await db.customStatement(
             '''INSERT OR REPLACE INTO users (
               id, username, password_hash, salt, iterations, user_id, name, email, 
@@ -171,7 +206,7 @@ class ForegroundSyncManager {
               data['email']?.toString() ?? '',
               data['contact_no']?.toString() ?? '',
               data['role']?.toString() ?? 'agent',
-              data['permissions']?.toString() ?? '{}',
+              permsStr, // ✅ Safe JSON string
               data['company_id']?.toString() ?? '',
               data['status']?.toString() ?? 'active',
               (data['is_first_login'] == true || data['is_first_login'] == 1) ? 1 : 0,
@@ -191,11 +226,22 @@ class ForegroundSyncManager {
   }
   
   Future<void> _saveCompaniesToLocal(List<QueryDocumentSnapshot> docs) async {
+    if (docs.isEmpty) return;
+    
     try {
       final db = await AppDatabase.instance();
       await db.transaction(() async {
         for (final doc in docs) {
           final data = doc.data() as Map<String, dynamic>;
+          
+          // ✅ Safe JSON conversion for metadata
+          String metaStr = '{}';
+          if (data['metadata'] is String) {
+            metaStr = data['metadata'] as String;
+          } else if (data['metadata'] is Map) {
+            metaStr = jsonEncode(data['metadata']);
+          }
+          
           await db.customStatement(
             '''INSERT OR REPLACE INTO companies (
               id, name, status, metadata, max_user_limit, subscription_tier, created_at, updated_at
@@ -204,7 +250,7 @@ class ForegroundSyncManager {
               doc.id,
               data['name']?.toString() ?? '',
               data['status']?.toString() ?? 'active',
-              data['metadata']?.toString() ?? '{}',
+              metaStr, // ✅ Safe JSON string
               data['max_user_limit'] ?? 5,
               data['subscription_tier']?.toString() ?? 'Starter',
               data['created_at']?.toString() ?? DateTime.now().toIso8601String(),

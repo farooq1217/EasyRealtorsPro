@@ -17,6 +17,7 @@ enum TaskSortOption {
 }
 
 class TodoViewModel extends ChangeNotifier {
+  bool _isUpdatingReadStatus = false;
   final TodoRepository _repository;
   final NotificationService _notificationService;
   
@@ -206,57 +207,59 @@ class TodoViewModel extends ChangeNotifier {
     return tasks;
   }
 
-  // Actions
   Future<void> loadTasks(String userId, String? companyId) async {
-    _setLoading(true);
-    _error = null;
+  _setLoading(true);
+  _error = null;
+  
+  Logger.debug('TodoViewModel: Loading tasks for user: $userId, company: $companyId, date: $_selectedDate', tag: 'TodoViewModel');
+  
+  // Cancel existing subscription
+  await _remindersSubscription?.cancel();
+  
+  try {
+    // Set up stream for reminders with thread-safe UI updates
+    _remindersSubscription = _repository.getRemindersForDate(userId, companyId, _selectedDate).listen(
+      (reminders) {
+        // ✅ CRITICAL FIX: Skip stream updates if we're updating read status
+        if (_isUpdatingReadStatus) {
+          debugPrint('TodoViewModel: Skipping stream update - read status update in progress');
+          return;
+        }
+        
+        // THREAD SAFETY: Wrap UI updates in postFrameCallback
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_mounted) return;
+          
+          Logger.debug('TodoViewModel: Stream update received - ${reminders.length} reminders', tag: 'TodoViewModel');
+          _reminders = reminders;
+          Logger.debug('TodoViewModel: _reminders assigned with ${reminders.length} items', tag: 'TodoViewModel');
+          notifyListeners();
+          Logger.debug('TodoViewModel: UI notified of update', tag: 'TodoViewModel');
+        });
+      },
+      onError: (e, stackTrace) {
+        // THREAD SAFETY: Wrap error handling in postFrameCallback
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_mounted) return;
+          
+          Logger.error('TodoViewModel: Stream error', tag: 'TodoViewModel', error: e, stackTrace: stackTrace);
+          _error = e.toString();
+          notifyListeners();
+        });
+      },
+    );
     
-    Logger.debug('TodoViewModel: Loading tasks for user: $userId, company: $companyId, date: $_selectedDate', tag: 'TodoViewModel');
+    Logger.debug('TodoViewModel: Stream subscription set up', tag: 'TodoViewModel');
     
-    // Cancel existing subscription
-    await _remindersSubscription?.cancel();
-    
-    try {
-      // Set up stream for reminders with thread-safe UI updates
-      _remindersSubscription = _repository.getRemindersForDate(userId, companyId, _selectedDate).listen(
-        (reminders) {
-          // THREAD SAFETY: Wrap UI updates in postFrameCallback
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!_mounted) return;
-            
-            Logger.debug('TodoViewModel: Stream update received - ${reminders.length} reminders', tag: 'TodoViewModel');
-            for (final reminder in reminders) {
-              Logger.debug('TodoViewModel: Reminder - ${reminder.reminderTitle} at ${reminder.reminderDate}', tag: 'TodoViewModel');
-            }
-            _reminders = reminders;
-            Logger.debug('TodoViewModel: _reminders assigned with ${reminders.length} items', tag: 'TodoViewModel');
-            notifyListeners();
-            Logger.debug('TodoViewModel: UI notified of update', tag: 'TodoViewModel');
-          });
-        },
-        onError: (e, stackTrace) {
-          // THREAD SAFETY: Wrap error handling in postFrameCallback
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!_mounted) return;
-            
-            Logger.error('TodoViewModel: Stream error', tag: 'TodoViewModel', error: e, stackTrace: stackTrace);
-            _error = e.toString();
-            notifyListeners();
-          });
-        },
-      );
-      
-      Logger.debug('TodoViewModel: Stream subscription set up', tag: 'TodoViewModel');
-      
-      // Load aggregated tasks (one-time load)
-      await _loadAggregatedTasks(userId, companyId);
-    } catch (e) {
-      Logger.error('TodoViewModel: Error loading tasks', tag: 'TodoViewModel', error: e);
-      _error = e.toString();
-    } finally {
-      _setLoading(false);
-    }
+    // Load aggregated tasks (one-time load)
+    await _loadAggregatedTasks(userId, companyId);
+  } catch (e) {
+    Logger.error('TodoViewModel: Error loading tasks', tag: 'TodoViewModel', error: e);
+    _error = e.toString();
+  } finally {
+    _setLoading(false);
   }
+}
 
   Future<void> _loadAggregatedTasks(String userId, String? companyId) async {
     try {
@@ -279,18 +282,7 @@ class TodoViewModel extends ChangeNotifier {
     }
   }
 
-  /// Mark a reminder as read
-  Future<void> markAsRead(int reminderId) async {
-    try {
-      await _repository.markAsRead(reminderId);
-      // The stream should emit updated reminders; ensure UI refresh
-      Logger.debug('TodoViewModel: Marked reminder $reminderId as read', tag: 'TodoViewModel');
-    } catch (e) {
-      Logger.error('TodoViewModel: Error marking reminder as read', tag: 'TodoViewModel', error: e);
-      _error = e.toString();
-      notifyListeners();
-    }
-  }
+ 
 
   Future<void> addReminder({
     required String userId,
@@ -477,6 +469,85 @@ class TodoViewModel extends ChangeNotifier {
     }
   }
 
+/// Mark a reminder as read
+Future<void> markAsRead(String reminderId) async {
+  try {
+    debugPrint('TodoViewModel: Marking reminder $reminderId as read');
+    
+    if (reminderId.isEmpty) {
+      debugPrint('TodoViewModel: Invalid reminder ID');
+      return;
+    }
+    
+    // ✅ CRITICAL FIX: Pause stream updates
+    _isUpdatingReadStatus = true;
+    
+    // ✅ CRITICAL: Update database
+    await _repository.markAsRead(int.parse(reminderId));
+    
+    // ✅ CRITICAL FIX: Update local _reminders list immediately
+    final reminderIndex = _reminders.indexWhere((r) => r.reminderId.toString() == reminderId);
+    if (reminderIndex != -1) {
+      final reminder = _reminders[reminderIndex];
+      // Create new reminder with isRead = true
+      final updatedReminder = Reminder(
+        reminderId: reminder.reminderId,
+        agentId: reminder.agentId,
+        companyId: reminder.companyId,
+        clientName: reminder.clientName,
+        clientPhone: reminder.clientPhone,
+        reminderTitle: reminder.reminderTitle,
+        reminderDetails: reminder.reminderDetails,
+        reminderDate: reminder.reminderDate,
+        reminderTime: reminder.reminderTime,
+        notificationStatus: reminder.notificationStatus,
+        is_active: reminder.is_active,
+        createdAt: reminder.createdAt,
+        updatedAt: DateTime.now().toIso8601String(),
+        isRead: true,  // ✅ CRITICAL: Set isRead to true
+        isSynced: reminder.isSynced,
+      );
+      
+      _reminders[reminderIndex] = updatedReminder;
+      debugPrint('TodoViewModel: Updated reminder $reminderId in local list with isRead=true');
+    }
+    
+    // ✅ CRITICAL FIX: Refresh reminders from database to ensure consistency
+    if (_currentUser != null) {
+      final freshReminders = await _repository.getRemindersForDateFuture(
+        _currentUser!['id']?.toString() ?? '',
+        _currentUser!['companyId']?.toString(),
+        _selectedDate,
+      );
+      _reminders = freshReminders;
+      debugPrint('TodoViewModel: Refreshed reminders from database - ${freshReminders.length} items');
+    }
+    
+    // ✅ CRITICAL: Notify listeners to trigger UI rebuild
+    if (!_mounted) return;
+    
+    notifyListeners();
+    debugPrint('TodoViewModel: Reminder marked as read successfully, UI notified');
+    
+    // ✅ CRITICAL FIX: Resume stream updates after a short delay
+    await Future.delayed(const Duration(milliseconds: 500));
+    _isUpdatingReadStatus = false;
+    
+  } catch (e) {
+    debugPrint('TodoViewModel: Error marking reminder as read: $e');
+    // ✅ CRITICAL: Always resume stream updates even on error
+    _isUpdatingReadStatus = false;
+  }
+}
+// ✅ NEW: Safe notifyListeners method
+void safeNotifyListeners() {
+  try {
+    notifyListeners();
+  } catch (e) {
+    debugPrint('TodoViewModel: notifyListeners error: $e');
+  }
+}
+
   void setSearchQuery(String query) {
     _searchQuery = query;
     _currentPage = 1; // Reset to page 1 when search changes
@@ -514,10 +585,14 @@ class TodoViewModel extends ChangeNotifier {
     }
   }
 
-  @override
-  void dispose() {
-    _mounted = false;
-    _remindersSubscription?.cancel();
-    super.dispose();
-  }
+ @override
+void dispose() {
+  debugPrint('TodoViewModel: Disposing...');
+  _remindersSubscription?.cancel();
+  _reminders.clear();
+  _aggregatedTasks.clear();
+  _mounted = false;
+  super.dispose();
+  debugPrint('TodoViewModel: Disposed successfully');
+}
 }

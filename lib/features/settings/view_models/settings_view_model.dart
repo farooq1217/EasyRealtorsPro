@@ -4,15 +4,16 @@ import 'package:flutter/material.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/settings_repository_impl.dart';
 import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
-import '../../../core/windows_platform_fix.dart'; // ✨ CRITICAL FIX: Windows platform stability
+import '../../../core/windows_platform_fix.dart';
+import '../../../core/services/society_event_service.dart';
 
 class SettingsViewModel extends ChangeNotifier {
-  final SettingsRepository _repository;
+  final SettingsRepository _repository; // ✅ Fixed: Use _repository consistently
   
   // Initialization guard to prevent duplicates
   static bool _isInitializing = false;
   
-  SettingsViewModel(this._repository);
+  SettingsViewModel(this._repository); // ✅ Constructor injects _repository
 
   // State
   Map<String, dynamic>? _currentUser;
@@ -46,7 +47,6 @@ class SettingsViewModel extends ChangeNotifier {
   // ✨ CRITICAL FIX: Safe notifyListeners for Windows compatibility
   void safeNotifyListeners() {
     if (WindowsPlatformFix.isWindows) {
-      // On Windows, ensure notifyListeners is called safely
       try {
         notifyListeners();
       } catch (e) {
@@ -58,31 +58,60 @@ class SettingsViewModel extends ChangeNotifier {
     }
   }
 
+ // ✅ FIXED: Society create method with event emission
+Future<void> createSociety(String name) async {
+  try {
+    _loading = true;
+    safeNotifyListeners();
+    
+    // ✅ FIXED: addSociety void return karta hai, directly call karein
+    await _repository.addSociety(name);
+    
+    // ✅ FIXED: Pehle societies reload karein
+    await _loadSocieties();
+    
+    // ✅ FIXED: Ab latest society ko find karein (jo abhi add hui)
+    if (_societies.isNotEmpty) {
+      // Last society ko get karein (assuming it's the newest)
+      final newSociety = _societies.last;
+      
+      // ✅ Event emit karein with actual data
+      SocietyEventService().notifySocietyCreated({
+        'id': newSociety['id']?.toString() ?? '',
+        'name': newSociety['name']?.toString() ?? name,
+      });
+      
+      debugPrint('SettingsViewModel: Society created and event emitted - ID: ${newSociety['id']}, Name: ${newSociety['name']}');
+    }
+    
+    _loading = false;
+    safeNotifyListeners();
+  } catch (e) {
+    debugPrint('Error creating society: $e');
+    _loading = false;
+    safeNotifyListeners();
+    rethrow;
+  }
+}
   // Initialize
   Future<void> initialize() async {
-    // Prevent duplicate initialization
     if (_isInitializing) {
       debugPrint('SettingsViewModel: Already initializing, skipping duplicate call');
       return;
     }
     
-    // ✨ CRITICAL FIX: Initialize Windows platform fixes (only once)
     WindowsPlatformFix.initialize();
     debugPrint('SettingsViewModel: Starting initialization');
     
     _isInitializing = true;
-    
-    // Set loading to true initially
     _loading = true;
     safeNotifyListeners();
     
     try {
       debugPrint('SettingsViewModel: Loading current user and societies in parallel');
-      // ✨ PERFORMANCE FIX: Run operations in parallel with shorter timeouts
       await Future.wait([
         _loadCurrentUser().timeout(const Duration(seconds: 3), onTimeout: () {
           debugPrint('SettingsViewModel: Current user loading timed out');
-          // Set default user to prevent complete failure
           _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com', 'role': 'user'};
         }),
         _loadSocieties().timeout(const Duration(seconds: 3), onTimeout: () {
@@ -91,12 +120,10 @@ class SettingsViewModel extends ChangeNotifier {
         }),
       ]);
       
-      // ROLE SYNC FIX: Ensure role is properly detected after user load
       if (_currentUser != null) {
         final detectedRole = _currentUser!['role']?.toString().toLowerCase();
         debugPrint('SettingsViewModel: ROLE SYNC FIX - User role detected: $detectedRole');
         
-        // Ensure role field is properly set
         if (detectedRole == null || detectedRole.isEmpty) {
           final roleFromUtils = _getUserRoleFromUtils();
           if (roleFromUtils.isNotEmpty) {
@@ -108,7 +135,6 @@ class SettingsViewModel extends ChangeNotifier {
       
       debugPrint('SettingsViewModel: User and societies loaded, loading blocks if needed');
       
-      // Load blocks only after societies are loaded and if a society is selected
       if (_selectedSocietyId != null) {
         await _loadBlocksForSociety(_selectedSocietyId!).timeout(const Duration(seconds: 2), onTimeout: () {
           debugPrint('SettingsViewModel: Blocks loading timed out');
@@ -119,11 +145,9 @@ class SettingsViewModel extends ChangeNotifier {
       debugPrint('SettingsViewModel: Initialization completed successfully');
     } catch (e) {
       debugPrint('Settings initialization error: $e');
-      // Continue with partial data rather than hanging indefinitely
     } finally {
-      // CRITICAL FIX: Always ensure loading is set to false
       _loading = false;
-      _isInitializing = false; // Reset initialization flag
+      _isInitializing = false;
       debugPrint('SettingsViewModel: Loading set to false, notifying listeners');
       safeNotifyListeners();
     }
@@ -137,7 +161,6 @@ class SettingsViewModel extends ChangeNotifier {
       if (_currentUser != null) {
         _profileImagePath = _currentUser!['profile_picture_path']?.toString();
         
-        // ROLE SYNC FIX: Ensure role is properly detected and set
         final detectedRole = _currentUser!['role']?.toString().toLowerCase();
         debugPrint('SettingsViewModel._loadCurrentUser: Raw role from repository: $detectedRole');
         
@@ -151,19 +174,15 @@ class SettingsViewModel extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Error loading current user: $e');
-      // Set default user to prevent complete failure
       _currentUser = {'name': 'Unknown', 'email': 'unknown@example.com', 'role': 'user'};
     }
   }
   
-  // Helper method to get role using RoleUtils for consistency
   String _getUserRoleFromUtils() {
     try {
-      // Import RoleUtils here to avoid circular dependency
       final role = _currentUser!['role']?.toString() ?? '';
       if (role.isNotEmpty) return role;
       
-      // Check permissions for role
       final permissionsRaw = _currentUser!['permissions'];
       if (permissionsRaw != null) {
         if (permissionsRaw is String) {
@@ -213,7 +232,6 @@ class SettingsViewModel extends ChangeNotifier {
         'created_at': _currentUser!['created_at'],
       });
 
-      // Update local state
       _currentUser = {
         ...?_currentUser,
         'name': name,
@@ -233,7 +251,6 @@ class SettingsViewModel extends ChangeNotifier {
         _profileImagePath = profilePicturePath;
       }
 
-      // Update AuthService cache
       AuthService.currentUser = _currentUser;
 
       _savingProfile = false;
@@ -267,14 +284,13 @@ class SettingsViewModel extends ChangeNotifier {
     }
   }
 
-  // Societies methods
+  // ✅ FIXED: Societies methods - using _repository consistently
   Future<void> _loadSocieties() async {
     try {
       debugPrint('SettingsViewModel: Starting to load societies');
       final rawData = await _repository.getSocieties().timeout(const Duration(seconds: 3));
       debugPrint('SettingsViewModel: Repository returned ${rawData.length} raw societies: $rawData');
       
-      // Fix "Non-subtype" Error: Use type-safe mapping logic
       _societies = List<Map<String, dynamic>>.from(
         rawData.map((item) => {
           'id': item['id']?.toString() ?? '',
@@ -285,27 +301,33 @@ class SettingsViewModel extends ChangeNotifier {
       debugPrint('SettingsViewModel: Type-safe societies mapping completed, societies count: ${_societies.length}');
       debugPrint('SettingsViewModel: Final societies list: $_societies');
       
-      // AUTO-SELECTION: If there is only one society and no society is currently selected, auto-select it
       if (_societies.length == 1 && _selectedSocietyId == null) {
         final singleSociety = _societies.first;
         debugPrint('SettingsViewModel: Auto-selecting single society: ${singleSociety['name']} (${singleSociety['id']})');
         _selectedSocietyId = singleSociety['id'].toString();
-        // Don't call setSelectedSociety here to avoid infinite recursion during initialization
-        // Just set the ID directly, blocks will be loaded after initialization completes
       }
+      
+      safeNotifyListeners();
       
       debugPrint('SettingsViewModel: Societies loading completed successfully');
     } catch (e) {
       debugPrint('Error loading societies: $e');
-      // Set empty list to prevent complete failure
       _societies = [];
+      safeNotifyListeners();
     }
   }
 
   Future<void> addSociety(String name) async {
     try {
       await _repository.addSociety(name);
-      await _loadSocieties(); // Refresh list
+      
+      // ✅ Emit event for real-time updates
+      SocietyEventService().notifySocietyCreated({
+        'id': '', // Will be populated after reload
+        'name': name,
+      });
+      
+      await _loadSocieties();
     } catch (e) {
       debugPrint('Error adding society: $e');
       rethrow;
@@ -315,53 +337,81 @@ class SettingsViewModel extends ChangeNotifier {
   Future<void> updateSociety(String id, String name) async {
     try {
       await _repository.updateSociety(id, name);
-      await _loadSocieties(); // Refresh list
+      
+      // ✅ Emit event
+      SocietyEventService().notifySocietyUpdated({
+        'id': id,
+        'name': name,
+      });
+      
+      await _loadSocieties();
     } catch (e) {
       debugPrint('Error updating society: $e');
       rethrow;
     }
   }
 
-  Future<void> deleteSociety(String id) async {
-    try {
-      await _repository.deleteSociety(id);
-      
-      // Clear selection if deleted society was selected
-      if (_selectedSocietyId == id) {
-        _selectedSocietyId = null;
-        _blocks = [];
-      }
-      
-      await _loadSocieties(); // Refresh list
-      safeNotifyListeners();
-    } catch (e) {
-      debugPrint('Error deleting society: $e');
-      rethrow;
-    }
+// ✅ FIXED: Delete society with proper error handling
+Future<void> deleteSociety(String id) async {
+  if (id.isEmpty) {
+    debugPrint('SettingsViewModel: Cannot delete society - empty ID');
+    return;
   }
-
+  
+  try {
+    debugPrint('SettingsViewModel: Starting delete for society ID: $id');
+    
+    _loading = true;
+    safeNotifyListeners();
+    
+    // ✅ CRITICAL: Clear selection FIRST if this society is selected
+    if (_selectedSocietyId == id) {
+      debugPrint('SettingsViewModel: Clearing selected society before delete');
+      _selectedSocietyId = null;
+      _blocks = [];
+      // ✅ Don't call safeNotifyListeners() here - will call after delete
+    }
+    
+    // ✅ Perform delete
+    debugPrint('SettingsViewModel: Calling repository.deleteSociety()');
+    await _repository.deleteSociety(id);
+    debugPrint('SettingsViewModel: Repository delete completed');
+    
+    // ✅ Reload societies
+    debugPrint('SettingsViewModel: Reloading societies list');
+    await _loadSocieties();
+    debugPrint('SettingsViewModel: Societies reloaded');
+    
+    // ✅ Emit event AFTER reload
+    SocietyEventService().notifySocietyDeleted(id);
+    debugPrint('SettingsViewModel: Event emitted');
+    
+    _loading = false;
+    safeNotifyListeners();
+    
+    debugPrint('SettingsViewModel: Delete operation completed successfully');
+  } catch (e, stackTrace) {
+    debugPrint('SettingsViewModel: ERROR deleting society: $e');
+    debugPrint('SettingsViewModel: Stack trace: $stackTrace');
+    _loading = false;
+    safeNotifyListeners();
+    rethrow;
+  }
+}
   void setSelectedSociety(String? societyId) {
     if (_selectedSocietyId != societyId) {
-      // 1. Update the selected society ID
       _selectedSocietyId = societyId;
-      
-      // 2. Clear the current blocks list to prevent old data from showing
       _blocks = [];
-      
-      // 3. Call notifyListeners() immediately to reset the Block dropdown state
       safeNotifyListeners();
       
-      // 4. If societyId is not null, trigger block loading for fresh data
       if (societyId != null) {
         _loadBlocksForSociety(societyId).then((_) {
-          // Additional notification after blocks are loaded
           safeNotifyListeners();
         });
       }
     }
   }
 
-  // Helper method to load blocks for a specific society
   Future<void> _loadBlocksForSociety(String societyId) async {
     try {
       _isLoadingBlocks = true;
@@ -370,7 +420,6 @@ class SettingsViewModel extends ChangeNotifier {
       final rawData = await _repository.getBlocksBySociety(societyId).timeout(const Duration(seconds: 3));
       debugPrint('SettingsViewModel: Repository returned ${rawData.length} raw blocks: $rawData');
       
-      // Fix "Non-subtype" Error: Use type-safe mapping logic
       _blocks = rawData.map((b) => {
         'id': b['id']?.toString() ?? '',
         'society_id': b['society_id']?.toString() ?? '',
@@ -388,13 +437,11 @@ class SettingsViewModel extends ChangeNotifier {
     }
   }
 
-  // Blocks methods
   Future<void> _loadBlocks() async {
     try {
       final rawData = await _repository.getBlocks();
       debugPrint('SettingsViewModel: Repository returned ${rawData.length} raw blocks: $rawData');
       
-      // Fix the "Non-subtype" Error: Use type-safe mapping logic
       _blocks = rawData.map((b) => {
         'id': b['id']?.toString() ?? '',
         'society_id': b['society_id']?.toString() ?? '',
@@ -417,7 +464,7 @@ class SettingsViewModel extends ChangeNotifier {
 
     try {
       await _repository.addBlock(_selectedSocietyId!, name);
-      await _loadBlocksForSociety(_selectedSocietyId!); // Refresh list
+      await _loadBlocksForSociety(_selectedSocietyId!);
     } catch (e) {
       debugPrint('Error adding block: $e');
       rethrow;
@@ -427,7 +474,7 @@ class SettingsViewModel extends ChangeNotifier {
   Future<void> updateBlock(String id, String name) async {
     try {
       await _repository.updateBlock(id, name);
-      await _loadBlocksForSociety(_selectedSocietyId!); // Refresh list
+      await _loadBlocksForSociety(_selectedSocietyId!);
     } catch (e) {
       debugPrint('Error updating block: $e');
       rethrow;
@@ -437,14 +484,13 @@ class SettingsViewModel extends ChangeNotifier {
   Future<void> deleteBlock(String id) async {
     try {
       await _repository.deleteBlock(id);
-      await _loadBlocksForSociety(_selectedSocietyId!); // Refresh list
+      await _loadBlocksForSociety(_selectedSocietyId!);
     } catch (e) {
       debugPrint('Error deleting block: $e');
       rethrow;
     }
   }
 
-  // Data export
   Future<void> exportDataToCsv() async {
     try {
       await _repository.exportDataToCsv();
@@ -454,7 +500,6 @@ class SettingsViewModel extends ChangeNotifier {
     }
   }
 
-  // Form sync helpers
   void syncProfileForm({
     required TextEditingController fullNameController,
     required TextEditingController phoneController,

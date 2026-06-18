@@ -533,6 +533,12 @@ class CompanyRepositoryImpl implements CompanyRepository {
 
   @override
   Future<void> syncCompaniesFromFirestore() async {
+final isWindows = !kIsWeb && io.Platform.isWindows;
+  if (isWindows) {
+    debugPrint('CompanyRepository: Windows detected - Firestore sync disabled');
+    return;
+  }
+
     if (Firebase.apps.isEmpty) {
       debugPrint('CompanyRepository: Skipping Firestore sync - Firebase is not initialized');
       return;

@@ -7,6 +7,7 @@ import '../repositories/inventory_repository.dart';
 import '../repositories/inventory_repository_impl.dart';
 import '../../settings/repositories/society_repository.dart';
 import '../../settings/repositories/settings_repository.dart';
+import '../../../core/services/society_event_service.dart';
 
 class InventoryViewModel extends ChangeNotifier {
   final InventoryRepository _inventoryRepository;
@@ -16,10 +17,13 @@ class InventoryViewModel extends ChangeNotifier {
   String? _currentUserCompanyId;
   bool? _currentUserIsSuper;
   
+  // Data lists
   List<InventoryItem> _allItems = [];
   List<InventoryItem> _filteredItems = [];
   List<Map<String, String>> _societies = [];
   List<Map<String, String>> _blocks = [];
+  
+  // Loading states
   bool _isLoading = false;
   bool _isLoadingSocieties = false;
   bool _isLoadingBlocks = false;
@@ -30,19 +34,10 @@ class InventoryViewModel extends ChangeNotifier {
   int _currentPage = 1;
   int _itemsPerPage = 10;
   
-  void _setLoading(bool loading) {
-    _isLoading = loading;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      notifyListeners();
-    });
-  }
-
-  bool get mounted => _mounted;
-  
   // Stream subscriptions
   StreamSubscription<List<Map<String, String>>>? _societiesSubscription;
   StreamSubscription<List<Map<String, String>>>? _blocksSubscription;
+  StreamSubscription<SocietyEvent>? _societyEventSubscription;
   
   // Filter state
   InventoryType _selectedType = InventoryType.file;
@@ -51,12 +46,53 @@ class InventoryViewModel extends ChangeNotifier {
   String? _selectedBlockId;
   String? _selectedStatusFilter;
 
-  InventoryViewModel(this._inventoryRepository, this._settingsRepository, {String? companyId, bool? isSuper}) {
+  // Constructor
+  InventoryViewModel(
+    this._inventoryRepository, 
+    this._settingsRepository, {
+    String? companyId, 
+    bool? isSuper,
+  }) {
     _currentUserCompanyId = companyId;
     _currentUserIsSuper = isSuper;
     _mounted = true;
     _initialized = true;
+    
+    // Start listening to society events
+    _listenToSocietyEvents();
   }
+
+  // ✅ NEW: Listen to society changes from Settings
+ // ✅ FIXED: Listen to society changes with proper handling
+void _listenToSocietyEvents() {
+  _societyEventSubscription = SocietyEventService().onSocietyChanged.listen((event) async {
+    debugPrint('InventoryViewModel: Society event received: ${event.type}');
+    
+    // ✅ CRITICAL: Handle delete event specially
+    if (event.type == SocietyEventType.deleted) {
+      final deletedId = event.data['id'];
+      debugPrint('InventoryViewModel: Society deleted - ID: $deletedId');
+      
+      // ✅ If selected society was deleted, clear selection
+      if (_selectedSocietyId == deletedId) {
+        debugPrint('InventoryViewModel: Selected society was deleted, clearing selection');
+        _selectedSocietyId = null;
+        _selectedBlockId = null;
+        _blocks = [];
+      }
+    }
+    
+    // ✅ Refresh societies
+    await loadSocieties(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
+    
+    // ✅ If society was created/updated, also refresh items
+    if (event.type == SocietyEventType.created || event.type == SocietyEventType.updated) {
+      await loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
+    }
+  }, onError: (error) {
+    debugPrint('InventoryViewModel: Error in society event stream: $error');
+  });
+}
 
   // Getters
   List<InventoryItem> get allItems => _allItems;
@@ -73,6 +109,7 @@ class InventoryViewModel extends ChangeNotifier {
   String? get selectedBlockId => _selectedBlockId;
   String? get selectedStatusFilter => _selectedStatusFilter;
   InventoryRepository get repository => _inventoryRepository;
+  bool get mounted => _mounted;
   
   // Pagination getters
   int get currentPage => _currentPage;
@@ -83,25 +120,19 @@ class InventoryViewModel extends ChangeNotifier {
     return _filteredItems.skip(startIndex).take(_itemsPerPage).toList();
   }
 
-  // Load all data with proper parameters
+  // Load all data
   Future<void> loadAllData({String? companyId, bool? isSuper}) async {
-    await Future.wait([
-      loadItems(companyId: companyId, isSuper: isSuper),
-      loadSocieties(companyId: companyId, isSuper: isSuper),
-    ]);
+    await loadSocieties(companyId: companyId, isSuper: isSuper);
+    await loadItems(companyId: companyId, isSuper: isSuper);
   }
 
   // Load items based on current filters
   Future<void> loadItems({String? companyId, bool? isSuper}) async {
     debugPrint('InventoryViewModel: loadItems called - companyId: $companyId, isSuper: $isSuper');
     _isLoading = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      notifyListeners();
-    });
+    notifyListeners();
     
     try {
-      // Use provided parameters or fall back to stored user context
       final effectiveCompanyId = companyId ?? _currentUserCompanyId;
       final effectiveIsSuper = isSuper ?? _currentUserIsSuper;
       
@@ -114,7 +145,7 @@ class InventoryViewModel extends ChangeNotifier {
         societyId: _selectedSocietyId,
         blockId: _selectedBlockId,
         statusFilter: _selectedStatusFilter,
-        companyId: effectiveCompanyId, // Use effective company context
+        companyId: effectiveCompanyId,
       );
       
       debugPrint('InventoryViewModel: Repository returned ${_allItems.length} items');
@@ -125,88 +156,53 @@ class InventoryViewModel extends ChangeNotifier {
       _filteredItems = [];
     } finally {
       _isLoading = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        notifyListeners();
-      });
+      notifyListeners();
     }
   }
 
-  // Load societies using Future-based approach for now
+  // Load societies
   Future<void> loadSocieties({String? companyId, bool? isSuper}) async {
     _isLoadingSocieties = true;
-    
-    // Force immediate UI refresh with microtask
-    Future.microtask(() {
-      if (!mounted) return;
-      notifyListeners();
-    });
+    notifyListeners();
     
     try {
-      // Cancel existing subscription if any
       await _societiesSubscription?.cancel();
       _societiesSubscription = null;
       
-      // Use Future-based approach for now to avoid stream type issues
       final rawData = await _settingsRepository.getSocieties();
-      debugPrint('InventoryViewModel: Repository returned ${rawData.length} raw societies: $rawData');
+      debugPrint('InventoryViewModel: Repository returned ${rawData.length} raw societies');
       
-      // Fix the "Non-subtype" Error: Use type-safe mapping logic
       _societies = List<Map<String, String>>.from(rawData.map((item) => {
         'id': item['id']?.toString() ?? '',
         'name': item['name']?.toString() ?? '',
       }));
       
-      debugPrint('InventoryViewModel: Type-safe societies mapping completed, societies count: ${_societies.length}');
       debugPrint('InventoryViewModel: Final societies list: ${_societies.map((s) => '${s['id']}:${s['name']}').toList()}');
       
-      // REMOVED AUTO-SELECTION: Do not auto-select any society
-      // _selectedSocietyId should remain null to show "All Society" by default
-      
       _isLoadingSocieties = false;
+      notifyListeners();
       
-      // Force immediate UI refresh with microtask
-      Future.microtask(() {
-        if (!mounted) return;
-        notifyListeners();
-        debugPrint('InventoryViewModel: Societies loaded and UI refreshed');
-      });
     } catch (e) {
       debugPrint('Error loading societies: $e');
       _societies = [];
       _isLoadingSocieties = false;
-      
-      // Force immediate UI refresh with microtask
-      Future.microtask(() {
-        if (!mounted) return;
-        notifyListeners();
-      });
+      notifyListeners();
     }
   }
 
-  // Load blocks using Future-based approach for now
+  // Load blocks
   Future<void> loadBlocks({String? societyId}) async {
     _isLoadingBlocks = true;
-    
-    // Force immediate UI refresh with microtask
-    Future.microtask(() {
-      if (!mounted) return;
-      notifyListeners();
-    });
+    notifyListeners();
     
     try {
-      // Cancel existing subscription if any
       await _blocksSubscription?.cancel();
       _blocksSubscription = null;
       
-      // Use Future-based approach for now to avoid stream type issues
       final rawData = societyId != null 
           ? await _settingsRepository.getBlocksBySociety(societyId)
           : await _settingsRepository.getBlocks();
       
-      debugPrint('InventoryViewModel: Repository returned ${rawData.length} raw blocks: $rawData');
-      
-      // Fix the "Non-subtype" Error: Use type-safe mapping logic
       _blocks = List<Map<String, String>>.from(rawData.map((item) => {
         'id': item['id']?.toString() ?? '',
         'name': item['name']?.toString() ?? '',
@@ -214,27 +210,14 @@ class InventoryViewModel extends ChangeNotifier {
           'society_id': item['society_id']?.toString() ?? '',
       }));
       
-      debugPrint('InventoryViewModel: Type-safe blocks mapping completed, blocks count: ${_blocks.length}');
-      debugPrint('InventoryViewModel: Final blocks list: $_blocks');
-      
       _isLoadingBlocks = false;
+      notifyListeners();
       
-      // Force immediate UI refresh with microtask
-      Future.microtask(() {
-        if (!mounted) return;
-        notifyListeners();
-        debugPrint('InventoryViewModel: Blocks loaded and UI refreshed');
-      });
     } catch (e) {
       debugPrint('Error loading blocks: $e');
       _blocks = [];
       _isLoadingBlocks = false;
-      
-      // Force immediate UI refresh with microtask
-      Future.microtask(() {
-        if (!mounted) return;
-        notifyListeners();
-      });
+      notifyListeners();
     }
   }
 
@@ -243,7 +226,6 @@ class InventoryViewModel extends ChangeNotifier {
     if (_selectedType != type) {
       _selectedType = type;
       _resetFilters();
-      // Pass stored user context to loadItems
       loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
     }
   }
@@ -251,8 +233,7 @@ class InventoryViewModel extends ChangeNotifier {
   void setSearchQuery(String query) {
     if (_searchQuery != query) {
       _searchQuery = query;
-      _currentPage = 1; // Reset to page 1 when search changes
-      // Pass stored user context to loadItems
+      _currentPage = 1;
       loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
     }
   }
@@ -260,53 +241,33 @@ class InventoryViewModel extends ChangeNotifier {
   void setSelectedSociety(String? societyId) {
     debugPrint('InventoryViewModel: setSelectedSociety called with societyId: $societyId');
     if (_selectedSocietyId != societyId) {
-      // 1. Update the selected society ID
       _selectedSocietyId = societyId;
       debugPrint('InventoryViewModel: Updated _selectedSocietyId to: $_selectedSocietyId');
       
-      // CRITICAL FIX: Reset Blocks if "All Society" is selected
       if (societyId == null || societyId.isEmpty || societyId == 'All') {
-        _selectedBlockId = null; // Clear selected block
-        _blocks = []; // Clear the blocks list
+        _selectedBlockId = null;
+        _blocks = [];
         debugPrint('InventoryViewModel: "All Society" selected - cleared blocks and block selection');
         
-        // Notify listeners and refresh items
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          notifyListeners();
-        });
+        notifyListeners();
         
-        // Load items without block filter
-      _currentPage = 1; // Reset to page 1 when filter changes
-      // Pass stored user context to loadItems
-      loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
+        _currentPage = 1;
+        loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
         return;
       }
       
-      // If a specific society IS selected:
-      _selectedBlockId = null; // Reset block selection
-      _blocks = []; // Clear blocks list temporarily
+      _selectedBlockId = null;
+      _blocks = [];
       
-      // Immediately call notifyListeners() to show loading state
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        notifyListeners();
-      });
+      notifyListeners();
       
-      // Load blocks for the specific society
       debugPrint('InventoryViewModel: Loading blocks for society: $societyId');
       _loadBlocksForSociety(societyId).then((_) {
-        // Additional notification after blocks are loaded
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          notifyListeners();
-        });
+        notifyListeners();
         debugPrint('InventoryViewModel: Blocks loaded for society: $societyId');
       });
       
-      // Load items with new filters
-      _currentPage = 1; // Reset to page 1 when filter changes
-      // Pass stored user context to loadItems
+      _currentPage = 1;
       loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
     } else {
       debugPrint('InventoryViewModel: SocietyId is the same, no action taken');
@@ -318,19 +279,12 @@ class InventoryViewModel extends ChangeNotifier {
     debugPrint('InventoryViewModel: _loadBlocksForSociety called with societyId: $societyId');
     try {
       _isLoadingBlocks = true;
-      
-      // Force immediate UI refresh with microtask
-      Future.microtask(() {
-        if (!mounted) return;
-        notifyListeners();
-      });
+      notifyListeners();
       
       debugPrint('InventoryViewModel: Calling getBlocksBySociety from repository');
-      // Use repository to get blocks for the specific society
       final rawData = await _settingsRepository.getBlocksBySociety(societyId);
       debugPrint('InventoryViewModel: Repository returned ${rawData.length} raw blocks: $rawData');
       
-      // Fix the "Non-subtype" Error: Use type-safe mapping logic
       _blocks = List<Map<String, String>>.from(rawData.map((item) => {
         'id': item['id']?.toString() ?? '',
         'name': item['name']?.toString() ?? '',
@@ -342,23 +296,14 @@ class InventoryViewModel extends ChangeNotifier {
       debugPrint('InventoryViewModel: Final blocks list: $_blocks');
       
       _isLoadingBlocks = false;
+      notifyListeners();
+      debugPrint('InventoryViewModel: Blocks updated, notified listeners');
       
-      // Force immediate UI refresh with microtask
-      Future.microtask(() {
-        if (!mounted) return;
-        notifyListeners();
-        debugPrint('InventoryViewModel: Blocks updated, notified listeners');
-      });
     } catch (e) {
       debugPrint('Error loading blocks for society $societyId: $e');
       _blocks = [];
       _isLoadingBlocks = false;
-      
-      // Force immediate UI refresh with microtask
-      Future.microtask(() {
-        if (!mounted) return;
-        notifyListeners();
-      });
+      notifyListeners();
     }
   }
 
@@ -369,11 +314,7 @@ class InventoryViewModel extends ChangeNotifier {
     if (_selectedBlockId != blockId) {
       _selectedBlockId = blockId;
       debugPrint('InventoryViewModel: Updated _selectedBlockId to: $_selectedBlockId');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        notifyListeners(); // Immediate UI update for block change
-      });
-      // Pass stored user context to loadItems
+      notifyListeners();
       loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
     } else {
       debugPrint('InventoryViewModel: BlockId is the same, no action taken');
@@ -383,14 +324,12 @@ class InventoryViewModel extends ChangeNotifier {
   void setSelectedStatusFilter(String? status) {
     if (_selectedStatusFilter != status) {
       _selectedStatusFilter = status;
-      // Pass stored user context to loadItems
       loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
     }
   }
 
   void clearAllFilters() {
     _resetFilters();
-    // Pass stored user context to loadItems
     loadItems(companyId: _currentUserCompanyId, isSuper: _currentUserIsSuper);
   }
 
@@ -409,26 +348,20 @@ class InventoryViewModel extends ChangeNotifier {
       } else {
         await _inventoryRepository.addItem(item);
       }
-      await loadItems(companyId: null, isSuper: null); // Reload to reflect changes
+      await loadItems(companyId: null, isSuper: null);
     } catch (e) {
       debugPrint('Error saving inventory item: $e');
-      rethrow; // Let UI handle error
+      rethrow;
     }
   }
 
   Future<void> updateItem(String id, InventoryItem item) async {
     try {
-      // CRITICAL: Set loading state immediately to prevent UI flicker
       _isLoading = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        notifyListeners();
-      });
+      notifyListeners();
       
-      // Update from repository
       await _inventoryRepository.updateItem(item);
       
-      // CRITICAL: Manual refresh - fetch updated list immediately
       _allItems = await _inventoryRepository.getFilteredItems(
         type: _selectedType,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
@@ -438,70 +371,48 @@ class InventoryViewModel extends ChangeNotifier {
       );
       _filteredItems = _allItems;
       
-      // Reset pagination to first page after update
       _currentPage = 1;
       
-      // CRITICAL: Notify listeners to update UI instantly
       _isLoading = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        notifyListeners();
-      });
+      notifyListeners();
       
       debugPrint('InventoryViewModel: Item updated successfully, UI refreshed');
     } catch (e) {
       debugPrint('Error updating inventory item: $e');
       _isLoading = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        notifyListeners();
-      });
-      rethrow; // Let UI handle error
+      notifyListeners();
+      rethrow;
     }
   }
 
   Future<void> deleteItem(String id) async {
     try {
-      // CRITICAL: Set loading state immediately to prevent UI flicker
       _isLoading = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        notifyListeners();
-      });
+      notifyListeners();
       
-      // Delete from repository
       await _inventoryRepository.deleteItem(id);
       
-      // CRITICAL: Manual refresh - fetch updated list immediately
       _allItems = await _inventoryRepository.getFilteredItems(
         type: _selectedType,
         searchQuery: _searchQuery.isNotEmpty ? _searchQuery : null,
         societyId: _selectedSocietyId,
         blockId: _selectedBlockId,
         statusFilter: _selectedStatusFilter,
-        companyId: null, // Pass company context
+        companyId: null,
       );
       _filteredItems = _allItems;
       
-      // Reset pagination to first page after deletion
       _currentPage = 1;
       
-      // CRITICAL: Notify listeners to update UI instantly
       _isLoading = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        notifyListeners();
-      });
+      notifyListeners();
       
       debugPrint('InventoryViewModel: Item deleted successfully, UI refreshed');
     } catch (e) {
       debugPrint('Error deleting inventory item: $e');
       _isLoading = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        notifyListeners();
-      });
-      rethrow; // Let UI handle error
+      notifyListeners();
+      rethrow;
     }
   }
 
@@ -518,30 +429,22 @@ class InventoryViewModel extends ChangeNotifier {
     return _allItems.where((item) => item.type == type).toList();
   }
 
-  // Get available blocks for selected society
   List<Map<String, String>> getAvailableBlocks() {
     final availableBlocks = _selectedSocietyId == null 
         ? _blocks 
         : _blocks.where((block) {
-            // Extract society_id from block ID: blk_soc_[society_id]_[block_name]_[timestamp]
             final blockId = block['id'] ?? '';
             return blockId.contains('$_selectedSocietyId\_');
           }).toList();
     
-        
     return availableBlocks;
   }
 
-  // Force refresh method for debugging
   void forceRefresh() {
     debugPrint('InventoryViewModel: Force refresh called');
-    Future.microtask(() {
-      if (!mounted) return;
-      notifyListeners();
-    });
+    notifyListeners();
   }
 
-  // Check if any filters are active
   bool get hasActiveFilters {
     return _selectedSocietyId != null ||
            _selectedBlockId != null ||
@@ -560,7 +463,7 @@ class InventoryViewModel extends ChangeNotifier {
   void setItemsPerPage(int limit) {
     if (_itemsPerPage != limit) {
       _itemsPerPage = limit;
-      _currentPage = 1; // Reset to page 1 when items per page changes
+      _currentPage = 1;
       notifyListeners();
     }
   }
@@ -568,9 +471,9 @@ class InventoryViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _mounted = false;
-    // Cancel stream subscriptions to prevent memory leaks
     _societiesSubscription?.cancel();
     _blocksSubscription?.cancel();
+    _societyEventSubscription?.cancel(); // ✅ Cancel event subscription
     super.dispose();
   }
 }

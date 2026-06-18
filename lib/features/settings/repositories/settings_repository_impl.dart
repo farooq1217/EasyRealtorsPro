@@ -137,40 +137,30 @@ class SettingsRepositoryImpl implements SettingsRepository {
     }
   }
 
-  @override
-  Future<void> deleteSociety(String id) async {
-    try {
-      // Delete from Firestore first (before SQLite to preserve block IDs)
-      await _executeFirestoreOperation(() async {
-        if (Firebase.apps.isNotEmpty) {
-          // Delete all blocks for this society first from Firestore
-          final blocksSnapshot = await FirebaseFirestore.instance
-              .collection('blocks')
-              .where('societyId', isEqualTo: id)
-              .get();
-
-          for (final blockDoc in blocksSnapshot.docs) {
-            await FirestoreSyncService().deleteDocument(
-              collection: 'blocks',
-              documentId: blockDoc.id,
-            );
-          }
-
-          await FirestoreSyncService().deleteDocument(
-            collection: 'societies',
-            documentId: id,
-          );
-        }
-      });
-
-      // Delete from SQLite (blocks will be deleted by the Firestore listener)
-      await db.customStatement('DELETE FROM blocks WHERE society_id = ?', [id]);
-      await db.customStatement('DELETE FROM societies WHERE id = ?', [id]);
-    } catch (e) {
-      debugPrint('Error deleting society: $e');
-      rethrow;
-    }
+ @override
+Future<void> deleteSociety(String id) async {
+  try {
+    debugPrint('SettingsRepositoryImpl: Deleting society with ID: $id');
+    
+    // ✅ Raw SQL query use karein
+    await db.customStatement(
+      'DELETE FROM blocks WHERE society_id = ?',
+      [id],
+    );
+    debugPrint('SettingsRepositoryImpl: Related blocks deleted');
+    
+    await db.customStatement(
+      'DELETE FROM societies WHERE id = ?',
+      [id],
+    );
+    debugPrint('SettingsRepositoryImpl: Society deleted successfully');
+    
+  } catch (e, stackTrace) {
+    debugPrint('SettingsRepositoryImpl: ERROR deleting society: $e');
+    debugPrint('SettingsRepositoryImpl: Stack trace: $stackTrace');
+    rethrow;
   }
+}
 
   @override
   Future<List<Map<String, String>>> getBlocks() async {

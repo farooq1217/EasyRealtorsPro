@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
@@ -21,6 +21,7 @@ import '../../../core/services/permission_helper.dart';
 import '../../../core/utils/logger.dart';
 import '../../../core/utils/error_handler.dart';
 import 'package:drift/drift.dart' as d;
+
 
 class UserViewModel extends ChangeNotifier {
   final UserRepository _repository;
@@ -363,9 +364,10 @@ class UserViewModel extends ChangeNotifier {
   }
 
   // Public sync method
-  Future<void> syncFromFirestore() async {
-    await _repository.syncUsersFromFirestore();
-  }
+  //Future<void> syncFromFirestore() async {
+   // await _repository.syncUsersFromFirestore();
+  //}
+  
 
   // Edit user functionality
   void setEditingUser(UserModel user) {
@@ -589,34 +591,31 @@ class UserViewModel extends ChangeNotifier {
       debugPrint('UserViewModel: Local data loaded, UI ready');
       
       // ✨ CRITICAL FIX: Move Firestore sync to background to prevent UI freezing
-      Future.microtask(() async {
-        try {
-          debugPrint('UserViewModel: Starting background Firestore sync...');
-          
-          // Add timeout for Windows to prevent hanging
-          await _repository.syncUsersFromFirestore().timeout(
-            const Duration(seconds: 8), // Reduced timeout for faster response
-            onTimeout: () {
-              debugPrint('UserViewModel: Firestore sync timed out - continuing with local data');
-            },
-          );
-          
-          debugPrint('UserViewModel: Background Firestore sync completed');
-          
-          // ✨ CRITICAL FIX: Skip Firestore real-time listener on Windows to prevent crashes
-          if (!io.Platform.isWindows) {
-            await _setupFirestoreListener();
-            debugPrint('UserViewModel: Real-time Firestore listener setup completed');
-          } else {
-            debugPrint('UserViewModel: Firestore real-time listener skipped on Windows to prevent crashes');
-          }
-        } catch (e) {
-          // ✨ CRITICAL FIX: Use WindowsPlatformFix for error handling
-          WindowsPlatformFix.handleConnectionLossError(e, null);
-          debugPrint('UserViewModel: Background sync error (non-critical): $e');
-          // Don't set error state - app continues with local data
-        }
-      });
+     Future.microtask(() async {
+  try {
+    // ✅ CRITICAL: Windows par sync completely skip karein
+    if (io.Platform.isWindows) {
+      debugPrint('UserViewModel: Windows detected - Firestore sync skipped');
+      return;
+    }
+    
+    debugPrint('UserViewModel: Starting background Firestore sync...');
+    
+    await _repository.syncUsersFromFirestore().timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        debugPrint('UserViewModel: Firestore sync timed out - continuing with local data');
+      },
+    );
+    
+    debugPrint('UserViewModel: Background Firestore sync completed');
+    await _setupFirestoreListener();
+    debugPrint('UserViewModel: Real-time Firestore listener setup completed');
+  } catch (e) {
+    WindowsPlatformFix.handleConnectionLossError(e, null);
+    debugPrint('UserViewModel: Background sync error (non-critical): $e');
+  }
+});
       
     } catch (e) {
       // ✨ CRITICAL FIX: Use WindowsPlatformFix for error handling

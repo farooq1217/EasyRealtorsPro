@@ -80,25 +80,24 @@ class NotificationsPage extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(reminder.reminderDetails!),
                 ],
-                if (isUnread) ...[
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                        child: TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xFFFF6B35), // Coral accent
-                          ),
-                          onPressed: () async {
-                            await Provider.of<TodoViewModel>(
-                                    context,
-                                    listen: false)
-                                .markAsRead(reminder.reminderId);
-                          },
-                          child: const Text('Mark read'),
-                        ),
-                  ),
-                ],
-              ],
+               if (isUnread) ...[
+  const SizedBox(height: 8),
+  Align(
+    alignment: Alignment.centerRight,
+    child: TextButton(
+      style: TextButton.styleFrom(
+        foregroundColor: const Color(0xFFFF6B35),
+      ),
+      onPressed: () async {
+        // ✅ FIXED: Convert int to String
+        await Provider.of<TodoViewModel>(context, listen: false)
+            .markAsRead(reminder.reminderId.toString());
+      },
+      child: const Text('Mark read'),
+    ),
+  ),
+],
+              ],  
             ),
           ),
         );

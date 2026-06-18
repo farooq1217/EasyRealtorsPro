@@ -143,23 +143,26 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     super.dispose();
   }
 
-  // Date/time pickers delegate to view model
-  Future<void> _pickDate() async {
-    FocusScope.of(context).requestFocus(FocusNode()); // Hide keyboard
-    final date = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    if (date != null && mounted) {
-      final viewModel = context.read<AgentViewModel>();
-      // CRITICAL FIX: Update ViewModel state first, then controller
-      viewModel.setSelectedDate(date);
-      // Controller is already updated in setSelectedDate method
-      debugPrint('AgentWorkingPage: Date selected - $date, controller text: "${viewModel.dateCtl.text}"');
-    }
+  // ✅ FIXED: Dialog context use karein
+Future<void> _pickDate([BuildContext? dialogContext]) async {
+  final contextToUse = dialogContext ?? context;
+  
+  // ✅ CORRECT: Existing focus ko unfocus karein
+  FocusScope.of(contextToUse).unfocus();
+  
+  final date = await showDatePicker(
+    context: contextToUse,
+    initialDate: DateTime.now(),
+    firstDate: DateTime(2020),
+    lastDate: DateTime(2030),
+  );
+  
+  if (date != null && mounted) {
+    final viewModel = Provider.of<AgentViewModel>(contextToUse, listen: false);
+    viewModel.setSelectedDate(date);
+    debugPrint('AgentWorkingPage: Date selected - $date, controller text: "${viewModel.dateCtl.text}"');
   }
+}
 
   Future<void> _pickTime() async {
     final time = await showTimePicker(
@@ -175,39 +178,41 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     }
   }
 
-  Future<void> _pickNextWorkingDate() async {
-    FocusScope.of(context).requestFocus(FocusNode()); // Hide keyboard
-    final date = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2030),
-    );
-    if (date != null && mounted) {
-      final viewModel = context.read<AgentViewModel>();
-      // CRITICAL FIX: Update ViewModel state first, then controller
-      viewModel.setNextWorkingDate(date);
-      // Controller is already updated in setNextWorkingDate method
-      debugPrint('AgentWorkingPage: Next working date selected - $date, controller text: "${viewModel.nextWorkingDateCtl.text}"');
-    }
+ Future<void> _pickNextWorkingDate([BuildContext? dialogContext]) async {
+  final contextToUse = dialogContext ?? context;
+  FocusScope.of(contextToUse).unfocus();
+  
+  final date = await showDatePicker(
+    context: contextToUse,
+    initialDate: DateTime.now(),
+    firstDate: DateTime.now(),
+    lastDate: DateTime(2030),
+  );
+  
+  if (date != null && mounted) {
+    final viewModel = Provider.of<AgentViewModel>(contextToUse, listen: false);
+    viewModel.setNextWorkingDate(date);
+    debugPrint('AgentWorkingPage: Next working date selected - $date');
   }
+}
 
-  Future<void> _pickRequirementDate() async {
-    FocusScope.of(context).requestFocus(FocusNode()); // Hide keyboard
-    final date = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    if (date != null && mounted) {
-      final viewModel = context.read<AgentViewModel>();
-      // CRITICAL FIX: Update ViewModel state first, then controller
-      viewModel.setReqSelectedDate(date);
-      // Controller is already updated in setReqSelectedDate method
-      debugPrint('AgentWorkingPage: Requirement date selected - $date, controller text: "${viewModel.reqDateCtl.text}"');
-    }
+Future<void> _pickRequirementDate([BuildContext? dialogContext]) async {
+  final contextToUse = dialogContext ?? context;
+  FocusScope.of(contextToUse).unfocus();
+  
+  final date = await showDatePicker(
+    context: contextToUse,
+    initialDate: DateTime.now(),
+    firstDate: DateTime(2020),
+    lastDate: DateTime(2030),
+  );
+  
+  if (date != null && mounted) {
+    final viewModel = Provider.of<AgentViewModel>(contextToUse, listen: false);
+    viewModel.setReqSelectedDate(date);
+    debugPrint('AgentWorkingPage: Requirement date selected - $date');
   }
+}
 
   Future<void> _pickRequirementTime() async {
     final picked = await showCustomTimePicker(
@@ -220,23 +225,24 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   }
 
 
-  Future<void> _pickReqNextWorkingDate() async {
-    FocusScope.of(context).requestFocus(FocusNode()); // Hide keyboard
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: context.read<AgentViewModel>().reqNextWorkingDate ?? now,
-      firstDate: now,
-      lastDate: DateTime(2030),
-    );
-    if (picked != null && mounted) {
-      final viewModel = context.read<AgentViewModel>();
-      // CRITICAL FIX: Update ViewModel state first, then controller
-      viewModel.setReqNextWorkingDate(picked);
-      // Controller is already updated in setReqNextWorkingDate method
-      debugPrint('AgentWorkingPage: Req next working date selected - $picked, controller text: "${viewModel.reqNextWorkingDateCtl.text}"');
-    }
-  } 
+ Future<void> _pickReqNextWorkingDate([BuildContext? dialogContext]) async {
+  final contextToUse = dialogContext ?? context;
+  FocusScope.of(contextToUse).unfocus();
+  
+  final now = DateTime.now();
+  final picked = await showDatePicker(
+    context: contextToUse,
+    initialDate: Provider.of<AgentViewModel>(contextToUse, listen: false).reqNextWorkingDate ?? now,
+    firstDate: now,
+    lastDate: DateTime(2030),
+  );
+  
+  if (picked != null && mounted) {
+    final viewModel = Provider.of<AgentViewModel>(contextToUse, listen: false);
+    viewModel.setReqNextWorkingDate(picked);
+    debugPrint('AgentWorkingPage: Req next working date selected - $picked');
+  }
+}
 
   Future<void> _submitTransfer({required String action, BuildContext? dialogContext, Map<String, dynamic>? existingItem}) async {
     Logger.debug("Save button clicked. Validating form...");
@@ -1075,11 +1081,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   }
 
   Widget _buildTransferForm(BuildContext dialogContext, {StateSetter? setDialogState, final Map<String, dynamic>? existingItem}) {
-    // Initialize form data if existingItem is provided
-    if (existingItem != null) {
-      _initializeTransferForm(existingItem);
-    }
-    
+  
     return Form(
       key: _transferFormKey,
       child: SingleChildScrollView(
@@ -1121,27 +1123,37 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(
-                  child: Consumer<AgentViewModel>(
-                    builder: (context, viewModel, child) {
-                      return _buildDateFieldWithIcon('Date *', viewModel.dateCtl, () async {
-                          await _pickDate();
-                          if (setDialogState != null) setDialogState(() {});
-                        });
-                    },
-                  ),
-                ),
+              Expanded(
+  child: Consumer<AgentViewModel>(
+    builder: (context, viewModel, child) {
+      return _buildDateFieldWithIcon(
+        'Date *', 
+        viewModel.dateCtl, 
+        () async {
+          await _pickDate();
+          if (setDialogState != null) setDialogState(() {});
+        },
+        key: ValueKey('transfer_date_${viewModel.selectedDate?.millisecondsSinceEpoch ?? "empty"}'), // ✅ ValueKey
+      );
+    },
+  ),
+),
                 const SizedBox(width: 16),
-                Expanded(
-                  child: Consumer<AgentViewModel>(
-                    builder: (context, viewModel, child) {
-                      return _buildTimeFieldWithIcon('Time', viewModel.timeCtl, () {
-                        _pickTime();
-                        if (setDialogState != null) setDialogState(() {});
-                      });
-                    },
-                  ),
-                ),
+              Expanded(
+  child: Consumer<AgentViewModel>(
+    builder: (context, viewModel, child) {
+      return _buildTimeFieldWithIcon(
+        'Time', 
+        viewModel.timeCtl, 
+        () async {
+          await _pickTime();
+          if (setDialogState != null) setDialogState(() {});
+        },
+        key: ValueKey('transfer_time_${viewModel.selectedTime?.hour ?? "empty"}'), // ✅ ValueKey
+      );
+    },
+  ),
+),
               ],
             ),
             const SizedBox(height: 16),
@@ -1383,15 +1395,20 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             Row(
               children: [
                 Expanded(
-                  child: Consumer<AgentViewModel>(
-                    builder: (context, viewModel, child) {
-                      return _buildDateFieldWithIcon('Date', viewModel.reqDateCtl, () async {
-                          await _pickRequirementDate();
-                          if (setDialogState != null) setDialogState(() {});
-                        });
-                    },
-                  ),
-                ),
+  child: Consumer<AgentViewModel>(
+    builder: (context, viewModel, child) {
+      return _buildDateFieldWithIcon(
+        'Date', 
+        viewModel.reqDateCtl, 
+        () async {
+          await _pickRequirementDate();
+          if (setDialogState != null) setDialogState(() {});
+        },
+        key: ValueKey('req_date_${viewModel.reqSelectedDate?.millisecondsSinceEpoch ?? "empty"}'), // ✅ ValueKey
+      );
+    },
+  ),
+),
                 const SizedBox(width: 16),
                 const Expanded(child: SizedBox()), // Empty space for alignment
               ],
@@ -1538,83 +1555,83 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
   );
 }
   
-  // Helper widget for date fields with icons
-  Widget _buildDateFieldWithIcon(String label, TextEditingController controller, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: TextFormField(
-        controller: controller,
-        readOnly: true,
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: AppFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Colors.black87,
-          ),
-          suffixIcon: Icon(Icons.calendar_today, size: 18, color: Colors.grey.shade600),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey.shade300),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
-          ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          filled: true,
-          fillColor: Colors.white,
-        ),
-        style: AppFonts.poppins(fontSize: 12, color: Colors.black87),
+Widget _buildDateFieldWithIcon(String label, TextEditingController controller, VoidCallback onTap, {Key? key}) {
+  return TextFormField(
+    key: key,
+    controller: controller,
+    readOnly: true,
+    onTap: onTap, // ✅ Directly TextFormField ko onTap assign karein
+    decoration: InputDecoration(
+      labelText: label,
+      labelStyle: AppFonts.poppins(
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+        color: Colors.black87,
       ),
-    );
-  }
+      suffixIcon: Icon(Icons.calendar_today, size: 18, color: Colors.grey.shade600),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      filled: true,
+      fillColor: Colors.white,
+    ),
+    style: AppFonts.poppins(fontSize: 12, color: Colors.black87),
+  );
+}
   
   // Helper widget for time fields with icons
 
-  Widget _buildTimeFieldWithIcon(String label, TextEditingController controller, VoidCallback onTap) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: AppFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Colors.black87,
-          ),
+  // ✅ FIXED: Key parameter add karein
+Widget _buildTimeFieldWithIcon(String label, TextEditingController controller, VoidCallback onTap, {Key? key}) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: AppFonts.poppins(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: Colors.black87,
         ),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: onTap,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(12),
-              color: Colors.white,
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.access_time, size: 20, color: Colors.grey.shade600),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    controller.text.isEmpty ? 'Select time' : controller.text,
-                    style: AppFonts.poppins(
-                      fontSize: 14,
-                      color: controller.text.isEmpty ? Colors.grey.shade500 : Colors.black87,
-                    ),
+      ),
+      const SizedBox(height: 8),
+      InkWell(
+        onTap: onTap,
+        child: Container(
+          key: key, // ✅ Key parameter use karein
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.white,
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.access_time, size: 20, color: Colors.grey.shade600),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  controller.text.isEmpty ? 'Select time' : controller.text,
+                  style: AppFonts.poppins(
+                    fontSize: 14,
+                    color: controller.text.isEmpty ? Colors.grey.shade500 : Colors.black87,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
+}
 
   Widget _buildTextField(String label, TextEditingController controller, {int maxLines = 1}) {
     return Column(
@@ -2084,7 +2101,7 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     }
   }
   
-  Future<void> _editItem(WorkingProgressData item, bool isTransfer) async {
+Future<void> _editItem(WorkingProgressData item, bool isTransfer) async {
   // Convert WorkingProgressData to Map<String, dynamic> for form
   final itemMap = {
     'id': item.id,
@@ -2095,9 +2112,17 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
     'next_working_date': item.nextWorkingDate,
     'category': item.category,
     'source': item.source,
-    // Note: plot_no, registry_number, size, client_mobile, images are not available in WorkingProgressData class
-    // They exist in database but not in the generated class - will need to be fetched separately if needed
   };
+  
+  // ✅ CRITICAL FIX: Dialog show karne se PEHLE form initialize karein
+  if (isTransfer) {
+    _initializeTransferForm(itemMap);
+  } else {
+    _initializeClientRequirementForm(itemMap);
+  }
+  
+  // Thoda wait karein taaki initialization complete ho jaye
+  await Future.delayed(const Duration(milliseconds: 100));
   
   if (isTransfer) {
     showDialog(
@@ -2114,7 +2139,6 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             ),
             child: Column(
               children: [
-                // Header with back button
                 Container(
                   padding: const EdgeInsets.all(12),
                   child: Row(
@@ -2137,9 +2161,9 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                     ],
                   ),
                 ),
-                // Clean form content - no tabs
                 Expanded(
-                  child: _buildTransferForm(dialogContext, existingItem: itemMap),
+                  // ✅ existingItem null pass karein taaki builder mein dobara initialize na ho
+                  child: _buildTransferForm(dialogContext, existingItem: null),
                 ),
               ],
             ),
@@ -2162,7 +2186,6 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
             ),
             child: Column(
               children: [
-                // Header with back button
                 Container(
                   padding: const EdgeInsets.all(12),
                   child: Row(
@@ -2185,9 +2208,8 @@ class _AgentWorkingPageState extends State<AgentWorkingPage> with SingleTickerPr
                     ],
                   ),
                 ),
-                // Clean form content - no tabs
                 Expanded(
-                  child: _buildClientRequirementForm(dialogContext, existingItem: itemMap),
+                  child: _buildClientRequirementForm(dialogContext, existingItem: null),
                 ),
               ],
             ),

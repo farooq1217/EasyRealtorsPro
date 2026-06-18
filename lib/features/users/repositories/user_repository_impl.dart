@@ -792,7 +792,7 @@ class UserRepositoryImpl implements UserRepository {
     }
     
    if (_isWindows) {
-  debugPrint('UserRepository: Windows detected - performing safe Firestore sync...');
+  debugPrint('UserRepository: Windows detected - Firestore sync disabled');
   // Windows par sync karein lekin error handling ke saath
   try {
     await _syncUsersFromFirestoreWindows();
@@ -1457,5 +1457,4 @@ Future<void> _syncUsersFromFirestoreWindows() async {
     // Don't rethrow - allow app to continue with local data
   }
 }
-
 }

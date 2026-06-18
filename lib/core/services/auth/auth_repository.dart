@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:random_string/random_string.dart';
-import 'package:shared/shared.dart'; // Contains static PasswordHasher
+import 'package:shared/shared.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -22,7 +22,6 @@ class AuthRepository extends ChangeNotifier {
   final DriftUserDao driftDao; 
   final FirestoreAuthSync fsSync; 
 
-  // ✅ Named fallback constructor
   AuthRepository.fallback()
     : jwt = JwtService(),
       localStore = LocalAuthStorage(),
@@ -104,7 +103,6 @@ class AuthRepository extends ChangeNotifier {
     try {
       debugPrint('🔐 Firebase Auth login attempt for $email');
       
-      // 1. Firebase Auth Sign-in
       final UserCredential credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email.trim().toLowerCase(),
         password: password,
@@ -115,7 +113,6 @@ class AuthRepository extends ChangeNotifier {
         return {'success': false, 'message': 'Authentication failed'};
       }
 
-      // 2. Fetch user data from Firestore
       final emailKey = email.trim().toLowerCase();
       var userDoc = await fsSync.fetchFirestoreUserByEmail(emailKey);
       
@@ -131,7 +128,6 @@ class AuthRepository extends ChangeNotifier {
         return {'success': false, 'message': 'User profile not found in database'};
       }
 
-      // 3. Handle Two-Factor Authentication
       final is2FAEnabled = userDoc['twoFactorEnabled'] ?? false;
       if (is2FAEnabled) {
         if (twoFactorCode == null || twoFactorCode.isEmpty) {
@@ -147,7 +143,6 @@ class AuthRepository extends ChangeNotifier {
         }
       }
 
-      // 4. Construct user object
       final user = {
         'id': userDoc['id'] ?? firebaseUser.uid,
         'email': userDoc['email'] ?? emailKey,
@@ -161,13 +156,11 @@ class AuthRepository extends ChangeNotifier {
         'is_first_login': userDoc['is_first_login'] ?? userDoc['isFirstLogin'] ?? 0,
       };
 
-      // 5. Generate JWT token
       final token = jwt.generateToken(
         user['id']?.toString() ?? '',
         user['email']?.toString() ?? '',
       );
 
-      // 6. Save User and Session details to Local Storage
       final users = await localStore.readUsers();
       users[emailKey] = user;
       await localStore.writeUsers(users);
@@ -181,10 +174,7 @@ class AuthRepository extends ChangeNotifier {
       };
       await localStore.writeSessions(sessions);
 
-      // Update current user
       currentUser = user;
-
-      // Start background sync
       triggerBackgroundSyncAfterLogin();
 
       return {
@@ -215,133 +205,89 @@ class AuthRepository extends ChangeNotifier {
   }
 
   // ✅ NEW METHOD: Sirf local database se login karein
-  Future<Map<String, dynamic>> _localLoginOnly(String email, String password) async {
-    try {
-      debugPrint('🔐 _localLoginOnly: Starting local authentication for $email');
-      
-      final db = await AppDatabase.instance();
-      
-      // User ko email se dhundhein
-      final result = await db.customSelect(
-        'SELECT * FROM users WHERE email = ? AND (is_active = 1 OR is_active IS NULL)',
-        variables: [d.Variable.withString(email)],
-      ).get();
-      
-      if (result.isEmpty) {
-        debugPrint('❌ _localLoginOnly: User not found in local DB');
-        return {
-          'success': false,
-          'message': 'User not found. Please sync data first.',
-        };
-      }
-      
-      final userData = result.first.data;
-      final storedHash = userData['password_hash']?.toString() ?? '';
-      final salt = userData['salt']?.toString() ?? '';
-      final iterations = int.tryParse(userData['iterations']?.toString() ?? '') ?? 10000;
-      
-      // Password verify karein
-      final inputHash = _hashPassword(password, salt, iterations);
-      
-      if (storedHash != inputHash) {
-        debugPrint('❌ _localLoginOnly: Password mismatch');
-        return {
-          'success': false,
-          'message': 'Invalid password',
-        };
-      }
-      
-      debugPrint('✅ _localLoginOnly: Password verified locally');
-      
-      // Parse permissions JSON from SQLite to extract role, permissionsMap, companyId
-      Map<String, dynamic> parsedPerms = {};
-      final rawPerms = userData['permissions']?.toString();
-      if (rawPerms != null && rawPerms.isNotEmpty) {
-        try {
-          final decoded = jsonDecode(rawPerms);
-          if (decoded is Map) {
-            parsedPerms = Map<String, dynamic>.from(decoded);
-          }
-        } catch (e) {
-          debugPrint('_localLoginOnly: Failed to parse permissions JSON: $e');
-        }
-      }
-
-      final emailKey = email.trim().toLowerCase();
-      final hoistedRole = parsedPerms['role']?.toString() ?? userData['role']?.toString() ?? 'agent';
-      final hoistedCompanyId = parsedPerms['companyId']?.toString() ??
-          parsedPerms['company_id']?.toString() ??
-          userData['company_id']?.toString();
-
-      // Extract permissionsMap — check direct key or synthesize from role
-      Map<String, dynamic>? hoistedPermissionsMap;
-      final rawMap = parsedPerms['permissionsMap'];
-      if (rawMap is Map && rawMap.isNotEmpty) {
-        hoistedPermissionsMap = Map<String, dynamic>.from(rawMap);
-      } else if (parsedPerms.isNotEmpty) {
-        final hasModuleKeys = parsedPerms.keys.any((k) =>
-          ['trading', 'inventory', 'rental', 'expenditure', 'agent_working',
-           'reports', 'users', 'companies', 'dashboard', 'settings', 'todo',
-           'rental_items'].contains(k));
-        if (hasModuleKeys) {
-          hoistedPermissionsMap = Map<String, dynamic>.from(parsedPerms)
-            ..remove('role')
-            ..remove('companyId')
-            ..remove('company_id');
-        }
-      }
-
-      // Admin role → synthesize full permissionsMap if still missing
-      if ((hoistedPermissionsMap == null || hoistedPermissionsMap.isEmpty)) {
-        final role = hoistedRole.toLowerCase();
-        if (role == 'super_admin' || role == 'superadmin') {
-          hoistedPermissionsMap = <String, dynamic>{
-            'users': 'full_access', 'companies': 'full_access',
-            'trading': 'full_access', 'inventory': 'full_access',
-            'rental': 'full_access', 'rental_items': 'full_access',
-            'expenditure': 'full_access', 'agent_working': 'full_access',
-            'reports': 'full_access', 'dashboard': 'full_access',
-            'settings': 'full_access', 'todo': 'full_access',
-          };
-        } else if (role == 'company_admin' || role == 'companyadmin') {
-          hoistedPermissionsMap = <String, dynamic>{
-            'users': 'full_access', 'trading': 'view_add_edit',
-            'inventory': 'view_add_edit', 'rental': 'view_add_edit',
-            'rental_items': 'view_add_edit', 'expenditure': 'view_add_edit',
-            'agent_working': 'view_add_edit', 'reports': 'full_access',
-            'dashboard': 'view_add_edit', 'settings': 'view_add_edit',
-            'todo': 'view_add_edit',
-          };
-        }
-      }
-
-      // User object prepare karein
-      final user = {
-        'id': userData['id']?.toString() ?? '',
-        'email': userData['email']?.toString() ?? emailKey,
-        'username': userData['username']?.toString() ?? userData['email']?.toString() ?? emailKey,
-        'name': userData['name']?.toString() ?? '',
-        'role': hoistedRole,
-        'permissions': userData['permissions']?.toString() ?? '{}',
-        'company_id': hoistedCompanyId ?? '',
-        'companyId': hoistedCompanyId ?? '',
-        'status': userData['status']?.toString() ?? 'active',
-        'is_active': userData['is_active'] ?? 1,
-        'isActive': userData['is_active'] ?? 1,
-        'is_first_login': userData['is_first_login'] ?? 0,
-        'isFirstLogin': userData['is_first_login'] ?? 0,
-        'createdAt': userData['created_at']?.toString() ?? DateTime.now().toIso8601String(),
-        'created_at': userData['created_at']?.toString() ?? DateTime.now().toIso8601String(),
-        if (hoistedPermissionsMap != null && hoistedPermissionsMap.isNotEmpty)
-          'permissionsMap': hoistedPermissionsMap,
+  // ✅ UPDATED METHOD: Local DB + Firestore fallback
+// ✅ FINAL METHOD: Pure local authentication (no Firestore during login)
+Future<Map<String, dynamic>> _localLoginOnly(String email, String password) async {
+  try {
+    debugPrint('🔐 _localLoginOnly: Starting local authentication for $email');
+    
+    final db = await AppDatabase.instance();
+    final emailKey = email.trim().toLowerCase();
+    
+    // Step 1: Local DB mein user dhundhein
+    final result = await db.customSelect(
+      'SELECT * FROM users WHERE email = ? AND (is_active = 1 OR is_active IS NULL)',
+      variables: [d.Variable.withString(emailKey)],
+    ).get();
+    
+    if (result.isEmpty) {
+      debugPrint('❌ _localLoginOnly: User not found in local DB');
+      return {
+        'success': false,
+        'requiresSetup': true, // ✅ NEW FLAG: Setup mode trigger kare
+        'message': 'No user found. Please create an admin account first.',
       };
+    }
+    
+    final userData = result.first.data;
+    final storedHash = userData['password_hash']?.toString() ?? '';
+    final salt = userData['salt']?.toString() ?? '';
+    final iterations = int.tryParse(userData['iterations']?.toString() ?? '') ?? 10000;
+    
+    final inputHash = _hashPassword(password, salt, iterations);
+    
+    if (storedHash.isEmpty || storedHash != inputHash) {
+      debugPrint('❌ _localLoginOnly: Password mismatch');
+      return {
+        'success': false,
+        'message': 'Invalid password',
+      };
+    }
+    
+    debugPrint('✅ _localLoginOnly: Password verified locally');
+    
+    // Parse permissions JSON
+    Map<String, dynamic> parsedPerms = {};
+    final rawPerms = userData['permissions']?.toString();
+    if (rawPerms != null && rawPerms.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawPerms);
+        if (decoded is Map) {
+          parsedPerms = Map<String, dynamic>.from(decoded);
+        }
+      } catch (e) {
+        debugPrint('_localLoginOnly: Failed to parse permissions JSON: $e');
+      }
+    }
 
-      // Force Super Admin role and companyId for mayof286@gmail.com
-      if (emailKey == 'mayof286@gmail.com') {
-        user['role'] = 'super_admin';
-        user['companyId'] = 'GLOBAL_ADMIN';
-        user['company_id'] = 'GLOBAL_ADMIN';
-        user['permissionsMap'] = <String, dynamic>{
+    final hoistedRole = parsedPerms['role']?.toString() ?? userData['role']?.toString() ?? 'agent';
+    final hoistedCompanyId = parsedPerms['companyId']?.toString() ??
+        parsedPerms['company_id']?.toString() ??
+        userData['company_id']?.toString();
+
+    // Extract permissionsMap
+    Map<String, dynamic>? hoistedPermissionsMap;
+    final rawMap = parsedPerms['permissionsMap'];
+    if (rawMap is Map && rawMap.isNotEmpty) {
+      hoistedPermissionsMap = Map<String, dynamic>.from(rawMap);
+    } else if (parsedPerms.isNotEmpty) {
+      final hasModuleKeys = parsedPerms.keys.any((k) =>
+        ['trading', 'inventory', 'rental', 'expenditure', 'agent_working',
+         'reports', 'users', 'companies', 'dashboard', 'settings', 'todo',
+         'rental_items'].contains(k));
+      if (hasModuleKeys) {
+        hoistedPermissionsMap = Map<String, dynamic>.from(parsedPerms)
+          ..remove('role')
+          ..remove('companyId')
+          ..remove('company_id');
+      }
+    }
+
+    // Synthesize permissionsMap for admin roles
+    if ((hoistedPermissionsMap == null || hoistedPermissionsMap.isEmpty)) {
+      final role = hoistedRole.toLowerCase();
+      if (role == 'super_admin' || role == 'superadmin') {
+        hoistedPermissionsMap = <String, dynamic>{
           'users': 'full_access', 'companies': 'full_access',
           'trading': 'full_access', 'inventory': 'full_access',
           'rental': 'full_access', 'rental_items': 'full_access',
@@ -349,51 +295,251 @@ class AuthRepository extends ChangeNotifier {
           'reports': 'full_access', 'dashboard': 'full_access',
           'settings': 'full_access', 'todo': 'full_access',
         };
+      } else if (role == 'company_admin' || role == 'companyadmin') {
+        hoistedPermissionsMap = <String, dynamic>{
+          'users': 'full_access', 'trading': 'view_add_edit',
+          'inventory': 'view_add_edit', 'rental': 'view_add_edit',
+          'rental_items': 'view_add_edit', 'expenditure': 'view_add_edit',
+          'agent_working': 'view_add_edit', 'reports': 'full_access',
+          'dashboard': 'view_add_edit', 'settings': 'view_add_edit',
+          'todo': 'view_add_edit',
+        };
       }
-      
-      // JWT token generate karein
-      final token = jwt.generateToken(
-        user['id']?.toString() ?? '',
-        user['email']?.toString() ?? '',
-      );
-      
-      // Local storage mein save karein
-      final users = await localStore.readUsers();
-      users[emailKey] = user;
-      await localStore.writeUsers(users);
-      
-      final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
-      final sessions = await localStore.readSessions();
-      sessions[sessionId] = {
-        'userId': user['id'],
-        'email': user['email'],
-        'loginAt': DateTime.now().toIso8601String(),
-      };
-      await localStore.writeSessions(sessions);
-      
-      // Update current user
-      currentUser = user;
+    }
 
-      debugPrint('✅ _localLoginOnly: Login successful for $email');
-      
-      return {
-        'success': true,
-        'user': user,
-        'token': token,
-        'sessionId': sessionId,
-        'session_id': sessionId,
-        'message': 'Login successful',
-      };
-    } catch (e) {
-      debugPrint('❌ _localLoginOnly: Error: $e');
+    // User object prepare karein
+    final user = {
+      'id': userData['id']?.toString() ?? '',
+      'email': userData['email']?.toString() ?? emailKey,
+      'username': userData['username']?.toString() ?? userData['email']?.toString() ?? emailKey,
+      'name': userData['name']?.toString() ?? '',
+      'role': hoistedRole,
+      'permissions': userData['permissions']?.toString() ?? '{}',
+      'company_id': hoistedCompanyId ?? '',
+      'companyId': hoistedCompanyId ?? '',
+      'status': userData['status']?.toString() ?? 'active',
+      'is_active': userData['is_active'] ?? 1,
+      'isActive': userData['is_active'] ?? 1,
+      'is_first_login': userData['is_first_login'] ?? 0,
+      'isFirstLogin': userData['is_first_login'] ?? 0,
+      'createdAt': userData['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+      'created_at': userData['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+      if (hoistedPermissionsMap != null && hoistedPermissionsMap.isNotEmpty)
+        'permissionsMap': hoistedPermissionsMap,
+    };
+    
+    final token = jwt.generateToken(
+      user['id']?.toString() ?? '',
+      user['email']?.toString() ?? '',
+    );
+    
+    final users = await localStore.readUsers();
+    users[emailKey] = user;
+    await localStore.writeUsers(users);
+    
+    final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
+    final sessions = await localStore.readSessions();
+    sessions[sessionId] = {
+      'userId': user['id'],
+      'email': user['email'],
+      'loginAt': DateTime.now().toIso8601String(),
+    };
+    await localStore.writeSessions(sessions);
+    
+    currentUser = user;
+
+    debugPrint('✅ _localLoginOnly: Login successful for $email');
+    
+    return {
+      'success': true,
+      'user': user,
+      'token': token,
+      'sessionId': sessionId,
+      'session_id': sessionId,
+      'message': 'Login successful',
+    };
+  } catch (e) {
+    debugPrint('❌ _localLoginOnly: Error: $e');
+    return {
+      'success': false,
+      'message': 'Login failed: $e',
+    };
+  }
+}
+
+// ✅ NEW METHOD: Create first admin account locally
+Future<Map<String, dynamic>> createLocalAdmin({
+  required String email,
+  required String password,
+  required String name,
+}) async {
+  try {
+    debugPrint('🔧 createLocalAdmin: Creating local admin for $email');
+    
+    final db = await AppDatabase.instance();
+    final emailKey = email.trim().toLowerCase();
+    final userId = 'admin_${DateTime.now().millisecondsSinceEpoch}';
+    
+    // Check if user already exists
+    final existing = await db.customSelect(
+      'SELECT id FROM users WHERE email = ?',
+      variables: [d.Variable.withString(emailKey)],
+    ).get();
+    
+    if (existing.isNotEmpty) {
       return {
         'success': false,
-        'message': 'Login failed: $e',
+        'message': 'User with this email already exists',
       };
     }
+    
+    // Generate password hash
+   final random = Random.secure();
+final saltBytes = List<int>.generate(16, (_) => random.nextInt(256));
+final salt = base64Url.encode(saltBytes);  // ✅ Valid base64 string
+final iterations = 10000;
+final passwordHash = _hashPassword(password, salt, iterations);
+    
+    if (passwordHash.isEmpty) {
+      return {
+        'success': false,
+        'message': 'Failed to hash password',
+      };
+    }
+    
+    // Super admin permissions
+    final permissions = jsonEncode({
+      'role': 'super_admin',
+      'permission': 'full_access',
+      'canDelete': true,
+      'permissionsMap': {
+        'users': 'full_access', 'companies': 'full_access',
+        'trading': 'full_access', 'inventory': 'full_access',
+        'rental': 'full_access', 'rental_items': 'full_access',
+        'expenditure': 'full_access', 'agent_working': 'full_access',
+        'reports': 'full_access', 'dashboard': 'full_access',
+        'settings': 'full_access', 'todo': 'full_access',
+      },
+    });
+    
+    final now = DateTime.now().toIso8601String();
+    
+    // Insert into database
+    await db.customStatement(
+      '''INSERT INTO users (
+        id, username, password_hash, salt, iterations, user_id, name, email, 
+        contact_no, role, permissions, company_id, status, is_first_login, 
+        is_active, profile_picture_path, created_at, updated_at, is_synced
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+      [
+        userId,
+        emailKey,
+        passwordHash,
+        salt,
+        iterations,
+        userId,
+        name,
+        emailKey,
+        '',
+        'super_admin',
+        permissions,
+        'GLOBAL_ADMIN',
+        'active',
+        0,
+        1,
+        '',
+        now,
+        now,
+        0, // Not synced yet
+      ],
+    );
+    
+    debugPrint('✅ createLocalAdmin: Admin created successfully');
+    
+    return {
+      'success': true,
+      'message': 'Admin account created successfully. Please login now.',
+    };
+  } catch (e) {
+    debugPrint('❌ createLocalAdmin: Error: $e');
+    return {
+      'success': false,
+      'message': 'Failed to create admin: $e',
+    };
   }
+}
 
-  // ✅ Helper: Password hash karein
+// ✅ NEW METHOD: Firestore se single user fetch karein
+Future<void> _fetchUserFromFirestore(String email) async {
+  try {
+    debugPrint('📥 _fetchUserFromFirestore: Fetching user $email from Firestore...');
+    
+    final firestore = FirebaseFirestore.instance;
+    
+    // Email se user dhundhein
+    final snapshot = await firestore
+        .collection('users')
+        .where('email', isEqualTo: email)
+        .limit(1)
+        .get()
+        .timeout(const Duration(seconds: 10));
+    
+    if (snapshot.docs.isEmpty) {
+      debugPrint('❌ _fetchUserFromFirestore: User not found in Firestore');
+      return;
+    }
+    
+    final doc = snapshot.docs.first;
+    final data = doc.data();
+    
+    debugPrint('✅ _fetchUserFromFirestore: Found user in Firestore, saving to local DB...');
+    
+    // Local DB mein save karein
+    final db = await AppDatabase.instance();
+    
+    // Safe JSON conversion for permissions
+    String permsStr = '{}';
+    if (data['permissions'] is String) {
+      permsStr = data['permissions'] as String;
+    } else if (data['permissions'] is Map) {
+      permsStr = jsonEncode(data['permissions']);
+    }
+    
+    await db.customStatement(
+      '''INSERT OR REPLACE INTO users (
+        id, username, password_hash, salt, iterations, user_id, name, email, 
+        contact_no, role, permissions, company_id, status, is_first_login, 
+        is_active, profile_picture_path, created_at, updated_at, is_synced
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+      [
+        doc.id,
+        data['username']?.toString() ?? '',
+        data['password_hash']?.toString() ?? '',
+        data['salt']?.toString() ?? '',
+        int.tryParse(data['iterations']?.toString() ?? '') ?? 10000,
+        data['user_id']?.toString() ?? doc.id,
+        data['name']?.toString() ?? '',
+        data['email']?.toString() ?? email,
+        data['contact_no']?.toString() ?? '',
+        data['role']?.toString() ?? 'agent',
+        permsStr,
+        data['company_id']?.toString() ?? '',
+        data['status']?.toString() ?? 'active',
+        (data['is_first_login'] == true || data['is_first_login'] == 1) ? 1 : 0,
+        (data['is_active'] == true || data['is_active'] == 1) ? 1 : 0,
+        data['profile_picture_path']?.toString() ?? '',
+        data['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+        data['updated_at']?.toString() ?? DateTime.now().toIso8601String(),
+        1,
+      ],
+    );
+    
+    debugPrint('✅ _fetchUserFromFirestore: User saved to local DB successfully');
+  } catch (e) {
+    debugPrint('❌ _fetchUserFromFirestore: Error: $e');
+  }
+}
+
   String _hashPassword(String password, String salt, int iterations) {
     try {
       final service = PasswordHashingService();
@@ -418,8 +564,8 @@ class AuthRepository extends ChangeNotifier {
     try {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final counter = now ~/ 30;
-      return code.length == 6; // Simplified for migration; replace with `otp` package later
-    } catch (_) { return false; } // ✅ Fixed syntax
+      return code.length == 6;
+    } catch (_) { return false; }
   }
 
   static const Duration _cacheTimeout = Duration(minutes: 5);
@@ -438,7 +584,6 @@ class AuthRepository extends ChangeNotifier {
     if (token == null || token.isEmpty) return null;
     if (!await jwt.verifyToken(token)) return null;
     
-    // Check cache first
     if (_cachedUser != null && _cachedToken == token && _cacheTimestamp != null &&
         DateTime.now().difference(_cacheTimestamp!) < _cacheTimeout) {
       return _cachedUser;
@@ -453,11 +598,9 @@ class AuthRepository extends ChangeNotifier {
     final emailKey = email.toLowerCase();
     var user = users[emailKey];
     
-    // Fallback to SQLite DB
     try {
       final dbUser = await driftDao.getUserByEmailOrUsername(emailKey);
       if (dbUser != null) {
-        // ✅ Parse permissions JSON from SQLite to extract role, permissionsMap, companyId
         Map<String, dynamic> parsedPerms = {};
         final rawPerms = dbUser.permissions;
         if (rawPerms != null && rawPerms.isNotEmpty) {
@@ -471,19 +614,16 @@ class AuthRepository extends ChangeNotifier {
           }
         }
 
-        // Hoist nested fields to top-level for sidebar/permission consumers
         final hoistedRole = parsedPerms['role']?.toString() ?? dbUser.role;
         final hoistedCompanyId = parsedPerms['companyId']?.toString() ??
             parsedPerms['company_id']?.toString() ??
             dbUser.companyId;
 
-        // Extract permissionsMap — check direct key or synthesize from role
         Map<String, dynamic>? hoistedPermissionsMap;
         final rawMap = parsedPerms['permissionsMap'];
         if (rawMap is Map && rawMap.isNotEmpty) {
           hoistedPermissionsMap = Map<String, dynamic>.from(rawMap);
         } else if (parsedPerms.isNotEmpty) {
-          // If permissions is a flat map (module → level), use it as permissionsMap
           final hasModuleKeys = parsedPerms.keys.any((k) =>
             ['trading', 'inventory', 'rental', 'expenditure', 'agent_working',
              'reports', 'users', 'companies', 'dashboard', 'settings', 'todo',
@@ -496,7 +636,6 @@ class AuthRepository extends ChangeNotifier {
           }
         }
 
-        // Admin role → synthesize full permissionsMap if still missing
         if ((hoistedPermissionsMap == null || hoistedPermissionsMap.isEmpty) &&
             hoistedRole != null) {
           final role = hoistedRole.toLowerCase();
@@ -546,23 +685,14 @@ class AuthRepository extends ChangeNotifier {
           if (hoistedPermissionsMap != null && hoistedPermissionsMap.isNotEmpty)
             'permissionsMap': hoistedPermissionsMap,
         };
+        
         final Map<String, dynamic> merged = {
           ...(user ?? <String, dynamic>{}),
           ...dbUserMap,
         };
-        // Force Super Admin role and companyId for mayof286@gmail.com
-        if (emailKey == 'mayof286@gmail.com') {
-          merged['role'] = 'super_admin';
-          merged['companyId'] = 'GLOBAL_ADMIN';
-          merged['permissionsMap'] ??= <String, dynamic>{
-            'users': 'full_access', 'companies': 'full_access',
-            'trading': 'full_access', 'inventory': 'full_access',
-            'rental': 'full_access', 'rental_items': 'full_access',
-            'expenditure': 'full_access', 'agent_working': 'full_access',
-            'reports': 'full_access', 'dashboard': 'full_access',
-            'settings': 'full_access', 'todo': 'full_access',
-          };
-        }
+        
+        // ✅ REMOVED: Hardcoded email check for mayof286@gmail.com
+        
         debugPrint('AuthRepository: Loaded user with role=${merged['role']}, '
             'permissionsMap keys=${merged['permissionsMap'] != null ? (merged['permissionsMap'] as Map).keys.toList() : 'NONE'}');
         users[emailKey] = merged;

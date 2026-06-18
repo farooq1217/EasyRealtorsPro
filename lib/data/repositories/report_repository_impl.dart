@@ -2,7 +2,7 @@
 import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:io' if (dart.library.html) '../platform_stubs/io_stub.dart' as io;
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' ;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -13,6 +13,7 @@ import 'package:drift/drift.dart' as d;
 import '../../domain/repositories/report_repository.dart';
 import '../../core/services/app_storage.dart' show AppStorage;
 import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
+
 
 class ReportRepositoryImpl implements ReportRepository {
   final AppDatabase db;

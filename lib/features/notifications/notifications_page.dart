@@ -58,7 +58,8 @@ class NotificationsPage extends StatelessWidget {
                         ),
                         trailing: TextButton(
                           onPressed: () async {
-                            await todoVM.markAsRead(reminder.reminderId);
+                            await Provider.of<TodoViewModel>(context, listen: false)
+    .markAsRead(reminder.reminderId.toString());
                           },
                           child: const Text(
                             'Mark read',

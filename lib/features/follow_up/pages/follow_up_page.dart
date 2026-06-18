@@ -306,6 +306,7 @@ class _FollowUpPageState extends State<FollowUpPage> {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'follow_up_page_fab',
         backgroundColor: const Color(0xFF4A90E2),
         icon: const Icon(Icons.add),
         label: const Text('Add Follow‑Up'),

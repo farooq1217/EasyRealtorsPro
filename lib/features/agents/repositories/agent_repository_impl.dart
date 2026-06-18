@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -6,11 +6,11 @@ import 'package:intl/intl.dart';
 import 'package:shared/shared.dart' show WorkingProgressData, WorkingComment, AppDatabase, WorkingProgressCompanion, WorkingCommentsCompanion;
 import 'package:drift/drift.dart' as d;
 import 'dart:convert';
+import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
 import 'agent_repository.dart';
 import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../firestore_sync_service.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
-import 'dart:io' if (dart.library.html) '../../../platform_stubs/io_stub.dart' as io;
 import '../../../core/services/firebase_threading_handler.dart';
 
 class AgentRepositoryImpl implements AgentRepository {
@@ -18,15 +18,13 @@ class AgentRepositoryImpl implements AgentRepository {
   final String? companyId;
   final bool isSuperAdmin;
   
-  // SQLite-only flag - disables all Firestore operations
   static const bool _sqliteOnlyMode = false;
   
-  // Platform detection for thread safety
+  // ✅ Platform detection
   static bool get _isWindows => !kIsWeb && io.Platform.isWindows;
 
   AgentRepositoryImpl(this.db, {required this.companyId, required this.isSuperAdmin});
 
-  // Helper method to wrap streams with platform thread safety
   Stream<T> _wrapStreamWithThreadSafety<T>(Stream<T> stream, String streamName) {
     if (_isWindows) {
       debugPrint('AgentRepository: Wrapping $streamName with Windows thread safety');
@@ -38,21 +36,23 @@ class AgentRepositoryImpl implements AgentRepository {
     return stream;
   }
 
-  // Helper method to disable Firestore operations in SQLite-only mode
+  // ✅ FIXED: Windows par Firestore operations disable
   bool _isFirestoreOperationAllowed() {
+    if (_isWindows) {
+      return false; // ✅ Windows par always false
+    }
     return !_sqliteOnlyMode && Firebase.apps.isNotEmpty;
   }
 
-  // Helper method to execute Firestore operations only if allowed
   Future<void> _executeFirestoreOperation(Future<void> Function() operation) async {
     if (_isFirestoreOperationAllowed()) {
       try {
         await operation();
       } catch (e) {
-        debugPrint('Firestore operation failed (non-critical in SQLite-only mode): $e');
+        debugPrint('Firestore operation failed (non-critical): $e');
       }
     } else {
-      debugPrint('Firestore operation skipped in SQLite-only mode');
+      debugPrint('Firestore operation skipped (Windows or SQLite-only mode)');
     }
   }
 
@@ -63,20 +63,16 @@ class AgentRepositoryImpl implements AgentRepository {
     String? searchQuery,
   }) async {
     try {
-      // Build query with explicit type-safe mapping
-      final clauses = <String>['1=1']; // Start with true clause
+      final clauses = <String>['1=1'];
       final vars = <d.Variable<Object>>[];
       
-      // CRITICAL FIX: Filter out soft-deleted items
       clauses.add('is_active = 1');
       
-      // Add company filter for non-super users
       if (!isSuperAdmin && companyId != null) {
         clauses.add('company_id = ?');
         vars.add(d.Variable.withString(companyId));
       }
       
-      // Add search filter if provided
       if (searchQuery != null && searchQuery.isNotEmpty) {
         clauses.add('(name LIKE ? OR category LIKE ? OR remarks LIKE ?)');
         final searchPattern = '%$searchQuery%';
@@ -87,9 +83,6 @@ class AgentRepositoryImpl implements AgentRepository {
         ]);
       }
       
-      // Remove category filtering - fetch all entries for UI filtering
-      // The UI will handle filtering by category values
-      
       final where = clauses.join(' AND ');
       
       final result = await db.customSelect(
@@ -97,7 +90,6 @@ class AgentRepositoryImpl implements AgentRepository {
         variables: vars,
       ).get();
       
-      // Explicit type-safe mapping
       final List<WorkingProgressData> transfers = [];
       for (final row in result) {
         final data = row.data;
@@ -134,20 +126,16 @@ class AgentRepositoryImpl implements AgentRepository {
     String? searchQuery,
   }) {
     try {
-      // Build query with explicit type-safe mapping
-      final clauses = <String>['1=1']; // Start with true clause
+      final clauses = <String>['1=1'];
       final vars = <d.Variable<Object>>[];
       
-      // CRITICAL FIX: Filter out soft-deleted items
       clauses.add('is_active = 1');
       
-      // Add company filter for non-super users
       if (!isSuperAdmin && companyId != null) {
         clauses.add('company_id = ?');
         vars.add(d.Variable.withString(companyId));
       }
       
-      // Add search filter if provided
       if (searchQuery != null && searchQuery.isNotEmpty) {
         clauses.add('(name LIKE ? OR category LIKE ? OR remarks LIKE ?)');
         final searchPattern = '%$searchQuery%';
@@ -164,11 +152,10 @@ class AgentRepositoryImpl implements AgentRepository {
           .customSelect(
             'SELECT * FROM working_progress WHERE $where ORDER BY updated_at DESC',
             variables: vars,
-            readsFrom: {db.workingProgress}, // Critical for stream updates
+            readsFrom: {db.workingProgress},
           )
           .watch()
           .map((result) {
-            // Explicit type-safe mapping
             final List<WorkingProgressData> transfers = [];
             for (final row in result) {
               final data = row.data;
@@ -196,7 +183,6 @@ class AgentRepositoryImpl implements AgentRepository {
       return _wrapStreamWithThreadSafety(stream, 'watchTransfers');
     } catch (e) {
       debugPrint('Error setting up transfers stream: $e');
-      // Return empty stream in case of error
       return Stream.value([]);
     }
   }
@@ -208,20 +194,16 @@ class AgentRepositoryImpl implements AgentRepository {
     String? searchQuery,
   }) async {
     try {
-      // Build query with explicit type-safe mapping
-      final clauses = <String>['1=1']; // Start with true clause
+      final clauses = <String>['1=1'];
       final vars = <d.Variable<Object>>[];
       
-      // CRITICAL FIX: Filter out soft-deleted items
       clauses.add('is_active = 1');
       
-      // Add company filter for non-super users
       if (!isSuperAdmin && companyId != null) {
         clauses.add('company_id = ?');
         vars.add(d.Variable.withString(companyId));
       }
       
-      // Add search filter if provided
       if (searchQuery != null && searchQuery.isNotEmpty) {
         clauses.add('(name LIKE ? OR category LIKE ? OR remarks LIKE ?)');
         final searchPattern = '%$searchQuery%';
@@ -232,9 +214,6 @@ class AgentRepositoryImpl implements AgentRepository {
         ]);
       }
       
-      // Remove category filtering - fetch all entries for UI filtering
-      // The UI will handle filtering by category values
-      
       final where = clauses.join(' AND ');
       
       final result = await db.customSelect(
@@ -242,7 +221,6 @@ class AgentRepositoryImpl implements AgentRepository {
         variables: vars,
       ).get();
       
-      // Explicit type-safe mapping
       final List<WorkingProgressData> requirements = [];
       for (final row in result) {
         final data = row.data;
@@ -278,20 +256,16 @@ class AgentRepositoryImpl implements AgentRepository {
     String? searchQuery,
   }) {
     try {
-      // Build query with explicit type-safe mapping
-      final clauses = <String>['1=1']; // Start with true clause
+      final clauses = <String>['1=1'];
       final vars = <d.Variable<Object>>[];
       
-      // CRITICAL FIX: Filter out soft-deleted items
       clauses.add('is_active = 1');
       
-      // Add company filter for non-super users
       if (!isSuperAdmin && companyId != null) {
         clauses.add('company_id = ?');
         vars.add(d.Variable.withString(companyId));
       }
       
-      // Add search filter if provided
       if (searchQuery != null && searchQuery.isNotEmpty) {
         clauses.add('(name LIKE ? OR category LIKE ? OR remarks LIKE ?)');
         final searchPattern = '%$searchQuery%';
@@ -308,11 +282,10 @@ class AgentRepositoryImpl implements AgentRepository {
           .customSelect(
             'SELECT * FROM working_progress WHERE $where ORDER BY updated_at DESC',
             variables: vars,
-            readsFrom: {db.workingProgress}, // Critical for stream updates
+            readsFrom: {db.workingProgress},
           )
           .watch()
           .map((result) {
-            // Explicit type-safe mapping
             final List<WorkingProgressData> requirements = [];
             for (final row in result) {
               final data = row.data;
@@ -340,7 +313,6 @@ class AgentRepositoryImpl implements AgentRepository {
       return _wrapStreamWithThreadSafety(stream, 'watchClientRequirements');
     } catch (e) {
       debugPrint('Error setting up client requirements stream: $e');
-      // Return empty stream in case of error
       return Stream.value([]);
     }
   }
@@ -366,7 +338,6 @@ class AgentRepositoryImpl implements AgentRepository {
       
       debugPrint('AgentRepository: Adding transfer with ID: $id');
       
-      // Save to SQLite first
       await db.into(db.workingProgress).insertOnConflictUpdate(
         WorkingProgressCompanion.insert(
           id: id,
@@ -382,13 +353,12 @@ class AgentRepositoryImpl implements AgentRepository {
           source: const d.Value('Agent'),
           isActive: const d.Value(true),
           updatedAt: nowIso,
-          isSynced: const d.Value(false), // Mark as not synced
+          isSynced: const d.Value(false),
         ),
       );
       
       debugPrint('AgentRepository: SQLite insert successful for ID: $id');
       
-      // Sync to Firestore if allowed
       if (_isFirestoreOperationAllowed()) {
         await _executeFirestoreOperation(() async {
           final firestore = FirebaseFirestore.instance;
@@ -405,12 +375,11 @@ class AgentRepositoryImpl implements AgentRepository {
             if (registryNumber != null && registryNumber.isNotEmpty) 'registryNumber': registryNumber,
             if (size != null && size.isNotEmpty) 'size': size,
             if (clientMobile != null && clientMobile.isNotEmpty) 'clientMobile': clientMobile,
-            'type': 'transfer', // Explicitly mark as transfer
+            'type': 'transfer',
             'updatedAt': nowIso,
             'createdAt': nowIso,
           }, SetOptions(merge: true));
           
-          // Mark as synced
           await db.customStatement(
             'UPDATE working_progress SET is_synced = 1 WHERE id = ?',
             <Object>[id],
@@ -419,15 +388,12 @@ class AgentRepositoryImpl implements AgentRepository {
         });
       } else {
         debugPrint('AgentRepository: SQLite-only mode, skipping Firestore sync for ID: $id');
-        // In SQLite-only mode, mark as synced immediately
         await db.customStatement(
           'UPDATE working_progress SET is_synced = 1 WHERE id = ?',
           <Object>[id],
         );
-        debugPrint('AgentRepository: Marked as synced in SQLite-only mode for ID: $id');
       }
       
-      // Save images if provided
       if (images != null && images.isNotEmpty) {
         await _saveImages(id, images);
       }
@@ -455,7 +421,6 @@ class AgentRepositoryImpl implements AgentRepository {
     try {
       final nowIso = DateTime.now().toUtc().toIso8601String();
       
-      // Save to SQLite first
       await db.into(db.workingProgress).insertOnConflictUpdate(
         WorkingProgressCompanion.insert(
           id: id,
@@ -467,13 +432,12 @@ class AgentRepositoryImpl implements AgentRepository {
           toUser: const d.Value.absent(),
           transferDate: d.Value(transferDate),
           nextWorkingDate: nextWorkingDate != null ? d.Value(nextWorkingDate) : const d.Value.absent(),
-          category: d.Value(source), // Store source in category field
+          category: d.Value(source),
           updatedAt: nowIso,
-          isSynced: const d.Value(false), // Mark as not synced
+          isSynced: const d.Value(false),
         ),
       );
       
-      // Sync to Firestore if allowed
       await _executeFirestoreOperation(() async {
         final firestore = FirebaseFirestore.instance;
         await firestore.collection('working_progress').doc(id).set({
@@ -484,20 +448,18 @@ class AgentRepositoryImpl implements AgentRepository {
           if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
           'transferDate': transferDate,
           if (nextWorkingDate != null) 'nextWorkingDate': nextWorkingDate,
-          'source': source, // Store as source field
-          'type': 'client_requirement', // Explicitly mark as client requirement
+          'source': source,
+          'type': 'client_requirement',
           'updatedAt': nowIso,
           'createdAt': nowIso,
         }, SetOptions(merge: true));
         
-        // Mark as synced
         await db.customStatement(
           'UPDATE working_progress SET is_synced = 1 WHERE id = ?',
           <Object>[id],
         );
       });
       
-      // Save images if provided
       if (images != null && images.isNotEmpty) {
         await _saveImages(id, images);
       }
@@ -518,13 +480,11 @@ class AgentRepositoryImpl implements AgentRepository {
       final nowIso = DateTime.now().toUtc().toIso8601String();
       final nextDateStr = nextWorkingDate != null ? DateFormat('yyyy-MM-dd').format(DateTime.parse(nextWorkingDate!)) : null;
       
-      // Update SQLite
       await db.customStatement(
         'UPDATE working_progress SET status = ?, next_working_date = ?, updated_at = ?, is_synced = 0 WHERE id = ?',
         <Object>[status, nextDateStr ?? '', nowIso, id],
       );
       
-      // Update Firestore if allowed
       await _executeFirestoreOperation(() async {
         final firestore = FirebaseFirestore.instance;
         await firestore.collection('working_progress').doc(id).update({
@@ -533,7 +493,6 @@ class AgentRepositoryImpl implements AgentRepository {
           'updatedAt': nowIso,
         });
         
-        // Mark as synced
         await db.customStatement(
           'UPDATE working_progress SET is_synced = 1 WHERE id = ?',
           <Object>[id],
@@ -554,7 +513,6 @@ class AgentRepositoryImpl implements AgentRepository {
         variables: <d.Variable<Object>>[d.Variable.withString(parentId)],
       ).get();
       
-      // Explicit type-safe mapping
       final List<WorkingComment> comments = [];
       for (final row in result) {
         final data = row.data;
@@ -585,7 +543,6 @@ class AgentRepositoryImpl implements AgentRepository {
     try {
       final nowIso = DateTime.now().toUtc().toIso8601String();
       
-      // Save to SQLite
       await db.into(db.workingComments).insertOnConflictUpdate(
         WorkingCommentsCompanion.insert(
           id: id,
@@ -596,7 +553,6 @@ class AgentRepositoryImpl implements AgentRepository {
         ),
       );
       
-      // Sync to Firestore if allowed
       await _executeFirestoreOperation(() async {
         final firestore = FirebaseFirestore.instance;
         await firestore.collection('working_comments').doc(id).set({
@@ -618,10 +574,8 @@ class AgentRepositoryImpl implements AgentRepository {
   @override
   Future<void> deleteComment(String id) async {
     try {
-      // Delete from SQLite
       await db.customStatement('DELETE FROM working_comments WHERE id = ?', <Object>[id]);
       
-      // Delete from Firestore if allowed
       await _executeFirestoreOperation(() async {
         final firestore = FirebaseFirestore.instance;
         await firestore.collection('working_comments').doc(id).delete();
@@ -638,20 +592,16 @@ class AgentRepositoryImpl implements AgentRepository {
     try {
       debugPrint('AgentRepository: Attempting to delete item with ID: $id');
       
-      // CRITICAL FIX: Clean ID and use soft delete instead of hard delete
       final String cleanId = id.toString().trim();
       debugPrint('Cleaned ID for delete: "$cleanId"');
       
-      // Use soft delete (set is_active = 0) to match the trigger system
       await db.customStatement(
         'UPDATE working_progress SET is_active = 0, updated_at = ? WHERE id = ?',
         <Object>[DateTime.now().toIso8601String(), cleanId],
       );
       
       debugPrint('AgentRepository: Soft delete completed for ID: $cleanId');
-      debugPrint('Rows actually soft-deleted: 1 (assumed success)');
       
-      // Delete from Firestore if allowed
       await _executeFirestoreOperation(() async {
         final firestore = FirebaseFirestore.instance;
         await firestore.collection('working_progress').doc(cleanId).delete();
@@ -682,7 +632,6 @@ class AgentRepositoryImpl implements AgentRepository {
     try {
       final now = DateTime.now().toIso8601String();
       
-      // Build dynamic update query
       final updates = <String>[];
       final vars = <d.Variable<Object>>[];
       
@@ -711,16 +660,12 @@ class AgentRepositoryImpl implements AgentRepository {
         vars.add(d.Variable.withString(category));
       }
       
-      // NOTE: plot_no, registry_number, size, client_mobile do NOT exist in working_progress table
-      // These fields are stored in remarks field during INSERT, so we don't update them separately
-      
-      // Always update updated_at
       updates.add('updated_at = ?');
       vars.add(d.Variable.withString(now));
       
       if (updates.isNotEmpty) {
         final setClause = updates.join(', ');
-        final String targetId = id.toString(); // CRITICAL: Force String type
+        final String targetId = id.toString();
         final List<Object> args = <Object>[];
         for (final variable in vars) {
           args.add(variable.value as Object);
@@ -732,7 +677,6 @@ class AgentRepositoryImpl implements AgentRepository {
         );
       }
       
-      // Update in Firestore if allowed
       await _executeFirestoreOperation(() async {
         final firestore = FirebaseFirestore.instance;
         final updateData = <String, dynamic>{
@@ -745,8 +689,6 @@ class AgentRepositoryImpl implements AgentRepository {
         if (transferDate != null) updateData['transfer_date'] = transferDate;
         if (nextWorkingDate != null) updateData['next_working_date'] = nextWorkingDate;
         if (category != null) updateData['category'] = category;
-        // NOTE: plot_no, registry_number, size, client_mobile do NOT exist in working_progress table
-        // These are stored in remarks field during INSERT, so we don't update them separately in Firestore
         
         await firestore.collection('working_progress').doc(id).update(updateData);
       });
@@ -760,8 +702,6 @@ class AgentRepositoryImpl implements AgentRepository {
   @override
   Future<List<String>> getImages(String parentId) async {
     try {
-      // For now, return empty list - images are stored as part of the main record
-      // This can be extended to use a separate images table if needed
       return [];
     } catch (e) {
       debugPrint('Error loading images: $e');
@@ -783,8 +723,6 @@ class AgentRepositoryImpl implements AgentRepository {
   }
 
   Future<void> _saveImages(String parentId, List<String> images) async {
-    // Store images as JSON string in remarks field temporarily
-    // This can be improved with a separate images table
     final imagesJson = '{"images":${jsonEncode(images)}}';
     
     await db.customStatement(
@@ -796,7 +734,9 @@ class AgentRepositoryImpl implements AgentRepository {
   @override
   Future<List<Map<String, dynamic>>> getOfficeNotes() async {
     try {
-      if (!_isFirestoreOperationAllowed()) {
+      // ✅ Windows par empty list return karein
+      if (_isWindows || !_isFirestoreOperationAllowed()) {
+        debugPrint('AgentRepository: getOfficeNotes skipped (Windows or no Firestore)');
         return [];
       }
       
@@ -822,7 +762,9 @@ class AgentRepositoryImpl implements AgentRepository {
   @override
   Future<List<Map<String, dynamic>>> getOtherNotes() async {
     try {
-      if (!_isFirestoreOperationAllowed()) {
+      // ✅ Windows par empty list return karein
+      if (_isWindows || !_isFirestoreOperationAllowed()) {
+        debugPrint('AgentRepository: getOtherNotes skipped (Windows or no Firestore)');
         return [];
       }
       
@@ -912,7 +854,6 @@ class AgentRepositoryImpl implements AgentRepository {
             : <d.Variable<Object>>[d.Variable.withString(companyId ?? ''), d.Variable.withString(today), d.Variable.withString('Done'), d.Variable.withString('Closed')],
       ).get();
       
-      // Explicit type-safe mapping
       final List<WorkingProgressData> tasks = [];
       for (final row in result) {
         final data = row.data;
@@ -963,11 +904,8 @@ class AgentRepositoryImpl implements AgentRepository {
 
   @override
   Future<void> generateProfessionalReceipt(String entryId) async {
-    // Placeholder implementation for receipt generation
-    // This will be implemented later with actual PDF generation
     debugPrint('Generating professional receipt for entry: $entryId');
     
-    // For now, just log the action
     try {
       final result = await db.customSelect(
         'SELECT name, status, category FROM working_progress WHERE id = ?',
@@ -980,7 +918,6 @@ class AgentRepositoryImpl implements AgentRepository {
       }
     } catch (e) {
       debugPrint('Error fetching receipt data: $e');
-      // Still throw the error to let the UI handle it
       rethrow;
     }
   }
