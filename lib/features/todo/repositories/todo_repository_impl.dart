@@ -150,14 +150,24 @@ class TodoRepositoryImpl implements TodoRepository {
     ));
   }
 
-  @override
-  Future<void> markAsRead(int reminderId) async {
+ @override
+Future<void> markAsRead(int reminderId) async {
+  try {
+    debugPrint('TodoRepository: Marking reminder $reminderId as read');
+    
+    // ✅ CRITICAL FIX: Use Drift's type-safe API (consistent with other methods)
     await (_db.update(_db.reminders)..where((tbl) => tbl.reminderId.equals(reminderId)))
         .write(RemindersCompanion(
-
+      notificationStatus: const d.Value('Read'),  // ✅ Use existing field
       updatedAt: d.Value(DateTime.now().toIso8601String()),
     ));
+    
+    debugPrint('TodoRepository: Reminder $reminderId marked as read in database');
+  } catch (e) {
+    debugPrint('TodoRepository: Error marking reminder as read: $e');
+    rethrow;
   }
+}
 
 
 

@@ -17,6 +17,7 @@ import '../../../core/services/permission_helper.dart';
 import '../../../core/app_utils.dart';
 import '../../../core/services/firebase_threading_handler.dart';
 import 'package:shared/shared.dart';
+import '../../../core/services/auth/password_hashing_service.dart';
 
 class UserRepositoryImpl implements UserRepository {
   final AppDatabase db;
@@ -955,23 +956,29 @@ class UserRepositoryImpl implements UserRepository {
   }
 
   @override
-  Future<void> updateUserPassword(String userId, String newPassword) async {
-    try {
-      // Generate new salt and hash password
-      final salt = _generateSalt();
-      final passwordHash = _hashPassword(newPassword, salt);
-      
-      await db.customStatement(
-        'UPDATE users SET password_hash = ?, salt = ?, iterations = ?, updated_at = ? WHERE id = ?',
-        [passwordHash, salt, 10000, DateTime.now().toIso8601String(), userId],
-      );
-      
-      debugPrint('UserRepository: Password updated for user: $userId');
-    } catch (e) {
-      debugPrint('Error updating user password: $e');
-      rethrow;
-    }
+
+Future<void> updateUserPassword(String userId, String newPassword) async {
+  try {
+    // ✅ Use PasswordHashingService for proper hashing
+    final passwordService = PasswordHashingService();
+    final salt = passwordService.generateSalt();
+    final passwordHash = passwordService.hashPassword(newPassword, salt: salt);
+    
+    debugPrint('🔧 Updating password for user: $userId');
+    debugPrint('🔑 Salt: $salt');
+    debugPrint('🔑 Hash: $passwordHash');
+    
+    await db.customStatement(
+      'UPDATE users SET password_hash = ?, salt = ?, iterations = ?, updated_at = ? WHERE id = ?',
+      [passwordHash, salt, 10000, DateTime.now().toIso8601String(), userId],
+    );
+    
+    debugPrint('✅ UserRepository: Password updated for user: $userId');
+  } catch (e) {
+    debugPrint('❌ Error updating user password: $e');
+    rethrow;
   }
+}
 
   @override
   Future<void> updateUserRole(String userId, String newRole, Map<String, bool> selectedModules) async {
@@ -1225,16 +1232,7 @@ class UserRepositoryImpl implements UserRepository {
     }
   }
 
-  // Helper methods for password handling
-  String _generateSalt() {
-    final random = DateTime.now().millisecondsSinceEpoch.toString();
-    return random;
-  }
 
-  String _hashPassword(String password, String salt) {
-    // Simple hash implementation - in production, use proper crypto
-    return '$salt:$password';
-  }
 
   @override
   Future<Map<String, dynamic>> getUserStatistics(String? companyId) async {

@@ -205,16 +205,13 @@ class AuthRepository extends ChangeNotifier {
   }
 
   // ✅ NEW METHOD: Sirf local database se login karein
-  // ✅ UPDATED METHOD: Local DB + Firestore fallback
-// ✅ FINAL METHOD: Pure local authentication (no Firestore during login)
-Future<Map<String, dynamic>> _localLoginOnly(String email, String password) async {
+ Future<Map<String, dynamic>> _localLoginOnly(String email, String password) async {
   try {
     debugPrint('🔐 _localLoginOnly: Starting local authentication for $email');
     
     final db = await AppDatabase.instance();
     final emailKey = email.trim().toLowerCase();
     
-    // Step 1: Local DB mein user dhundhein
     final result = await db.customSelect(
       'SELECT * FROM users WHERE email = ? AND (is_active = 1 OR is_active IS NULL)',
       variables: [d.Variable.withString(emailKey)],
@@ -224,19 +221,27 @@ Future<Map<String, dynamic>> _localLoginOnly(String email, String password) asyn
       debugPrint('❌ _localLoginOnly: User not found in local DB');
       return {
         'success': false,
-        'requiresSetup': true, // ✅ NEW FLAG: Setup mode trigger kare
+        'requiresSetup': true,
         'message': 'No user found. Please create an admin account first.',
       };
     }
     
     final userData = result.first.data;
     final storedHash = userData['password_hash']?.toString() ?? '';
-    final salt = userData['salt']?.toString() ?? '';
-    final iterations = int.tryParse(userData['iterations']?.toString() ?? '') ?? 10000;
     
-    final inputHash = _hashPassword(password, salt, iterations);
+    // ✅ PasswordHashingService.verifyPassword use karein
+    if (storedHash.isEmpty) {
+      debugPrint('❌ _localLoginOnly: No password hash found');
+      return {
+        'success': false,
+        'message': 'Password not set. Please reset password.',
+      };
+    }
     
-    if (storedHash.isEmpty || storedHash != inputHash) {
+    final passwordService = PasswordHashingService();
+    final isValid = passwordService.verifyPassword(password, storedHash);
+    
+    if (!isValid) {
       debugPrint('❌ _localLoginOnly: Password mismatch');
       return {
         'success': false,

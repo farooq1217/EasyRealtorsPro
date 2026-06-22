@@ -57,9 +57,13 @@ class TodoViewModel extends ChangeNotifier {
   String get searchQuery => _searchQuery;
 
   // New getters for notification filtering
-  List<Reminder> get unreadReminders => _reminders.where((r) => !(r.isRead ?? false)).toList();
-  List<Reminder> get readReminders => _reminders.where((r) => r.isRead ?? false).toList();
-  
+ List<Reminder> get unreadReminders => _reminders.where((r) => 
+  r.notificationStatus != 'Read' && !(r.isRead ?? false)
+).toList();
+
+List<Reminder> get readReminders => _reminders.where((r) => 
+  r.notificationStatus == 'Read' || (r.isRead ?? false)
+).toList();
   // Pagination getters
   int get currentPage => _currentPage;
   int get itemsPerPage => _itemsPerPage;

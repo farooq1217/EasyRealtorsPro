@@ -19,7 +19,7 @@ import '../widgets/category_selection_grid.dart';
 import 'package:easyrealtorspro/core/services/auth/auth_service.dart';
 import '../../../core/services/app_storage.dart';
 import '../../../core/utils/logger.dart';
-import 'expenditure_details_page.dart'; // ✅ Import added
+import 'expenditure_details_page.dart';
 
 class ExpenditurePage extends StatefulWidget {
   final AppDatabase db;
@@ -238,7 +238,6 @@ class _ExpenditurePageState extends State<ExpenditurePage>
                         width: 1,
                       ),
                     ),
-                    // ✅ FIXED: TabBarView directly in body without nested Column
                     child: TabBarView(
                       controller: _tabController,
                       children: [
@@ -256,196 +255,192 @@ class _ExpenditurePageState extends State<ExpenditurePage>
     );
   }
 
-  // ✅ NEW: Office Tab with proper scrolling
+  // ✅ FIXED: Office Tab with FULL scrolling
   Widget _buildOfficeTab(BuildContext context, ExpenditureViewModel viewModel) {
     return Selector<ExpenditureViewModel, List<domain.ExpenditureItem>>(
       selector: (context, viewModel) => viewModel.filteredOfficeExpenses,
       builder: (context, officeExpenses, child) {
-        return Column(
-          children: [
-            // Category Grid (Fixed at top)
-            Padding(
+        return _buildFullyScrollableContent(context, officeExpenses, "Office", viewModel);
+      },
+    );
+  }
+
+  // ✅ FIXED: Project Tab with FULL scrolling
+  Widget _buildProjectTab(BuildContext context, ExpenditureViewModel viewModel) {
+    return Selector<ExpenditureViewModel, List<domain.ExpenditureItem>>(
+      selector: (context, viewModel) => viewModel.filteredProjectExpenses,
+      builder: (context, projectExpenses, child) {
+        return _buildFullyScrollableContent(context, projectExpenses, "Project", viewModel);
+      },
+    );
+  }
+
+  // ✅ NEW: Unified scrollable content method
+  Widget _buildFullyScrollableContent(BuildContext context, List<domain.ExpenditureItem> list, String type, ExpenditureViewModel viewModel) {
+    double totalAmount = list.fold<double>(0.0, (sum, item) => sum + item.amount);
+
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        // ✅ Category Grid (NOW SCROLLABLE)
+        if (type == "Office")
+          SliverToBoxAdapter(
+            child: Padding(
               padding: const EdgeInsets.all(16),
               child: CategorySelectionGrid(
                 onCategorySelected: (category) => _showInstantExpenseDialog(context, viewModel, category),
                 enabled: viewModel.canAdd,
               ),
             ),
-            // ✅ FIXED: Scrollable list
-            Expanded(
-              child: _buildScrollableListView(context, officeExpenses, "Office"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // ✅ NEW: Project Tab with proper scrolling
-  Widget _buildProjectTab(BuildContext context, ExpenditureViewModel viewModel) {
-    return Selector<ExpenditureViewModel, List<domain.ExpenditureItem>>(
-      selector: (context, viewModel) => viewModel.filteredProjectExpenses,
-      builder: (context, projectExpenses, child) {
-        return Column(
-          children: [
-            // Add Project Button (Fixed at top)
-            if (viewModel.canAdd)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+          ),
+        
+        // ✅ Add Project Button (NOW SCROLLABLE)
+        if (type == "Project" && viewModel.canAdd)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
                     ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+                  ],
+                ),
+                child: ElevatedButton(
+                  onPressed: () => _showProjectExpenseDialog(context, viewModel, 'General'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Add Project Expense',
+                        style: AppFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
-                  child: ElevatedButton(
-                    onPressed: () => _showProjectExpenseDialog(context, viewModel, 'General'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+
+        // Empty state
+        if (list.isEmpty)
+          SliverFillRemaining(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    type == "Office" ? Icons.business_center : Icons.assignment,
+                    size: 64,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "No $type Records Found",
+                    style: AppFonts.poppins(
+                      fontSize: 16,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else ...[
+          // ✅ Total Amount Summary Card
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      "Total $type Expense:",
+                      style: AppFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Add Project Expense',
-                          style: AppFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
+                  ),
+                  Text(
+                    f.format(totalAmount),
+                    style: AppFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
-                ),
+                ],
               ),
-            // ✅ FIXED: Scrollable list
-            Expanded(
-              child: _buildScrollableListView(context, projectExpenses, "Project"),
             ),
-          ],
-        );
-      },
-    );
-  }
-
-  // ✅ FIXED: New scrollable list view method
-  Widget _buildScrollableListView(BuildContext context, List<domain.ExpenditureItem> list, String type) {
-  if (list.isEmpty) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            type == "Office" ? Icons.business_center : Icons.assignment,
-            size: 64,
-            color: Colors.grey.shade400,
           ),
-          const SizedBox(height: 16),
-          Text(
-            "No $type Records Found",
-            style: AppFonts.poppins(
-              fontSize: 16,
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.w500,
+          
+          // ✅ Scrollable expense list
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  final item = list[i];
+                  return _buildExpenseCard(context, item, type);
+                },
+                childCount: list.length,
+              ),
             ),
+          ),
+          
+          // Bottom padding
+          const SliverToBoxAdapter(
+            child: SizedBox(height: 80),
           ),
         ],
-      ),
+      ],
     );
   }
 
-  double totalAmount = list.fold<double>(0.0, (sum, item) => sum + item.amount);
-
-  // ✅ FIXED: Use CustomScrollView for smooth scrolling
-  return CustomScrollView(
-    physics: const AlwaysScrollableScrollPhysics(),
-    slivers: [
-      // Total Amount Summary Card (Fixed at top)
-      SliverToBoxAdapter(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  "Total $type Expense:",
-                  style: AppFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              Text(
-                f.format(totalAmount),
-                style: AppFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      // ✅ FIXED: Scrollable expense list
-      SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        sliver: SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, i) {
-              final item = list[i];
-              return _buildExpenseCard(context, item, type);
-            },
-            childCount: list.length,
-          ),
-        ),
-      ),
-      // Bottom padding
-      const SliverToBoxAdapter(
-        child: SizedBox(height: 20),
-      ),
-    ],
-  );
-}
-
-  // ✅ NEW: Expense card widget (extracted for better performance)
   Widget _buildExpenseCard(BuildContext context, domain.ExpenditureItem item, String type) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),

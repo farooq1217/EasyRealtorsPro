@@ -18,7 +18,10 @@ import 'package:drift/drift.dart' as d;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firestore_sync_service.dart';
-// import 'force_password_change_page.dart'; // REMOVED - Force password change logic disabled
+import 'package:provider/provider.dart';
+import '../core/providers/theme_provider.dart';
+import '../core/theme/app_themes.dart';
+import 'core/services/auth/password_hashing_service.dart';
 
 String? _requiredValidator(String? value) {
   if (value == null || value.trim().isEmpty) return 'This field is required';
@@ -47,9 +50,7 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _resetCodeController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
 
-  // ✅ ADD THESE METHODS INSIDE _LoginPageState CLASS
-
-void _showResetPasswordDialog() {
+ void _showResetPasswordDialog() {
   final emailController = TextEditingController();
   final newPasswordController = TextEditingController();
   
@@ -80,10 +81,23 @@ void _showResetPasswordDialog() {
         ElevatedButton(
           onPressed: () async {
             try {
-              // Reset password in local DB
               final db = await AppDatabase.instance();
-              final salt = DateTime.now().millisecondsSinceEpoch.toString();
-              final newHash = '10000:$salt:${_simpleHash(newPasswordController.text + salt)}';
+              
+              // ✅ Import password hashing service
+              final passwordService = PasswordHashingService();
+              
+              // ✅ Proper salt generate karein (Base64 format)
+              final salt = passwordService.generateSalt();
+              
+              // ✅ Password hash karein with proper salt
+              final newHash = passwordService.hashPassword(
+                newPasswordController.text,
+                salt: salt,
+              );
+              
+              debugPrint('🔧 Resetting password for: ${emailController.text}');
+              debugPrint('🔑 Salt: $salt');
+              debugPrint('🔑 Hash: $newHash');
               
               await db.customStatement(
                 'UPDATE users SET password_hash = ?, salt = ?, is_first_login = 0 WHERE email = ?',
@@ -91,19 +105,25 @@ void _showResetPasswordDialog() {
               );
               
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Password reset successful!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Password reset successful! Please login with new password.'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
             } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Error: $e'),
-                  backgroundColor: Colors.red,
-                ),
-              );
+              debugPrint('❌ Password reset error: $e');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('❌ Error: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             }
           },
           child: const Text('Reset'),
@@ -113,14 +133,13 @@ void _showResetPasswordDialog() {
   );
 }
 
-String _simpleHash(String input) {
-  // Simple hash function
-  int hash = 0;
-  for (int i = 0; i < input.length; i++) {
-    hash = (hash * 31 + input.codeUnitAt(i)) & 0x7fffffff;
+  String _simpleHash(String input) {
+    int hash = 0;
+    for (int i = 0; i < input.length; i++) {
+      hash = (hash * 31 + input.codeUnitAt(i)) & 0x7fffffff;
+    }
+    return hash.toRadixString(16);
   }
-  return hash.toRadixString(16);
-}
   
   @override
   void dispose() {
@@ -170,7 +189,6 @@ String _simpleHash(String input) {
             );
           }
           if (result['requires2FASetup'] == true) {
-            // Show 2FA setup dialog after first login
             setState(() {
               _show2FASetup = true;
             });
@@ -178,20 +196,17 @@ String _simpleHash(String input) {
             return;
           }
 
-          // CRITICAL FIX: Wait for permissions to be fully loaded before navigation
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Login successful, loading permissions...'), backgroundColor: Colors.green, duration: Duration(seconds: 2)),
             );
             
-            // CRITICAL: Force refresh permissions and wait for them to be fully loaded
             setState(() { _isLoading = true; });
             
             try {
               final token = result['token'] as String?;
               final sessionId = result['sessionId'] as String?;
               if (token != null) {
-                // Save session token and ID to AppStorage for route guards
                 final storage = AppStorage();
                 final settings = await storage.readSettings();
                 settings['authToken'] = token;
@@ -204,7 +219,6 @@ String _simpleHash(String input) {
                 debugPrint('LoginPage: Starting HYBRID permission loading...');
                 setState(() { _isLoading = true; });
                 
-                // HYBRID: Try smart permission loading with ONLINE + OFFLINE + fallback
                 final userWithPermissions = await PermissionSyncService.loadPermissionsSmart(token);
                 
                 if (userWithPermissions != null && PermissionSyncService.arePermissionsFullyLoaded(userWithPermissions)) {
@@ -220,12 +234,10 @@ String _simpleHash(String input) {
                           }
                         : null;
                     
-                    // THREAD SAFETY: Navigate immediately with loaded permissions
                     SchedulerBinding.instance.addPostFrameCallback((_) {
                       if (!mounted) return;
                       Navigator.of(context).pushReplacementNamed('/home', arguments: navArgs);
                       
-                      // TRIGGER BACKGROUND SYNC AFTER NAVIGATION (for HYBRID mode)
                       SchedulerBinding.instance.addPostFrameCallback((_) {
                         if (!mounted) return;
                         Future.delayed(const Duration(seconds: 8), () async {
@@ -242,7 +254,6 @@ String _simpleHash(String input) {
                 } else {
                   debugPrint('LoginPage: ❌ HYBRID permission loading failed');
                   if (mounted) {
-                    // User-friendly error message (no more orange warning)
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Row(
@@ -263,7 +274,6 @@ String _simpleHash(String input) {
                             debugPrint('LoginPage: User requested retry...');
                             setState(() { _isLoading = true; });
                             
-                            // Retry HYBRID loading
                             final retryUser = await PermissionSyncService.loadPermissionsSmart(token);
                             if (retryUser != null && PermissionSyncService.arePermissionsFullyLoaded(retryUser)) {
                               setState(() { _isLoading = false; });
@@ -286,7 +296,6 @@ String _simpleHash(String input) {
                       ),
                     );
                     
-                    // Navigate anyway to prevent login lockout (user can access Dashboard/Settings)
                     final navArgs = result['requiresProfileCompletion'] == true
                         ? {
                             'initialNavIndex': 5,
@@ -308,7 +317,6 @@ String _simpleHash(String input) {
                     backgroundColor: Colors.red,
                   ),
                 );
-                // Navigate anyway on error to prevent login lockout
                 Navigator.of(context).pushReplacementNamed('/home');
               }
             } finally {
@@ -354,7 +362,6 @@ String _simpleHash(String input) {
     }
   }
 
-
   void _show2FASetupDialog() {
     showDialog(
       context: context,
@@ -372,14 +379,12 @@ String _simpleHash(String input) {
               setState(() {
                 _show2FASetup = false;
               });
-              // Continue to home
               Navigator.of(context).pushReplacementNamed('/home');
             },
             child: const Text('Skip for now'),
           ),
           ElevatedButton(
             onPressed: () async {
-              // Generate 2FA secret
               final secret = AuthService.generate2FASecret();
               final result = await AuthService.setup2FA(_emailController.text.trim(), secret);
               
@@ -483,7 +488,6 @@ String _simpleHash(String input) {
               ),
               ElevatedButton(
                 onPressed: isLoading ? null : () async {
-                  // Validate email
                   final emailError = _validateEmail(emailCtl.text.trim());
                   if (emailError != null) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -492,7 +496,6 @@ String _simpleHash(String input) {
                     return;
                   }
                   
-                  // Validate other fields
                   if (fullNameCtl.text.trim().isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Full name is required')),
@@ -500,7 +503,6 @@ String _simpleHash(String input) {
                     return;
                   }
                   
-                  // Validate password
                   final passwordError = _validatePassword(passwordCtl.text);
                   if (passwordError != null) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -537,7 +539,6 @@ String _simpleHash(String input) {
                         backgroundColor: Colors.green,
                       ),
                     );
-                    // Auto-fill email in login form
                     _emailController.text = emailCtl.text.trim();
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -596,7 +597,6 @@ String _simpleHash(String input) {
                             ),
                           );
                           if (result['success'] == true && result['code'] != null) {
-                            // Show code for testing (remove in production)
                             setDialogState(() {
                               _resetCodeController.text = result['code'] as String;
                             });
@@ -669,7 +669,6 @@ String _simpleHash(String input) {
     );
   }
 
-  // ✅ NEW METHOD: Create Admin Account Dialog
   void _showSetupAdminDialog() {
     final nameController = TextEditingController();
     final emailController = TextEditingController();
@@ -771,7 +770,6 @@ String _simpleHash(String input) {
               onPressed: isLoading
                   ? null
                   : () async {
-                      // Validation
                       if (nameController.text.trim().isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
@@ -836,7 +834,6 @@ String _simpleHash(String input) {
                               duration: const Duration(seconds: 3),
                             ),
                           );
-                          // Auto-fill email in login form
                           _emailController.text = emailController.text.trim();
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -884,136 +881,215 @@ String _simpleHash(String input) {
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 900;
 
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFFFF6B35), // Orange
-              const Color(0xFF4A90E2), // Blue
-            ],
+    // ✅ NEW: Wrap with Consumer<ThemeProvider>
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        final primaryColor = themeProvider.currentThemeData.primaryColor;
+        
+        return Scaffold(
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  primaryColor,
+                  primaryColor.withOpacity(0.7),
+                ],
+              ),
+              border: Border.all(
+                color: Colors.grey.shade300.withOpacity(0.5),
+                width: 1,
+              ),
+            ),
+            child: SafeArea(
+              child: Stack(
+                children: [
+                  // Main content
+                  isMobile ? _buildMobileLayout(themeProvider) : _buildDesktopLayout(themeProvider),
+                  
+                  // ✅ NEW: Theme Selector Button (Top Right)
+                  Positioned(
+                    top: 20,
+                    right: 20,
+                    child: _buildThemeSelector(context, themeProvider),
+                  ),
+                ],
+              ),
+            ),
           ),
-          border: Border.all(
-            color: Colors.grey.shade300.withOpacity(0.5),
-            width: 1,
-          ),
-        ),
-        child: SafeArea(
-          child: isMobile ? _buildMobileLayout() : _buildDesktopLayout(),
-        ),
+        );
+      },
+    );
+  }
+
+  // ✅ NEW: Theme Selector Widget
+  Widget _buildThemeSelector(BuildContext context, ThemeProvider themeProvider) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.3)),
+      ),
+      child: PopupMenuButton<String>(
+        icon: const Icon(Icons.palette, color: Colors.white, size: 24),
+        tooltip: 'Change Theme',
+        color: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        offset: const Offset(0, 40),
+        onSelected: (value) {
+          final themeType = ThemeType.values.firstWhere(
+            (e) => e.name == value,
+          );
+          themeProvider.setTheme(themeType);
+        },
+        itemBuilder: (context) {
+          return ThemeList.getThemes().map((theme) {
+            final isSelected = theme.type == themeProvider.currentTheme;
+            return PopupMenuItem<String>(
+              value: theme.type.name,
+              child: Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: theme.color,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSelected ? Colors.black26 : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: isSelected
+                        ? const Icon(Icons.check, color: Colors.white, size: 16)
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Icon(theme.icon, color: theme.color, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    theme.name,
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList();
+        },
       ),
     );
   }
 
-  Widget _buildDesktopLayout() {
+  Widget _buildDesktopLayout(ThemeProvider themeProvider) {
     return Row(
       children: [
-        // Left side - Welcome section with logo
         Expanded(
           flex: 1,
-          child: _buildWelcomeSection(),
+          child: _buildWelcomeSection(themeProvider),
         ),
-        // Right side - Login form
         Expanded(
           flex: 1,
           child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              child: _buildLoginForm(),
+              child: _buildLoginForm(themeProvider),
+            ),
           ),
-        ),
         ),
       ],
     );
   }
 
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(ThemeProvider themeProvider) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          _buildWelcomeSection(),
+          const SizedBox(height: 60), // Space for theme selector
+          _buildWelcomeSection(themeProvider),
           const SizedBox(height: 32),
-          _buildLoginForm(),
+          _buildLoginForm(themeProvider),
         ],
       ),
     );
   }
 
-  Widget _buildWelcomeSection() {
+  Widget _buildWelcomeSection(ThemeProvider themeProvider) {
     return Container(
       padding: const EdgeInsets.all(40),
       child: SingleChildScrollView(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Logo space
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.3),
-                width: 2,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.3),
+                  width: 2,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Image.asset(
+                  'assets/logo.png',
+                  width: 100,
+                  height: 100,
+                  fit: BoxFit.contain,
+                ),
               ),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Image.asset(
-                'assets/logo.png',
-                width: 100,
-                height: 100,
-                fit: BoxFit.contain,
+            const SizedBox(height: 32),
+            Text(
+              'Welcome!',
+              style: AppFonts.poppins(
+                fontSize: 48,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
-          ),
-          const SizedBox(height: 32),
-          Text(
-            'Welcome!',
-            style: AppFonts.poppins(
-              fontSize: 48,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+            const SizedBox(height: 16),
+            Text(
+              'Real Estate Management System',
+              style: AppFonts.poppins(
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withOpacity(0.95),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Real Estate Management System',
-            style: AppFonts.poppins(
-              fontSize: 24,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withOpacity(0.95),
-                  ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Manage your properties, files, and rental items efficiently. Track sales, monitor inventory, and streamline your real estate business operations.',
-            style: AppFonts.poppins(
-              fontSize: 16,
-              color: Colors.white.withOpacity(0.9),
-              height: 1.6,
+            const SizedBox(height: 24),
+            Text(
+              'Manage your properties, files, and rental items efficiently. Track sales, monitor inventory, and streamline your real estate business operations.',
+              style: AppFonts.poppins(
+                fontSize: 16,
+                color: Colors.white.withOpacity(0.9),
+                height: 1.6,
+              ),
             ),
-          ),
-          const SizedBox(height: 40),
-          Text(
-            '© 2026 Real Estate Management',
-            style: AppFonts.poppins(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.7),
-                  ),
-          ),
-        ],
+            const SizedBox(height: 40),
+            Text(
+              '© 2026 Real Estate Management',
+              style: AppFonts.poppins(
+                fontSize: 14,
+                color: Colors.white.withOpacity(0.7),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildLoginForm() {
+  Widget _buildLoginForm(ThemeProvider themeProvider) {
+    final primaryColor = themeProvider.currentThemeData.primaryColor;
+    
     return Form(
       key: _formKey,
       child: ConstrainedBox(
@@ -1044,7 +1120,7 @@ String _simpleHash(String input) {
                     style: AppFonts.poppins(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFFFF6B35), // Orange
+                      color: primaryColor, // ✅ Changed to theme color
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -1110,11 +1186,9 @@ String _simpleHash(String input) {
                     ),
                   ],
                   const SizedBox(height: 8),
-                  // Use Wrap or Column for smaller screens to prevent overflow
                   LayoutBuilder(
                     builder: (context, constraints) {
                       if (constraints.maxWidth < 350) {
-                        // Stack vertically on very small screens
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1127,7 +1201,7 @@ String _simpleHash(String input) {
                                       _rememberMe = value ?? false;
                                     });
                                   },
-                                  activeColor: const Color(0xFFFF6B35),
+                                  activeColor: primaryColor, // ✅ Changed to theme color
                                 ),
                                 Flexible(
                                   child: Text(
@@ -1147,7 +1221,7 @@ String _simpleHash(String input) {
                                 child: Text(
                                   'Forgot Password?',
                                   style: AppFonts.poppins(
-                                    color: const Color(0xFFFF6B35),
+                                    color: primaryColor, // ✅ Changed to theme color
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -1157,7 +1231,6 @@ String _simpleHash(String input) {
                           ],
                         );
                       } else {
-                        // Use Row for larger screens
                         return Row(
                           children: [
                             Checkbox(
@@ -1167,7 +1240,7 @@ String _simpleHash(String input) {
                                   _rememberMe = value ?? false;
                                 });
                               },
-                              activeColor: const Color(0xFFFF6B35),
+                              activeColor: primaryColor, // ✅ Changed to theme color
                             ),
                             Flexible(
                               child: Text(
@@ -1186,7 +1259,7 @@ String _simpleHash(String input) {
                                 child: Text(
                                   'Forgot Password?',
                                   style: AppFonts.poppins(
-                                    color: const Color(0xFFFF6B35),
+                                    color: primaryColor, // ✅ Changed to theme color
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -1205,7 +1278,7 @@ String _simpleHash(String input) {
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _login,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF6B35), // Orange
+                        backgroundColor: primaryColor, // ✅ Changed to theme color
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 6,
@@ -1246,9 +1319,7 @@ String _simpleHash(String input) {
                             ),
                     ),
                   ),
-                                   const SizedBox(height: 12),
-                  
-                  // ✅ NEW: Create Admin Account Button
+                  const SizedBox(height: 12),
                   Center(
                     child: TextButton(
                       onPressed: _isLoading ? null : _showSetupAdminDialog,
@@ -1275,7 +1346,6 @@ String _simpleHash(String input) {
                         ],
                       ),
                     ),
-                  
                   ),
                 ],
               ),

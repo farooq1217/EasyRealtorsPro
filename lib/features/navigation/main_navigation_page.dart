@@ -48,6 +48,8 @@ import 'package:shared/shared.dart' show AppDatabase;
 import '../follow_up/view_models/follow_up_view_model.dart';
 import '../../../core/services/foreground_sync_manager.dart';
 import '../../../core/services/rest_sync_manager.dart';
+import '../../../core/providers/theme_provider.dart';
+import '../../../core/theme/app_themes.dart';
 
 /// Main navigation page with sidebar and content area
 class MainNavigationPage extends StatelessWidget {
@@ -153,13 +155,11 @@ class _MainNavigationPageContent extends StatefulWidget {
 class _MainNavigationPageContentState extends State<_MainNavigationPageContent> {
   int _selectedIndex = 0;
   final ValueNotifier<bool> _isSidebarOpenNotifier = ValueNotifier(true);
-  ThemeMode _themeMode = ThemeMode.system;
   final ValueNotifier<int?> _badgeFilesNotifier = ValueNotifier(null);
   final ValueNotifier<int?> _badgeRentalsNotifier = ValueNotifier(null);
   StreamSubscription<Map<String, dynamic>?>? _userStreamSubscription;
   Timer? _periodicPermissionCheckTimer;
   
-  // ✅ CRITICAL FIX: Cache all pages to prevent recreation on every build
   late final List<Widget> _pages;
 
   @override
@@ -167,11 +167,9 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
     super.initState();
     _selectedIndex = widget.initialIndex;
     
-    // ✅ Initialize pages ONCE
     _pages = _initializePages();
     
     _loadUserData();
-    _loadTheme();
     _loadBadges();
     
     _userStreamSubscription = AuthService.currentUserStream.listen((user) {
@@ -182,11 +180,9 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
     
     _startPeriodicPermissionCheck();
     
-    // ✅ CRITICAL: Windows par foreground sync ko manually trigger karein
     _triggerForegroundSyncOnWindows();
   }
 
-  // ✅ NEW METHOD: Create all pages ONCE
   List<Widget> _initializePages() {
     final user = AuthService.currentUser;
     final companyId = RoleUtils.getUserCompanyId(user);
@@ -194,66 +190,52 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
     final userId = user?['id']?.toString() ?? user?['userId']?.toString();
 
     return [
-    DashboardPage(db: widget.db),       
-  InventoryPage(db: widget.db),
-  AgentWorkingPage(db: widget.db),
-  RentalItemsPage(db: widget.db),
-   ToDoPage(db: widget.db),
-  SettingsPageClean(db: widget.db),
-  TradingPage(db: widget.db),
-  FollowUpPage(db: widget.db),
-  ReportsPage(db: widget.db),
-  UsersPage(db: widget.db),
-   ExpenditurePage(
+      DashboardPage(db: widget.db),       
+      InventoryPage(db: widget.db),
+      AgentWorkingPage(db: widget.db),
+      RentalItemsPage(db: widget.db),
+      ToDoPage(db: widget.db),
+      SettingsPageClean(db: widget.db),
+      TradingPage(db: widget.db),
+      FollowUpPage(db: widget.db),
+      ReportsPage(db: widget.db),
+      UsersPage(db: widget.db),
+      ExpenditurePage(
         db: widget.db,
         companyId: companyId,
         isSuperAdmin: isSuperAdmin,
         userId: userId,
       ),
-  CompaniesPage(db: widget.db),
+      CompaniesPage(db: widget.db),
     ];
-    
   }
 
- // ✅ DISABLED: Windows par sync temporarily disable kiya (crash prevention)
-Future<void> _triggerForegroundSyncOnWindows() async {
-  final isWindows = !kIsWeb && io.Platform.isWindows;
-  
-  if (!isWindows) {
-    // Non-Windows platforms par sync trigger karein
-    await Future.delayed(const Duration(seconds: 3));
-    if (!mounted) return;
+  Future<void> _triggerForegroundSyncOnWindows() async {
+    final isWindows = !kIsWeb && io.Platform.isWindows;
     
-    try {
-      debugPrint('🔄 MainNavigationPage: Triggering foreground sync...');
-      await ForegroundSyncManager.instance.syncNow();
-      debugPrint('✅ MainNavigationPage: Foreground sync triggered successfully');
-    } catch (e) {
-      debugPrint('❌ MainNavigationPage: Foreground sync failed: $e');
+    if (!isWindows) {
+      await Future.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
+      
+      try {
+        debugPrint('🔄 MainNavigationPage: Triggering foreground sync...');
+        await ForegroundSyncManager.instance.syncNow();
+        debugPrint('✅ MainNavigationPage: Foreground sync triggered successfully');
+      } catch (e) {
+        debugPrint('❌ MainNavigationPage: Foreground sync failed: $e');
+      }
+    } else {
+      debugPrint('⏸️ MainNavigationPage: Windows detected - Firestore sync disabled (temporary)');
+      debugPrint('💡 Note: Data sync will be available after Firebase REST API integration');
     }
-  } else {
-    // ✅ Windows par sync skip karein (crash prevention)
-    debugPrint('⏸️ MainNavigationPage: Windows detected - Firestore sync disabled (temporary)');
-    debugPrint('💡 Note: Data sync will be available after Firebase REST API integration');
   }
-}
+
   Future<void> _loadUserData() async {
     final storage = AppStorage();
     final settings = await storage.readSettings();
     final token = settings['authToken'] as String?;
     if (token != null) {
       await AuthService.getCurrentUser(token);
-    }
-  }
-
-  Future<void> _loadTheme() async {
-    final storage = AppStorage();
-    final settings = await storage.readSettings();
-    final mode = (settings['theme'] as String?) ?? 'system';
-    if (mounted) {
-      setState(() {
-        _themeMode = _themeFrom(mode);
-      });
     }
   }
 
@@ -324,14 +306,6 @@ Future<void> _triggerForegroundSyncOnWindows() async {
     }
   }
 
-  ThemeMode _themeFrom(String s) {
-    switch (s) {
-      case 'light': return ThemeMode.light;
-      case 'dark': return ThemeMode.dark;
-      default: return ThemeMode.system;
-    }
-  }
-
   void _onDestinationSelected(int index) {
     setState(() {
       _selectedIndex = index;
@@ -361,13 +335,6 @@ Future<void> _triggerForegroundSyncOnWindows() async {
 
   void _onToggleSidebar() {
     _isSidebarOpenNotifier.value = !_isSidebarOpenNotifier.value;
-  }
-
-  void _onThemeChanged(String mode) {
-    setState(() {
-      _themeMode = _themeFrom(mode);
-    });
-    AdminApp.applyThemeSetting(mode);
   }
 
   @override
@@ -441,15 +408,19 @@ Future<void> _triggerForegroundSyncOnWindows() async {
             ],
           );
         } else {
-          return Scaffold(
-            body: _buildMobileContent(),
-            drawer: _buildMobileDrawer(),
-            appBar: AppBar(
-              title: Text(_getNavigationTitle()),
-              backgroundColor: const Color(0xFFFF6B35),
-              foregroundColor: Colors.white,
-              elevation: 0,
-            ),
+          return Consumer<ThemeProvider>(
+            builder: (context, themeProvider, child) {
+              return Scaffold(
+                body: _buildMobileContent(),
+                drawer: _buildMobileDrawer(),
+                appBar: AppBar(
+                  title: Text(_getNavigationTitle()),
+                  backgroundColor: themeProvider.currentThemeData.primaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                ),
+              );
+            },
           );
         }
       },
@@ -457,251 +428,283 @@ Future<void> _triggerForegroundSyncOnWindows() async {
   }
 
   Widget _buildHeaderBar() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [Color(0xFFFF6B35), Color(0xFF4A90E2)],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        final primaryColor = themeProvider.currentThemeData.primaryColor;
+        
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                primaryColor,
+                primaryColor.withOpacity(0.7),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16),
+              topRight: Radius.circular(16),
+            ),
           ),
-        ],
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(16),
-          topRight: Radius.circular(16),
-        ),
-      ),
-      child: Row(
-        children: [
-          ValueListenableBuilder<bool>(
-            valueListenable: _isSidebarOpenNotifier,
-            builder: (context, isOpen, _) {
-              return !isOpen ? const SizedBox(width: 16) : const SizedBox.shrink();
-            },
-          ),
-          
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Text(
-                    'Real Estate Management System',
-                    style: AppFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
+          child: Row(
+            children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: _isSidebarOpenNotifier,
+                builder: (context, isOpen, _) {
+                  return !isOpen ? const SizedBox(width: 16) : const SizedBox.shrink();
+                },
+              ),
+              
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Real Estate Management System',
+                        style: AppFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
                     ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                  ],
+                ),
+              ),
+              
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ValueListenableBuilder<Map<String, dynamic>?>(
+                    valueListenable: AuthService.currentUserNotifier,
+                    builder: (context, user, _) {
+                      return CircleAvatar(
+                        radius: 16,
+                        backgroundColor: const Color(0xFF805AD5),
+                        child: Text(
+                          (user?['name']?.isNotEmpty == true) 
+                              ? user!['name'].substring(0, 1).toUpperCase() 
+                              : 'U',
+                          style: AppFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  
+                  Consumer<TodoViewModel>(
+                    builder: (context, todoVM, child) {
+                      final hasUnread = todoVM.unreadReminders.isNotEmpty;
+                      return Stack(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 20),
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ChangeNotifierProvider.value(
+                                    value: todoVM,
+                                    child: const NotificationsPage(),
+                                  ),
+                                ),
+                              );
+                            },
+                            style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
+                            tooltip: 'Notifications',
+                          ),
+                          if (hasUnread)
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                  
+                  // ✅ Theme Selector Button
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: _buildThemeSelector(context, themeProvider),
+                  ),
+                  const SizedBox(width: 8),
+                  
+                  // Manual Sync Button
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.sync, color: Colors.white, size: 16),
+                      onPressed: () async {
+                        debugPrint('🔄 Manual sync triggered (REST API)...');
+                        
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Text('Syncing data from cloud...'),
+                                ],
+                              ),
+                              backgroundColor: Colors.blue,
+                              duration: Duration(seconds: 30),
+                            ),
+                          );
+                        }
+                        
+                        try {
+                          final result = await RestSyncManager.instance.syncAllData();
+                          
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                            
+                            if (result['success'] == true) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '✅ Synced: ${result['users']} users, ${result['companies']} companies'
+                                  ),
+                                  backgroundColor: Colors.green,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('❌ Sync failed: ${result['message']}'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('❌ Sync error: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      tooltip: 'Sync Data from Cloud',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  
+                  // Logout Button
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.logout, color: Colors.white, size: 16),
+                      onPressed: _onLogout,
+                      style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
+                      tooltip: 'Logout',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ✅ NEW: Theme Selector Widget
+  Widget _buildThemeSelector(BuildContext context, ThemeProvider themeProvider) {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.palette, color: Colors.white, size: 16),
+      tooltip: 'Change Theme',
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      offset: const Offset(0, 40),
+      onSelected: (value) {
+        final themeType = ThemeType.values.firstWhere(
+          (e) => e.name == value,
+        );
+        themeProvider.setTheme(themeType);
+      },
+      itemBuilder: (context) {
+        return ThemeList.getThemes().map((theme) {
+          final isSelected = theme.type == themeProvider.currentTheme;
+          return PopupMenuItem<String>(
+            value: theme.type.name,
+            child: Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: theme.color,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected ? Colors.black26 : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  child: isSelected
+                      ? const Icon(Icons.check, color: Colors.white, size: 14)
+                      : null,
+                ),
+                const SizedBox(width: 10),
+                Icon(theme.icon, color: theme.color, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  theme.name,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
               ],
             ),
-          ),
-          
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ValueListenableBuilder<Map<String, dynamic>?>(
-                valueListenable: AuthService.currentUserNotifier,
-                builder: (context, user, _) {
-                  return CircleAvatar(
-                    radius: 16,
-                    backgroundColor: const Color(0xFF805AD5),
-                    child: Text(
-                      (user?['name']?.isNotEmpty == true) 
-                          ? user!['name'].substring(0, 1).toUpperCase() 
-                          : 'U',
-                      style: AppFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-              
-              Consumer<TodoViewModel>(
-                builder: (context, todoVM, child) {
-                  final hasUnread = todoVM.unreadReminders.isNotEmpty;
-                  return Stack(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 20),
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => ChangeNotifierProvider.value(
-                                value: todoVM,
-                                child: const NotificationsPage(),
-                              ),
-                            ),
-                          );
-                        },
-                        style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
-                        tooltip: 'Notifications',
-                      ),
-                      if (hasUnread)
-                        Positioned(
-                          top: 6,
-                          right: 6,
-                          child: Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-              
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.white, size: 16),
-                  onPressed: () async {
-                    final currentUser = AuthService.currentUser;
-                    if (currentUser != null) {
-                      await _forcePermissionRefreshIfNeeded(currentUser);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Permissions refreshed successfully'),
-                            backgroundColor: Colors.green,
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
-                  tooltip: 'Refresh Permissions',
-                ),
-              ),
-              const SizedBox(width: 8),
-              
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: IconButton(
-                  icon: Icon(
-                    _themeMode == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                  onPressed: () async {
-                    final newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
-                    final s = await AppStorage().readSettings();
-                    s['theme'] = newMode;
-                    await AppStorage().writeSettings(s);
-                    _onThemeChanged(newMode);
-                  },
-                  style: IconButton.styleFrom(minimumSize: const Size(32, 32), padding: EdgeInsets.zero),
-                  tooltip: _themeMode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
-                ),
-              ),
-                            const SizedBox(width: 8),
-              
-              // ✅ NEW: Manual Sync Button
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.sync, color: Colors.white, size: 16),
-                onPressed: () async {
-  debugPrint('🔄 Manual sync triggered (REST API)...');
-  
-  // Show loading snackbar
-  if (mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            ),
-            SizedBox(width: 12),
-            Text('Syncing data from cloud...'),
-          ],
-        ),
-        backgroundColor: Colors.blue,
-        duration: Duration(seconds: 30),
-      ),
-    );
-  }
-  
-  try {
-    // ✅ REST API use karein - NO CRASH!
-    final result = await RestSyncManager.instance.syncAllData();
-    
-    if (mounted) {
-      // Hide loading snackbar
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      
-      if (result['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✅ Synced: ${result['users']} users, ${result['companies']} companies'
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Sync failed: ${result['message']}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ Sync error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-},
-                  tooltip: 'Sync Data from Cloud',
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+          );
+        }).toList();
+      },
     );
   }
 
@@ -731,159 +734,165 @@ Future<void> _triggerForegroundSyncOnWindows() async {
   }
 
   Widget _buildMobileDrawer() {
-    return Drawer(
-      backgroundColor: const Color(0xFF2C3E50),
-      child: Column(
-        children: [
-          ValueListenableBuilder<Map<String, dynamic>?>(
-            valueListenable: AuthService.currentUserNotifier,
-            builder: (context, currentUser, _) {
-              return Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      const Color(0xFF4A90E2).withOpacity(0.8),
-                      const Color(0xFF2C3E50).withOpacity(0.95),
-                    ],
-                  ),
-                ),
-                child: SafeArea(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        final primaryColor = themeProvider.currentThemeData.primaryColor;
+        
+        return Drawer(
+          backgroundColor: const Color(0xFF2C3E50),
+          child: Column(
+            children: [
+              ValueListenableBuilder<Map<String, dynamic>?>(
+                valueListenable: AuthService.currentUserNotifier,
+                builder: (context, currentUser, _) {
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          primaryColor.withOpacity(0.8),
+                          const Color(0xFF2C3E50).withOpacity(0.95),
+                        ],
+                      ),
+                    ),
+                    child: SafeArea(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          CircleAvatar(
-                            radius: 24,
-                            backgroundColor: Colors.white.withOpacity(0.2),
-                            child: currentUser?['profile_picture_path'] == null
-                                ? Text(
-                                    (currentUser?['name']?.isNotEmpty == true)
-                                        ? currentUser!['name'].substring(0, 1).toUpperCase()
-                                        : 'U',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 24,
+                                backgroundColor: Colors.white.withOpacity(0.2),
+                                child: currentUser?['profile_picture_path'] == null
+                                    ? Text(
+                                        (currentUser?['name']?.isNotEmpty == true)
+                                            ? currentUser!['name'].substring(0, 1).toUpperCase()
+                                            : 'U',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      currentUser?['name'] ?? 'User',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  )
-                                : null,
+                                    Text(
+                                      currentUser?['email'] ?? 'user@example.com',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.8),
+                                        fontSize: 12,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  currentUser?['name'] ?? 'User',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  currentUser?['email'] ?? 'user@example.com',
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.8),
-                                    fontSize: 12,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
+                          const SizedBox(height: 16),
+                          const Text(
+                            'EasyRealtorsPro',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'EasyRealtorsPro',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          
-          Expanded(
-            child: ValueListenableBuilder<Map<String, dynamic>?>(
-              valueListenable: AuthService.currentUserNotifier,
-              builder: (context, currentUser, _) {
-                return ValueListenableBuilder<int?>(
-                  valueListenable: _badgeFilesNotifier,
-                  builder: (context, filesBadge, _) {
+                    ),
+                  );
+                },
+              ),
+              
+              Expanded(
+                child: ValueListenableBuilder<Map<String, dynamic>?>(
+                  valueListenable: AuthService.currentUserNotifier,
+                  builder: (context, currentUser, _) {
                     return ValueListenableBuilder<int?>(
-                      valueListenable: _badgeRentalsNotifier,
-                      builder: (context, rentalsBadge, _) {
-                        return ListView(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          children: [
-                            _buildMobileDrawerItem('Dashboard', Icons.dashboard, 0),
-                            _buildMobileDrawerItem('Inventory', Icons.insert_drive_file, 1, badge: filesBadge),
-                            _buildMobileDrawerItem('Agent Working', Icons.support_agent, 2),
-                            _buildMobileDrawerItem('Rental Items', Icons.chair, 3, badge: rentalsBadge),
-                            _buildMobileDrawerItem('To-Do', Icons.checklist, 4),
-                            _buildMobileDrawerItem('Expenditure', Icons.payments, 10),
-                            if (currentUser != null && currentUser['role'] == 'super_admin')
-                              _buildMobileDrawerItem('User Management', Icons.people, 9),
-                            if (currentUser != null && currentUser['role'] == 'super_admin')
-                              _buildMobileDrawerItem('Company Management', Icons.business, 11),
-                            _buildMobileDrawerItem('Reports', Icons.bar_chart, 8),
-                            _buildMobileDrawerItem('Settings', Icons.settings, 5),
-                          ],
+                      valueListenable: _badgeFilesNotifier,
+                      builder: (context, filesBadge, _) {
+                        return ValueListenableBuilder<int?>(
+                          valueListenable: _badgeRentalsNotifier,
+                          builder: (context, rentalsBadge, _) {
+                            return ListView(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              children: [
+                                _buildMobileDrawerItem('Dashboard', Icons.dashboard, 0, primaryColor),
+                                _buildMobileDrawerItem('Inventory', Icons.insert_drive_file, 1, primaryColor, badge: filesBadge),
+                                _buildMobileDrawerItem('Agent Working', Icons.support_agent, 2, primaryColor),
+                                _buildMobileDrawerItem('Rental Items', Icons.chair, 3, primaryColor, badge: rentalsBadge),
+                                _buildMobileDrawerItem('To-Do', Icons.checklist, 4, primaryColor),
+                                _buildMobileDrawerItem('Expenditure', Icons.payments, 10, primaryColor),
+                                if (currentUser != null && currentUser['role'] == 'super_admin')
+                                  _buildMobileDrawerItem('User Management', Icons.people, 9, primaryColor),
+                                if (currentUser != null && currentUser['role'] == 'super_admin')
+                                  _buildMobileDrawerItem('Company Management', Icons.business, 11, primaryColor),
+                                _buildMobileDrawerItem('Reports', Icons.bar_chart, 8, primaryColor),
+                                _buildMobileDrawerItem('Settings', Icons.settings, 5, primaryColor),
+                              ],
+                            );
+                          },
                         );
                       },
                     );
                   },
-                );
-              },
-            ),
-          ),
-          
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: ListTile(
-              leading: const Icon(
-                Icons.logout,
-                color: Colors.red,
-              ),
-              title: const Text(
-                'Logout',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
                 ),
               ),
-              onTap: _onLogout,
-            ),
+              
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.logout,
+                    color: Colors.red,
+                  ),
+                  title: const Text(
+                    'Logout',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  onTap: _onLogout,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildMobileDrawerItem(String title, IconData icon, int index, {int? badge}) {
+  Widget _buildMobileDrawerItem(String title, IconData icon, int index, Color primaryColor, {int? badge}) {
     final isSelected = _selectedIndex == index;
     
     return ListTile(
       leading: Icon(
         icon,
-        color: isSelected ? const Color(0xFFFF6B35) : Colors.white,
+        color: isSelected ? primaryColor : Colors.white,
       ),
       title: Text(
         title,
         style: TextStyle(
-          color: isSelected ? const Color(0xFFFF6B35) : Colors.white,
+          color: isSelected ? primaryColor : Colors.white,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
         ),
       ),
@@ -891,7 +900,7 @@ Future<void> _triggerForegroundSyncOnWindows() async {
           ? Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFFFF6B35),
+                color: primaryColor,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -905,7 +914,7 @@ Future<void> _triggerForegroundSyncOnWindows() async {
             )
           : null,
       selected: isSelected,
-      selectedTileColor: const Color(0xFFFF6B35).withOpacity(0.1),
+      selectedTileColor: primaryColor.withOpacity(0.1),
       onTap: () {
         _onDestinationSelected(index);
         Navigator.of(context).pop();

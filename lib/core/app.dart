@@ -22,6 +22,8 @@ import 'services/background_sync_manager.dart';
 import 'services/network_sync_manager.dart';
 import 'services/notification_service.dart';
 import 'role_utils.dart' as local;
+import 'providers/theme_provider.dart';
+import 'theme/app_themes.dart';
 
 /// Main application widget with MaterialApp configuration
 class AdminApp extends StatelessWidget {
@@ -30,20 +32,15 @@ class AdminApp extends StatelessWidget {
   
   const AdminApp({super.key, this.currentUser, this.jwtService});
 
-  /// Static method to toggle theme
-  static void toggleTheme() {
-    _AdminAppContentState.toggleTheme();
-  }
-  
-  /// Static method to apply theme setting
-  static void applyThemeSetting(String mode) {
-    _AdminAppContentState.applyThemeSetting(mode);
-  }
-
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // ✅ NEW: Theme Provider (sabse pehle)
+        ChangeNotifierProvider<ThemeProvider>(
+          create: (_) => ThemeProvider()..loadTheme(),
+        ),
+        
         // 1. Independent services FIRST
         Provider<JwtService>(create: (_) => JwtService()),
         Provider<LocalAuthStorage>(create: (_) => LocalAuthStorage()),
@@ -82,19 +79,13 @@ class _AdminAppContent extends StatefulWidget {
 }
 
 class _AdminAppContentState extends State<_AdminAppContent> {
-  ThemeMode _themeMode = ThemeMode.system;
   static _AdminAppContentState? _instance;
-
-  void _applyThemeSetting(String mode) {
-    if (!mounted) return;
-    setState(() { _themeMode = _themeFrom(mode); });
-  }
 
   @override
   void initState() {
     super.initState();
     _instance = this;
-    _loadTheme();
+    
     if (AuthService.currentUser != null) {
       if (!BackgroundSyncManager().hasBeenInitializedInSession) {
         BackgroundSyncManager().initialize().catchError((e) {
@@ -124,104 +115,56 @@ class _AdminAppContentState extends State<_AdminAppContent> {
     super.dispose();
   }
 
-  Future<void> _loadTheme() async {
-    final storage = AppStorage();
-    final settings = await storage.readSettings();
-    final mode = (settings['theme'] as String?) ?? 'system';
-    setState(() { _themeMode = _themeFrom(mode); });
-  }
-
-  Future<void> _toggleTheme() async {
-    if (!mounted) return;
-    final storage = AppStorage();
-    final settings = await storage.readSettings();
-    final currentMode = (settings['theme'] as String?) ?? 'system';
-    String newMode;
-    if (currentMode == 'light') {
-      newMode = 'dark';
-    } else if (currentMode == 'dark') {
-      newMode = 'light';
-    } else {
-      newMode = _themeMode == ThemeMode.dark ? 'light' : 'dark';
-    }
-    await storage.writeSettings({...settings, 'theme': newMode});
-    if (mounted) setState(() { _themeMode = _themeFrom(newMode); });
-  }
-
-  static void toggleTheme() { _instance?._toggleTheme(); }
-  static void applyThemeSetting(String mode) { _instance?._applyThemeSetting(mode); }
-
-  ThemeMode _themeFrom(String s) {
-    switch (s) {
-      case 'light': return ThemeMode.light;
-      case 'dark': return ThemeMode.dark;
-      default: return ThemeMode.system;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isTouch = (!kIsWeb && (io.Platform.isAndroid || io.Platform.isIOS)) ||
         (kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS));
-    final baseLight = ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.purple),
-      useMaterial3: true,
-      visualDensity: isTouch ? VisualDensity.standard : VisualDensity.compact,
-      materialTapTargetSize: isTouch ? MaterialTapTargetSize.padded : MaterialTapTargetSize.shrinkWrap,
-      fontFamily: 'Poppins',
-    );
-    final baseDark = ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.purple, brightness: Brightness.dark),
-      useMaterial3: true,
-      visualDensity: isTouch ? VisualDensity.standard : VisualDensity.compact,
-      materialTapTargetSize: isTouch ? MaterialTapTargetSize.padded : MaterialTapTargetSize.shrinkWrap,
-      fontFamily: 'Poppins',
-    );
-    final dark = baseDark.copyWith(
-      scaffoldBackgroundColor: const Color(0xFF101214),
-      cardColor: const Color(0xFF1B1F24),
-      listTileTheme: const ListTileThemeData(textColor: Colors.white, iconColor: Colors.white70),
-      textTheme: baseDark.textTheme.apply(bodyColor: Colors.white.withOpacity(0.98), displayColor: Colors.white),
-      inputDecorationTheme: const InputDecorationTheme(
-        filled: true, fillColor: const Color(0xFF23272E),
-        hintStyle: TextStyle(color: Colors.white70, fontFamily: 'Poppins'),
-        border: OutlineInputBorder(),
-      ),
-    );
-    return MaterialApp(
-      title: 'EasyRealtorsPro',
-      debugShowCheckedModeBanner: false,
-      themeMode: _themeMode,
-      theme: baseLight,
-      darkTheme: dark,
-      builder: (context, child) => child ?? const SizedBox.shrink(),
-      home: const LoginPage(),
-      onGenerateRoute: (settings) {
-        final name = settings.name ?? '';
-        final routeToNavIndex = <String, int>{
-          '/home': 0, '/inventory': 1, '/agent-working': 2, '/rental': 3,
-          '/todo': 4, '/settings': 5, '/trading': 6, '/trading-form': 7,
-          '/reports': 7, '/users': 9, '/companies': 10, '/expenditure': 10,
-        };
-        final routeToModuleKey = <String, String>{
-          '/home': 'dashboard', '/inventory': 'inventory', '/agent-working': 'agent_working',
-          '/rental': 'rental_items', '/todo': 'todo', '/settings': 'settings',
-          '/trading': 'trading', '/trading-form': 'trading', '/reports': 'reports',
-          '/users': 'users', '/companies': 'companies', '/expenditure': 'expenditure',
-        };
-        if (name == '/' || name.isEmpty) {
-          return MaterialPageRoute(builder: (_) => const LoginPage());
-        }
-        if (routeToNavIndex.containsKey(name)) {
-          return MaterialPageRoute(
-            settings: settings,
-            builder: (_) => _GuardedEntry(
-              targetNavIndex: routeToNavIndex[name],
-              moduleKey: routeToModuleKey[name],
-            ),
-          );
-        }
-        return MaterialPageRoute(builder: (_) => const LoginPage());
+    
+    // ✅ NEW: ThemeProvider se theme lenge
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        final currentTheme = themeProvider.currentThemeData.copyWith(
+          useMaterial3: true,
+          visualDensity: isTouch ? VisualDensity.standard : VisualDensity.compact,
+          materialTapTargetSize: isTouch ? MaterialTapTargetSize.padded : MaterialTapTargetSize.shrinkWrap,
+          // fontFamily: 'Poppins',
+        );
+        
+        return MaterialApp(
+          title: 'EasyRealtorsPro',
+          debugShowCheckedModeBanner: false,
+          theme: currentTheme,
+          themeMode: ThemeMode.light, // Always use selected theme
+          builder: (context, child) => child ?? const SizedBox.shrink(),
+          home: const LoginPage(),
+          onGenerateRoute: (settings) {
+            final name = settings.name ?? '';
+            final routeToNavIndex = <String, int>{
+              '/home': 0, '/inventory': 1, '/agent-working': 2, '/rental': 3,
+              '/todo': 4, '/settings': 5, '/trading': 6, '/trading-form': 7,
+              '/reports': 7, '/users': 9, '/companies': 10, '/expenditure': 10,
+            };
+            final routeToModuleKey = <String, String>{
+              '/home': 'dashboard', '/inventory': 'inventory', '/agent-working': 'agent_working',
+              '/rental': 'rental_items', '/todo': 'todo', '/settings': 'settings',
+              '/trading': 'trading', '/trading-form': 'trading', '/reports': 'reports',
+              '/users': 'users', '/companies': 'companies', '/expenditure': 'expenditure',
+            };
+            if (name == '/' || name.isEmpty) {
+              return MaterialPageRoute(builder: (_) => const LoginPage());
+            }
+            if (routeToNavIndex.containsKey(name)) {
+              return MaterialPageRoute(
+                settings: settings,
+                builder: (_) => _GuardedEntry(
+                  targetNavIndex: routeToNavIndex[name],
+                  moduleKey: routeToModuleKey[name],
+                ),
+              );
+            }
+            return MaterialPageRoute(builder: (_) => const LoginPage());
+          },
+        );
       },
     );
   }
