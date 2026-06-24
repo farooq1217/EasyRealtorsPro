@@ -24,6 +24,8 @@ import 'services/notification_service.dart';
 import 'role_utils.dart' as local;
 import 'providers/theme_provider.dart';
 import 'theme/app_themes.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 /// Main application widget with MaterialApp configuration
 class AdminApp extends StatelessWidget {
