@@ -154,10 +154,18 @@ AuthService._fallback()
     return instance._repository.setup2FA(email, secret);
   }
 
-  static Future<Map<String, dynamic>> requestPasswordReset(String email) {
-    if (_instance == null) return Future.value({'success': false, 'message': 'AuthService initializing.'});
-    return instance._repository.requestPasswordReset(email);
+  // ✅ NEW: Wrapper for sendPasswordResetEmail
+static Future<Map<String, dynamic>> sendPasswordResetEmail(String email) async {
+  try {
+    final repo = AuthRepository.fallback();
+    return await repo.sendPasswordResetEmail(email);
+  } catch (e) {
+    return {
+      'success': false,
+      'message': 'Failed to send reset email: $e',
+    };
   }
+}
 
   static Future<Map<String, dynamic>> resetPassword(String email, String code, String newPassword) {
     if (_instance == null) return Future.value({'success': false, 'message': 'AuthService initializing.'});

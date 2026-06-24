@@ -50,88 +50,68 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _resetCodeController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
 
- void _showResetPasswordDialog() {
-  final emailController = TextEditingController();
-  final newPasswordController = TextEditingController();
-  
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Reset Password'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: emailController,
-            decoration: const InputDecoration(labelText: 'Email'),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: newPasswordController,
-            decoration: const InputDecoration(labelText: 'New Password'),
-            obscureText: true,
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+  void _showResetPasswordDialog() {
+    final emailController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: emailController,
+              decoration: const InputDecoration(labelText: 'Email'),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: newPasswordController,
+              decoration: const InputDecoration(labelText: 'New Password'),
+              obscureText: true,
+            ),
+          ],
         ),
-        ElevatedButton(
-          onPressed: () async {
-            try {
-              final db = await AppDatabase.instance();
-              
-              // ✅ Import password hashing service
-              final passwordService = PasswordHashingService();
-              
-              // ✅ Proper salt generate karein (Base64 format)
-              final salt = passwordService.generateSalt();
-              
-              // ✅ Password hash karein with proper salt
-              final newHash = passwordService.hashPassword(
-                newPasswordController.text,
-                salt: salt,
-              );
-              
-              debugPrint('🔧 Resetting password for: ${emailController.text}');
-              debugPrint('🔑 Salt: $salt');
-              debugPrint('🔑 Hash: $newHash');
-              
-              await db.customStatement(
-                'UPDATE users SET password_hash = ?, salt = ?, is_first_login = 0 WHERE email = ?',
-                [newHash, salt, emailController.text.trim()],
-              );
-              
-              Navigator.pop(context);
-              
-              if (mounted) {
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                final db = await AppDatabase.instance();
+                final salt = DateTime.now().millisecondsSinceEpoch.toString();
+                final newHash = '10000:$salt:${_simpleHash(newPasswordController.text + salt)}';
+                
+                await db.customStatement(
+                  'UPDATE users SET password_hash = ?, salt = ?, is_first_login = 0 WHERE email = ?',
+                  [newHash, salt, emailController.text.trim()],
+                );
+                
+                Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('✅ Password reset successful! Please login with new password.'),
+                    content: Text('Password reset successful!'),
                     backgroundColor: Colors.green,
                   ),
                 );
-              }
-            } catch (e) {
-              debugPrint('❌ Password reset error: $e');
-              if (mounted) {
+              } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('❌ Error: $e'),
+                    content: Text('Error: $e'),
                     backgroundColor: Colors.red,
                   ),
                 );
               }
-            }
-          },
-          child: const Text('Reset'),
-        ),
-      ],
-    ),
-  );
-}
+            },
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+  }
 
   String _simpleHash(String input) {
     int hash = 0;
@@ -564,110 +544,163 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  void _showForgotPasswordDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('Reset Password'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: _resetEmailController,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      hintText: 'Enter your email address',
-                    ),
+ 
+ void _showForgotPasswordDialog() {
+  final emailController = TextEditingController();
+  bool isLoading = false;
+  bool emailSent = false;
+  
+  showDialog(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.lock_reset, color: const Color(0xFFFF6B35)),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Reset Password'),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!emailSent) ...[
+                const Text(
+                  'Enter your email address and we\'ll send you a link to reset your password.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: emailController,
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    hintText: 'Enter your registered email',
+                    prefixIcon: const Icon(Icons.email),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
                   ),
-                  const SizedBox(height: 16),
-                  if (_resetCodeController.text.isEmpty)
-                    ElevatedButton(
-                      onPressed: () async {
-                        final result = await AuthService.requestPasswordReset(
-                          _resetEmailController.text.trim(),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.green.shade700),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Password reset email sent successfully! Please check your inbox and follow the instructions.',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Note: If you don\'t see the email, please check your spam folder.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+          if (!emailSent)
+            ElevatedButton.icon(
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      final email = emailController.text.trim();
+                      
+                      // Validation
+                      if (email.isEmpty) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please enter your email'),
+                            backgroundColor: Colors.red,
+                          ),
                         );
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                        return;
+                      }
+                      
+                      if (!email.contains('@') || !email.contains('.')) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please enter a valid email'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
+                      
+                      setDialogState(() => isLoading = true);
+                      
+                      try {
+                        final result = await AuthService.sendPasswordResetEmail(email);
+                        
+                        setDialogState(() => isLoading = false);
+                        
+                        if (result['success'] == true) {
+                          setDialogState(() => emailSent = true);
+                          
+                          // Auto-fill email in login form
+                          if (mounted) {
+                            _emailController.text = email;
+                          }
+                        } else {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
                             SnackBar(
-                              content: Text(result['message'] ?? 'Reset code sent'),
-                              backgroundColor: result['success'] == true ? Colors.green : Colors.red,
+                              content: Text(result['message'] ?? 'Failed to send email'),
+                              backgroundColor: Colors.red,
                             ),
                           );
-                          if (result['success'] == true && result['code'] != null) {
-                            setDialogState(() {
-                              _resetCodeController.text = result['code'] as String;
-                            });
-                          }
                         }
-                      },
-                      child: const Text('Send Reset Code'),
+                      } catch (e) {
+                        setDialogState(() => isLoading = false);
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(
+                            content: Text('Error: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+              icon: isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
                     )
-                  else ...[
-                    TextField(
-                      controller: _resetCodeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Reset Code',
-                        hintText: 'Enter 6-digit code',
-                      ),
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _newPasswordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'New Password',
-                      ),
-                    ),
-                  ],
-                ],
+                  : const Icon(Icons.send),
+              label: Text(isLoading ? 'Sending...' : 'Send Reset Link'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6B35),
+                foregroundColor: Colors.white,
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _resetEmailController.clear();
-                  _resetCodeController.clear();
-                  _newPasswordController.clear();
-                },
-                child: const Text('Cancel'),
-              ),
-              if (_resetCodeController.text.isNotEmpty)
-                ElevatedButton(
-                  onPressed: () async {
-                    final result = await AuthService.resetPassword(
-                      _resetEmailController.text.trim(),
-                      _resetCodeController.text.trim(),
-                      _newPasswordController.text.trim(),
-                    );
-                    if (mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(result['message'] ?? 'Password reset'),
-                          backgroundColor: result['success'] == true ? Colors.green : Colors.red,
-                        ),
-                      );
-                      if (result['success'] == true) {
-                        _resetEmailController.clear();
-                        _resetCodeController.clear();
-                        _newPasswordController.clear();
-                      }
-                    }
-                  },
-                  child: const Text('Reset Password'),
-                ),
-            ],
-          );
-        },
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _showSetupAdminDialog() {
     final nameController = TextEditingController();

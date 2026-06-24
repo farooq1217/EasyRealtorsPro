@@ -15,6 +15,7 @@ import 'firestore_auth_sync.dart';
 import 'drift_user_dao.dart';
 import 'package:drift/drift.dart' as d;
 import 'package:shared/shared.dart' show AppDatabase;
+import 'package:http/http.dart' as http; // ✅ ADD THIS - REST API ke liye
 
 class AuthRepository extends ChangeNotifier {
   final JwtService jwt;
@@ -92,7 +93,6 @@ class AuthRepository extends ChangeNotifier {
     required bool rememberMe,
     String? twoFactorCode,
   }) async {
-    // ✅ CRITICAL: Windows par Firebase Auth ko completely skip karein
     final isWindows = !kIsWeb && io.Platform.isWindows;
     
     if (isWindows) {
@@ -204,346 +204,563 @@ class AuthRepository extends ChangeNotifier {
     }
   }
 
-  // ✅ NEW METHOD: Sirf local database se login karein
- Future<Map<String, dynamic>> _localLoginOnly(String email, String password) async {
-  try {
-    debugPrint('🔐 _localLoginOnly: Starting local authentication for $email');
-    
-    final db = await AppDatabase.instance();
-    final emailKey = email.trim().toLowerCase();
-    
-    final result = await db.customSelect(
-      'SELECT * FROM users WHERE email = ? AND (is_active = 1 OR is_active IS NULL)',
-      variables: [d.Variable.withString(emailKey)],
-    ).get();
-    
-    if (result.isEmpty) {
-      debugPrint('❌ _localLoginOnly: User not found in local DB');
-      return {
-        'success': false,
-        'requiresSetup': true,
-        'message': 'No user found. Please create an admin account first.',
-      };
-    }
-    
-    final userData = result.first.data;
-    final storedHash = userData['password_hash']?.toString() ?? '';
-    
-    // ✅ PasswordHashingService.verifyPassword use karein
-    if (storedHash.isEmpty) {
-      debugPrint('❌ _localLoginOnly: No password hash found');
-      return {
-        'success': false,
-        'message': 'Password not set. Please reset password.',
-      };
-    }
-    
-    final passwordService = PasswordHashingService();
-    final isValid = passwordService.verifyPassword(password, storedHash);
-    
-    if (!isValid) {
-      debugPrint('❌ _localLoginOnly: Password mismatch');
-      return {
-        'success': false,
-        'message': 'Invalid password',
-      };
-    }
-    
-    debugPrint('✅ _localLoginOnly: Password verified locally');
-    
-    // Parse permissions JSON
-    Map<String, dynamic> parsedPerms = {};
-    final rawPerms = userData['permissions']?.toString();
-    if (rawPerms != null && rawPerms.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(rawPerms);
-        if (decoded is Map) {
-          parsedPerms = Map<String, dynamic>.from(decoded);
+  // ✅ UPDATED: Local DB + REST API fallback (Windows safe, no crash)
+  Future<Map<String, dynamic>> _localLoginOnly(String email, String password) async {
+    try {
+      debugPrint('🔐 _localLoginOnly: Starting local authentication for $email');
+      
+      final db = await AppDatabase.instance();
+      final emailKey = email.trim().toLowerCase();
+      
+      // Step 1: Local DB mein user dhundhein
+      var result = await db.customSelect(
+        'SELECT * FROM users WHERE email = ? AND (is_active = 1 OR is_active IS NULL)',
+        variables: [d.Variable.withString(emailKey)],
+      ).get();
+      
+      // ✅ Step 2: Agar user nahi mila, to REST API se fetch karein (Windows safe)
+      if (result.isEmpty) {
+        debugPrint('⚠️ _localLoginOnly: User not found in local DB, attempting REST API fetch...');
+        
+        final fetchResult = await _fetchUserViaRestApi(emailKey);
+        
+        if (fetchResult) {
+          debugPrint('✅ _localLoginOnly: User fetched via REST API, retrying local query...');
+          
+          // Dobara local DB se query karein
+          result = await db.customSelect(
+            'SELECT * FROM users WHERE email = ? AND (is_active = 1 OR is_active IS NULL)',
+            variables: [d.Variable.withString(emailKey)],
+          ).get();
+        } else {
+          debugPrint('❌ _localLoginOnly: REST API fetch failed');
+          return {
+            'success': false,
+            'requiresSetup': true,
+            'message': 'No user found. Please create an admin account first.',
+          };
         }
-      } catch (e) {
-        debugPrint('_localLoginOnly: Failed to parse permissions JSON: $e');
       }
-    }
-
-    final hoistedRole = parsedPerms['role']?.toString() ?? userData['role']?.toString() ?? 'agent';
-    final hoistedCompanyId = parsedPerms['companyId']?.toString() ??
-        parsedPerms['company_id']?.toString() ??
-        userData['company_id']?.toString();
-
-    // Extract permissionsMap
-    Map<String, dynamic>? hoistedPermissionsMap;
-    final rawMap = parsedPerms['permissionsMap'];
-    if (rawMap is Map && rawMap.isNotEmpty) {
-      hoistedPermissionsMap = Map<String, dynamic>.from(rawMap);
-    } else if (parsedPerms.isNotEmpty) {
-      final hasModuleKeys = parsedPerms.keys.any((k) =>
-        ['trading', 'inventory', 'rental', 'expenditure', 'agent_working',
-         'reports', 'users', 'companies', 'dashboard', 'settings', 'todo',
-         'rental_items'].contains(k));
-      if (hasModuleKeys) {
-        hoistedPermissionsMap = Map<String, dynamic>.from(parsedPerms)
-          ..remove('role')
-          ..remove('companyId')
-          ..remove('company_id');
+      
+      // Step 3: Agar ab bhi empty hai
+      if (result.isEmpty) {
+        return {
+          'success': false,
+          'requiresSetup': true,
+          'message': 'User not found. Please create an admin account.',
+        };
       }
-    }
+      
+           // Step 4: Password Verify karein
+      final userData = result.first.data;
+      final storedHash = userData['password_hash']?.toString() ?? '';
+      final salt = userData['salt']?.toString() ?? '';
+      final iterations = int.tryParse(userData['iterations']?.toString() ?? '') ?? 100000;
+      
+      if (storedHash.isEmpty) {
+        debugPrint('❌ _localLoginOnly: No password hash found');
+        return {
+          'success': false,
+          'message': 'Password not set. Please reset password.',
+        };
+      }
+      
+      final passwordService = PasswordHashingService();
+      var isValid = passwordService.verifyPassword(password, storedHash);
+      
+      // ✅ NEW: Agar local verification fail ho, to Firebase Auth se verify karein (Auto Sync)
+      if (!isValid) {
+        debugPrint('⚠️ _localLoginOnly: Local password mismatch, attempting Firebase Auth fallback...');
+        
+        try {
+          // Check internet
+          final hasInternet = await _checkInternetConnectivity();
+          
+          if (hasInternet && Firebase.apps.isNotEmpty) {
+            // Silent Firebase Auth verification
+            final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+              email: emailKey,
+              password: password,
+            );
+            
+            if (credential.user != null) {
+              debugPrint('✅ _localLoginOnly: Firebase Auth successful - syncing new password to local DB');
+              
+              // Naya password hash generate karein
+              final newSalt = passwordService.generateSalt();
+              final newHash = passwordService.hashPassword(password, salt: newSalt);
+              
+              // Local DB mein update karein
+              final db = await AppDatabase.instance();
+              await db.customStatement(
+                'UPDATE users SET password_hash = ?, salt = ?, iterations = ?, updated_at = ? WHERE email = ?',
+                [newHash, newSalt, 100000, DateTime.now().toIso8601String(), emailKey],
+              );
+              
+              debugPrint('✅ _localLoginOnly: Password synced to local DB successfully');
+              isValid = true; // Ab valid hai
+            }
+          }
+        } on FirebaseAuthException catch (e) {
+          debugPrint('❌ _localLoginOnly: Firebase Auth failed: ${e.code} - ${e.message}');
+          // Firebase bhi fail, matlab password genuinely galat hai
+        } catch (e) {
+          debugPrint('❌ _localLoginOnly: Firebase Auth error: $e');
+        }
+      }
+      
+      if (!isValid) {
+        debugPrint('❌ _localLoginOnly: Password verification failed (both local and Firebase)');
+        return {
+          'success': false,
+          'message': 'Invalid password',
+        };
+      }
+      
+      debugPrint('✅ _localLoginOnly: Password verified successfully');
+      
+      // Step 5: User Object Prepare karein
+      Map<String, dynamic> parsedPerms = {};
+      final rawPerms = userData['permissions']?.toString();
+      if (rawPerms != null && rawPerms.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawPerms);
+          if (decoded is Map) {
+            parsedPerms = Map<String, dynamic>.from(decoded);
+          }
+        } catch (e) {
+          debugPrint('_localLoginOnly: Failed to parse permissions JSON: $e');
+        }
+      }
 
-    // Synthesize permissionsMap for admin roles
-    if ((hoistedPermissionsMap == null || hoistedPermissionsMap.isEmpty)) {
-      final role = hoistedRole.toLowerCase();
-      if (role == 'super_admin' || role == 'superadmin') {
-        hoistedPermissionsMap = <String, dynamic>{
+      final hoistedRole = parsedPerms['role']?.toString() ?? userData['role']?.toString() ?? 'agent';
+      final hoistedCompanyId = parsedPerms['companyId']?.toString() ??
+          parsedPerms['company_id']?.toString() ??
+          userData['company_id']?.toString();
+
+      Map<String, dynamic>? hoistedPermissionsMap;
+      final rawMap = parsedPerms['permissionsMap'];
+      if (rawMap is Map && rawMap.isNotEmpty) {
+        hoistedPermissionsMap = Map<String, dynamic>.from(rawMap);
+      } else if (parsedPerms.isNotEmpty) {
+        final hasModuleKeys = parsedPerms.keys.any((k) =>
+          ['trading', 'inventory', 'rental', 'expenditure', 'agent_working',
+           'reports', 'users', 'companies', 'dashboard', 'settings', 'todo',
+           'rental_items'].contains(k));
+        if (hasModuleKeys) {
+          hoistedPermissionsMap = Map<String, dynamic>.from(parsedPerms)
+            ..remove('role')
+            ..remove('companyId')
+            ..remove('company_id');
+        }
+      }
+
+      if ((hoistedPermissionsMap == null || hoistedPermissionsMap.isEmpty)) {
+        final role = hoistedRole.toLowerCase();
+        if (role == 'super_admin' || role == 'superadmin') {
+          hoistedPermissionsMap = <String, dynamic>{
+            'users': 'full_access', 'companies': 'full_access',
+            'trading': 'full_access', 'inventory': 'full_access',
+            'rental': 'full_access', 'rental_items': 'full_access',
+            'expenditure': 'full_access', 'agent_working': 'full_access',
+            'reports': 'full_access', 'dashboard': 'full_access',
+            'settings': 'full_access', 'todo': 'full_access',
+          };
+        } else if (role == 'company_admin' || role == 'companyadmin') {
+          hoistedPermissionsMap = <String, dynamic>{
+            'users': 'full_access', 'trading': 'view_add_edit',
+            'inventory': 'view_add_edit', 'rental': 'view_add_edit',
+            'rental_items': 'view_add_edit', 'expenditure': 'view_add_edit',
+            'agent_working': 'view_add_edit', 'reports': 'full_access',
+            'dashboard': 'view_add_edit', 'settings': 'view_add_edit',
+            'todo': 'view_add_edit',
+          };
+        }
+      }
+
+      final user = {
+        'id': userData['id']?.toString() ?? '',
+        'email': userData['email']?.toString() ?? emailKey,
+        'username': userData['username']?.toString() ?? userData['email']?.toString() ?? emailKey,
+        'name': userData['name']?.toString() ?? '',
+        'role': hoistedRole,
+        'permissions': userData['permissions']?.toString() ?? '{}',
+        'company_id': hoistedCompanyId ?? '',
+        'companyId': hoistedCompanyId ?? '',
+        'status': userData['status']?.toString() ?? 'active',
+        'is_active': userData['is_active'] ?? 1,
+        'isActive': userData['is_active'] ?? 1,
+        'is_first_login': userData['is_first_login'] ?? 0,
+        'isFirstLogin': userData['is_first_login'] ?? 0,
+        'createdAt': userData['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+        'created_at': userData['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+        if (hoistedPermissionsMap != null && hoistedPermissionsMap.isNotEmpty)
+          'permissionsMap': hoistedPermissionsMap,
+      };
+      
+      final token = jwt.generateToken(
+        user['id']?.toString() ?? '',
+        user['email']?.toString() ?? '',
+      );
+      
+      final users = await localStore.readUsers();
+      users[emailKey] = user;
+      await localStore.writeUsers(users);
+      
+      final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
+      final sessions = await localStore.readSessions();
+      sessions[sessionId] = {
+        'userId': user['id'],
+        'email': user['email'],
+        'loginAt': DateTime.now().toIso8601String(),
+      };
+      await localStore.writeSessions(sessions);
+      
+      currentUser = user;
+      debugPrint('🚀 _localLoginOnly: Login successful for $email');
+      
+      return {
+        'success': true,
+        'user': user,
+        'token': token,
+        'sessionId': sessionId,
+        'session_id': sessionId,
+        'message': 'Login successful',
+      };
+    } catch (e) {
+      debugPrint('❌ _localLoginOnly: Error: $e');
+      return {
+        'success': false,
+        'message': 'Login failed: $e',
+      };
+    }
+  }
+
+  // ✅ NEW: REST API based user fetch (Windows safe, no crash)
+  Future<bool> _fetchUserViaRestApi(String email) async {
+    try {
+      debugPrint('📥 _fetchUserViaRestApi: Fetching user $email via REST API...');
+      
+      // Check internet connectivity first
+      final hasInternet = await _checkInternetConnectivity();
+      if (!hasInternet) {
+        debugPrint('❌ _fetchUserViaRestApi: No internet connection');
+        return false;
+      }
+      
+      // Get Firebase project credentials
+      if (Firebase.apps.isEmpty) {
+        debugPrint('❌ _fetchUserViaRestApi: Firebase not initialized');
+        return false;
+      }
+      
+      final projectId = Firebase.app().options.projectId;
+      final apiKey = Firebase.app().options.apiKey;
+      
+      // Firestore REST API URL
+      final url = 'https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/users?key=$apiKey';
+      
+      debugPrint('🌐 _fetchUserViaRestApi: Making REST API call...');
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 15));
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final documents = data['documents'] as List? ?? [];
+        
+        debugPrint('📊 _fetchUserViaRestApi: Found ${documents.length} users in Firestore');
+        
+        // Find user by email
+        Map<String, dynamic>? userDoc;
+        String? docId;
+        
+        for (final doc in documents) {
+          final fields = doc['fields'] as Map<String, dynamic>? ?? {};
+          final emailField = fields['email'];
+          
+          String? docEmail;
+          if (emailField != null) {
+            if (emailField is Map && emailField.containsKey('stringValue')) {
+              docEmail = emailField['stringValue']?.toString();
+            } else {
+              docEmail = emailField.toString();
+            }
+          }
+          
+          if (docEmail?.toLowerCase() == email.toLowerCase()) {
+            userDoc = fields;
+            docId = doc['name']?.toString().split('/').last;
+            break;
+          }
+        }
+        
+        if (userDoc == null || docId == null) {
+          debugPrint('❌ _fetchUserViaRestApi: User not found in Firestore');
+          return false;
+        }
+        
+        debugPrint('✅ _fetchUserViaRestApi: User found, saving to local DB...');
+        
+        // Convert Firestore format to our format
+        final userData = _convertFirestoreFields(userDoc);
+        userData['id'] = docId;
+        userData['email'] = email;
+        
+        // Save to local DB
+        await _saveUserToLocalDb(userData);
+        
+        debugPrint('✅ _fetchUserViaRestApi: User saved successfully');
+        return true;
+      } else {
+        debugPrint('❌ _fetchUserViaRestApi: HTTP ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ _fetchUserViaRestApi: Error: $e');
+      return false;
+    }
+  }
+
+  // ✅ NEW: Convert Firestore REST API response to our format
+  Map<String, dynamic> _convertFirestoreFields(Map<String, dynamic> fields) {
+    final result = <String, dynamic>{};
+    
+    fields.forEach((key, value) {
+      if (value is Map) {
+        if (value.containsKey('stringValue')) {
+          result[key] = value['stringValue'];
+        } else if (value.containsKey('integerValue')) {
+          result[key] = int.tryParse(value['integerValue'].toString()) ?? 0;
+        } else if (value.containsKey('booleanValue')) {
+          result[key] = value['booleanValue'];
+        } else if (value.containsKey('doubleValue')) {
+          result[key] = double.tryParse(value['doubleValue'].toString()) ?? 0.0;
+        } else if (value.containsKey('mapValue')) {
+          result[key] = _convertFirestoreFields(value['mapValue']['fields'] ?? {});
+        } else if (value.containsKey('arrayValue')) {
+          final values = value['arrayValue']['values'] as List? ?? [];
+          result[key] = values.map((v) => _convertFirestoreFields({'value': v})).toList();
+        } else if (value.containsKey('timestampValue')) {
+          result[key] = value['timestampValue'];
+        } else if (value.containsKey('nullValue')) {
+          result[key] = null;
+        }
+      }
+    });
+    
+    return result;
+  }
+
+  // ✅ NEW: Save user to local database
+  Future<void> _saveUserToLocalDb(Map<String, dynamic> userData) async {
+    try {
+      final db = await AppDatabase.instance();
+      
+      String permsStr = '{}';
+      if (userData['permissions'] is String) {
+        permsStr = userData['permissions'] as String;
+      } else if (userData['permissions'] is Map) {
+        permsStr = jsonEncode(userData['permissions']);
+      }
+      
+      await db.customStatement('''
+        INSERT OR REPLACE INTO users (
+          id, username, password_hash, salt, iterations, user_id, name, email, 
+          contact_no, role, permissions, company_id, status, is_first_login, 
+          is_active, profile_picture_path, created_at, updated_at, is_synced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ''', [
+        userData['id'],
+        userData['username'] ?? userData['email'],
+        userData['password_hash'] ?? '',
+        userData['salt'] ?? '',
+        int.tryParse(userData['iterations']?.toString() ?? '') ?? 100000,
+        userData['user_id'] ?? userData['id'],
+        userData['name'] ?? '',
+        userData['email'] ?? '',
+        userData['contact_no'] ?? '',
+        userData['role'] ?? 'agent',
+        permsStr,
+        userData['company_id'] ?? '',
+        userData['status'] ?? 'active',
+        (userData['is_first_login'] == true || userData['is_first_login'] == 1) ? 1 : 0,
+        (userData['is_active'] == true || userData['is_active'] == 1) ? 1 : 0,
+        userData['profile_picture_path'] ?? '',
+        userData['created_at'] ?? DateTime.now().toIso8601String(),
+        userData['updated_at'] ?? DateTime.now().toIso8601String(),
+        1,
+      ]);
+    } catch (e) {
+      debugPrint('❌ _saveUserToLocalDb: Error: $e');
+    }
+  }
+
+  // ✅ NEW: Check internet connectivity
+  Future<bool> _checkInternetConnectivity() async {
+    try {
+      final response = await http.head(
+        Uri.parse('https://www.google.com'),
+      ).timeout(const Duration(seconds: 5));
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      debugPrint('⚠️ _checkInternetConnectivity: $e');
+      return false;
+    }
+  }
+
+  // ✅ EXISTING: Create first admin account locally
+  Future<Map<String, dynamic>> createLocalAdmin({
+    required String email,
+    required String password,
+    required String name,
+  }) async {
+    try {
+      debugPrint('🔧 createLocalAdmin: Creating local admin for $email');
+      
+      final db = await AppDatabase.instance();
+      final emailKey = email.trim().toLowerCase();
+      final userId = 'admin_${DateTime.now().millisecondsSinceEpoch}';
+      
+      final existing = await db.customSelect(
+        'SELECT id FROM users WHERE email = ?',
+        variables: [d.Variable.withString(emailKey)],
+      ).get();
+      
+      if (existing.isNotEmpty) {
+        return {
+          'success': false,
+          'message': 'User with this email already exists',
+        };
+      }
+      
+      final random = Random.secure();
+      final saltBytes = List<int>.generate(16, (_) => random.nextInt(256));
+      final salt = base64Url.encode(saltBytes);
+      final iterations = 100000;
+      final passwordHash = _hashPassword(password, salt, iterations);
+      
+      if (passwordHash.isEmpty) {
+        return {
+          'success': false,
+          'message': 'Failed to hash password',
+        };
+      }
+      
+      final permissions = jsonEncode({
+        'role': 'super_admin',
+        'permission': 'full_access',
+        'canDelete': true,
+        'permissionsMap': {
           'users': 'full_access', 'companies': 'full_access',
           'trading': 'full_access', 'inventory': 'full_access',
           'rental': 'full_access', 'rental_items': 'full_access',
           'expenditure': 'full_access', 'agent_working': 'full_access',
           'reports': 'full_access', 'dashboard': 'full_access',
           'settings': 'full_access', 'todo': 'full_access',
-        };
-      } else if (role == 'company_admin' || role == 'companyadmin') {
-        hoistedPermissionsMap = <String, dynamic>{
-          'users': 'full_access', 'trading': 'view_add_edit',
-          'inventory': 'view_add_edit', 'rental': 'view_add_edit',
-          'rental_items': 'view_add_edit', 'expenditure': 'view_add_edit',
-          'agent_working': 'view_add_edit', 'reports': 'full_access',
-          'dashboard': 'view_add_edit', 'settings': 'view_add_edit',
-          'todo': 'view_add_edit',
-        };
+        },
+      });
+      
+      final now = DateTime.now().toIso8601String();
+      
+      await db.customStatement(
+        '''INSERT INTO users (
+          id, username, password_hash, salt, iterations, user_id, name, email, 
+          contact_no, role, permissions, company_id, status, is_first_login, 
+          is_active, profile_picture_path, created_at, updated_at, is_synced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        [
+          userId, emailKey, passwordHash, salt, iterations, userId, name, emailKey,
+          '', 'super_admin', permissions, 'GLOBAL_ADMIN', 'active', 0, 1, '', now, now, 0,
+        ],
+      );
+      
+      debugPrint('✅ createLocalAdmin: Admin created successfully');
+      
+      return {
+        'success': true,
+        'message': 'Admin account created successfully. Please login now.',
+      };
+    } catch (e) {
+      debugPrint('❌ createLocalAdmin: Error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to create admin: $e',
+      };
+    }
+  }
+
+  // ✅ EXISTING: Firestore se single user fetch karein (non-Windows)
+  Future<void> _fetchUserFromFirestore(String email) async {
+    try {
+      debugPrint('📥 _fetchUserFromFirestore: Fetching user $email from Firestore...');
+      
+      final firestore = FirebaseFirestore.instance;
+      
+      final snapshot = await firestore
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get()
+          .timeout(const Duration(seconds: 10));
+      
+      if (snapshot.docs.isEmpty) {
+        debugPrint('❌ _fetchUserFromFirestore: User not found in Firestore');
+        return;
       }
+      
+      final doc = snapshot.docs.first;
+      final data = doc.data();
+      
+      debugPrint('✅ _fetchUserFromFirestore: Found user in Firestore, saving to local DB...');
+      
+      final db = await AppDatabase.instance();
+      
+      String permsStr = '{}';
+      if (data['permissions'] is String) {
+        permsStr = data['permissions'] as String;
+      } else if (data['permissions'] is Map) {
+        permsStr = jsonEncode(data['permissions']);
+      }
+      
+      await db.customStatement(
+        '''INSERT OR REPLACE INTO users (
+          id, username, password_hash, salt, iterations, user_id, name, email, 
+          contact_no, role, permissions, company_id, status, is_first_login, 
+          is_active, profile_picture_path, created_at, updated_at, is_synced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        [
+          doc.id,
+          data['username']?.toString() ?? '',
+          data['password_hash']?.toString() ?? '',
+          data['salt']?.toString() ?? '',
+          int.tryParse(data['iterations']?.toString() ?? '') ?? 100000,
+          data['user_id']?.toString() ?? doc.id,
+          data['name']?.toString() ?? '',
+          data['email']?.toString() ?? email,
+          data['contact_no']?.toString() ?? '',
+          data['role']?.toString() ?? 'agent',
+          permsStr,
+          data['company_id']?.toString() ?? '',
+          data['status']?.toString() ?? 'active',
+          (data['is_first_login'] == true || data['is_first_login'] == 1) ? 1 : 0,
+          (data['is_active'] == true || data['is_active'] == 1) ? 1 : 0,
+          data['profile_picture_path']?.toString() ?? '',
+          data['created_at']?.toString() ?? DateTime.now().toIso8601String(),
+          data['updated_at']?.toString() ?? DateTime.now().toIso8601String(),
+          1,
+        ],
+      );
+      
+      debugPrint('✅ _fetchUserFromFirestore: User saved to local DB successfully');
+    } catch (e) {
+      debugPrint('❌ _fetchUserFromFirestore: Error: $e');
     }
-
-    // User object prepare karein
-    final user = {
-      'id': userData['id']?.toString() ?? '',
-      'email': userData['email']?.toString() ?? emailKey,
-      'username': userData['username']?.toString() ?? userData['email']?.toString() ?? emailKey,
-      'name': userData['name']?.toString() ?? '',
-      'role': hoistedRole,
-      'permissions': userData['permissions']?.toString() ?? '{}',
-      'company_id': hoistedCompanyId ?? '',
-      'companyId': hoistedCompanyId ?? '',
-      'status': userData['status']?.toString() ?? 'active',
-      'is_active': userData['is_active'] ?? 1,
-      'isActive': userData['is_active'] ?? 1,
-      'is_first_login': userData['is_first_login'] ?? 0,
-      'isFirstLogin': userData['is_first_login'] ?? 0,
-      'createdAt': userData['created_at']?.toString() ?? DateTime.now().toIso8601String(),
-      'created_at': userData['created_at']?.toString() ?? DateTime.now().toIso8601String(),
-      if (hoistedPermissionsMap != null && hoistedPermissionsMap.isNotEmpty)
-        'permissionsMap': hoistedPermissionsMap,
-    };
-    
-    final token = jwt.generateToken(
-      user['id']?.toString() ?? '',
-      user['email']?.toString() ?? '',
-    );
-    
-    final users = await localStore.readUsers();
-    users[emailKey] = user;
-    await localStore.writeUsers(users);
-    
-    final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
-    final sessions = await localStore.readSessions();
-    sessions[sessionId] = {
-      'userId': user['id'],
-      'email': user['email'],
-      'loginAt': DateTime.now().toIso8601String(),
-    };
-    await localStore.writeSessions(sessions);
-    
-    currentUser = user;
-
-    debugPrint('✅ _localLoginOnly: Login successful for $email');
-    
-    return {
-      'success': true,
-      'user': user,
-      'token': token,
-      'sessionId': sessionId,
-      'session_id': sessionId,
-      'message': 'Login successful',
-    };
-  } catch (e) {
-    debugPrint('❌ _localLoginOnly: Error: $e');
-    return {
-      'success': false,
-      'message': 'Login failed: $e',
-    };
   }
-}
-
-// ✅ NEW METHOD: Create first admin account locally
-Future<Map<String, dynamic>> createLocalAdmin({
-  required String email,
-  required String password,
-  required String name,
-}) async {
-  try {
-    debugPrint('🔧 createLocalAdmin: Creating local admin for $email');
-    
-    final db = await AppDatabase.instance();
-    final emailKey = email.trim().toLowerCase();
-    final userId = 'admin_${DateTime.now().millisecondsSinceEpoch}';
-    
-    // Check if user already exists
-    final existing = await db.customSelect(
-      'SELECT id FROM users WHERE email = ?',
-      variables: [d.Variable.withString(emailKey)],
-    ).get();
-    
-    if (existing.isNotEmpty) {
-      return {
-        'success': false,
-        'message': 'User with this email already exists',
-      };
-    }
-    
-    // Generate password hash
-   final random = Random.secure();
-final saltBytes = List<int>.generate(16, (_) => random.nextInt(256));
-final salt = base64Url.encode(saltBytes);  // ✅ Valid base64 string
-final iterations = 10000;
-final passwordHash = _hashPassword(password, salt, iterations);
-    
-    if (passwordHash.isEmpty) {
-      return {
-        'success': false,
-        'message': 'Failed to hash password',
-      };
-    }
-    
-    // Super admin permissions
-    final permissions = jsonEncode({
-      'role': 'super_admin',
-      'permission': 'full_access',
-      'canDelete': true,
-      'permissionsMap': {
-        'users': 'full_access', 'companies': 'full_access',
-        'trading': 'full_access', 'inventory': 'full_access',
-        'rental': 'full_access', 'rental_items': 'full_access',
-        'expenditure': 'full_access', 'agent_working': 'full_access',
-        'reports': 'full_access', 'dashboard': 'full_access',
-        'settings': 'full_access', 'todo': 'full_access',
-      },
-    });
-    
-    final now = DateTime.now().toIso8601String();
-    
-    // Insert into database
-    await db.customStatement(
-      '''INSERT INTO users (
-        id, username, password_hash, salt, iterations, user_id, name, email, 
-        contact_no, role, permissions, company_id, status, is_first_login, 
-        is_active, profile_picture_path, created_at, updated_at, is_synced
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-      [
-        userId,
-        emailKey,
-        passwordHash,
-        salt,
-        iterations,
-        userId,
-        name,
-        emailKey,
-        '',
-        'super_admin',
-        permissions,
-        'GLOBAL_ADMIN',
-        'active',
-        0,
-        1,
-        '',
-        now,
-        now,
-        0, // Not synced yet
-      ],
-    );
-    
-    debugPrint('✅ createLocalAdmin: Admin created successfully');
-    
-    return {
-      'success': true,
-      'message': 'Admin account created successfully. Please login now.',
-    };
-  } catch (e) {
-    debugPrint('❌ createLocalAdmin: Error: $e');
-    return {
-      'success': false,
-      'message': 'Failed to create admin: $e',
-    };
-  }
-}
-
-// ✅ NEW METHOD: Firestore se single user fetch karein
-Future<void> _fetchUserFromFirestore(String email) async {
-  try {
-    debugPrint('📥 _fetchUserFromFirestore: Fetching user $email from Firestore...');
-    
-    final firestore = FirebaseFirestore.instance;
-    
-    // Email se user dhundhein
-    final snapshot = await firestore
-        .collection('users')
-        .where('email', isEqualTo: email)
-        .limit(1)
-        .get()
-        .timeout(const Duration(seconds: 10));
-    
-    if (snapshot.docs.isEmpty) {
-      debugPrint('❌ _fetchUserFromFirestore: User not found in Firestore');
-      return;
-    }
-    
-    final doc = snapshot.docs.first;
-    final data = doc.data();
-    
-    debugPrint('✅ _fetchUserFromFirestore: Found user in Firestore, saving to local DB...');
-    
-    // Local DB mein save karein
-    final db = await AppDatabase.instance();
-    
-    // Safe JSON conversion for permissions
-    String permsStr = '{}';
-    if (data['permissions'] is String) {
-      permsStr = data['permissions'] as String;
-    } else if (data['permissions'] is Map) {
-      permsStr = jsonEncode(data['permissions']);
-    }
-    
-    await db.customStatement(
-      '''INSERT OR REPLACE INTO users (
-        id, username, password_hash, salt, iterations, user_id, name, email, 
-        contact_no, role, permissions, company_id, status, is_first_login, 
-        is_active, profile_picture_path, created_at, updated_at, is_synced
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-      [
-        doc.id,
-        data['username']?.toString() ?? '',
-        data['password_hash']?.toString() ?? '',
-        data['salt']?.toString() ?? '',
-        int.tryParse(data['iterations']?.toString() ?? '') ?? 10000,
-        data['user_id']?.toString() ?? doc.id,
-        data['name']?.toString() ?? '',
-        data['email']?.toString() ?? email,
-        data['contact_no']?.toString() ?? '',
-        data['role']?.toString() ?? 'agent',
-        permsStr,
-        data['company_id']?.toString() ?? '',
-        data['status']?.toString() ?? 'active',
-        (data['is_first_login'] == true || data['is_first_login'] == 1) ? 1 : 0,
-        (data['is_active'] == true || data['is_active'] == 1) ? 1 : 0,
-        data['profile_picture_path']?.toString() ?? '',
-        data['created_at']?.toString() ?? DateTime.now().toIso8601String(),
-        data['updated_at']?.toString() ?? DateTime.now().toIso8601String(),
-        1,
-      ],
-    );
-    
-    debugPrint('✅ _fetchUserFromFirestore: User saved to local DB successfully');
-  } catch (e) {
-    debugPrint('❌ _fetchUserFromFirestore: Error: $e');
-  }
-}
 
   String _hashPassword(String password, String salt, int iterations) {
     try {
@@ -696,8 +913,6 @@ Future<void> _fetchUserFromFirestore(String email) async {
           ...dbUserMap,
         };
         
-        // ✅ REMOVED: Hardcoded email check for mayof286@gmail.com
-        
         debugPrint('AuthRepository: Loaded user with role=${merged['role']}, '
             'permissionsMap keys=${merged['permissionsMap'] != null ? (merged['permissionsMap'] as Map).keys.toList() : 'NONE'}');
         users[emailKey] = merged;
@@ -790,11 +1005,116 @@ Future<void> _fetchUserFromFirestore(String email) async {
   Future<Map<String, dynamic>> setup2FA(String email, String secret) async =>
       {'success': true, 'message': '2FA enabled'};
 
-  Future<Map<String, dynamic>> requestPasswordReset(String email) async {
-    final code = (100000 + Random().nextInt(900000)).toString();
-    return {'success': true, 'message': 'Code sent', 'code': code};
+  Future<Map<String, dynamic>> sendPasswordResetEmail(String email) async {
+  try {
+    debugPrint('📧 sendPasswordResetEmail: Sending reset email to $email');
+    
+    // Check internet
+    final hasInternet = await _checkInternetConnectivity();
+    if (!hasInternet) {
+      return {
+        'success': false,
+        'message': 'No internet connection. Please check your network.',
+      };
+    }
+    
+    // Check Firebase initialized
+    if (Firebase.apps.isEmpty) {
+      return {
+        'success': false,
+        'message': 'Firebase not initialized. Cannot send reset email.',
+      };
+    }
+    
+    // Send password reset email via Firebase Auth
+    await FirebaseAuth.instance.sendPasswordResetEmail(
+      email: email.trim().toLowerCase(),
+    );
+    
+    debugPrint('✅ sendPasswordResetEmail: Reset email sent successfully to $email');
+    
+    return {
+      'success': true,
+      'message': 'Password reset email sent successfully. Please check your inbox.',
+    };
+  } on FirebaseAuthException catch (e) {
+    debugPrint('❌ sendPasswordResetEmail: Firebase error: ${e.code} - ${e.message}');
+    
+    String message;
+    switch (e.code) {
+      case 'invalid-email':
+        message = 'Invalid email address';
+        break;
+      case 'user-not-found':
+        message = 'No user found with this email';
+        break;
+      case 'too-many-requests':
+        message = 'Too many requests. Please try again later';
+        break;
+      default:
+        message = 'Failed to send reset email: ${e.message}';
+    }
+    
+    return {
+      'success': false,
+      'message': message,
+    };
+  } catch (e) {
+    debugPrint('❌ sendPasswordResetEmail: Error: $e');
+    return {
+      'success': false,
+      'message': 'Failed to send reset email: $e',
+    };
   }
+}
 
-  Future<Map<String, dynamic>> resetPassword(String email, String code, String newPassword) async =>
-      {'success': true, 'message': 'Password reset'};
+Future<Map<String, dynamic>> resetPassword(String email, String code, String newPassword) async {
+  try {
+    debugPrint('🔑 resetPassword: Resetting password for $email');
+    
+    // For Firebase Auth, we don't need code verification
+    // Firebase handles this via email link
+    // But for local DB, we update directly
+    
+    final db = await AppDatabase.instance();
+    final emailKey = email.trim().toLowerCase();
+    
+    // Check if user exists
+    final result = await db.customSelect(
+      'SELECT id FROM users WHERE email = ?',
+      variables: [d.Variable.withString(emailKey)],
+    ).get();
+    
+    if (result.isEmpty) {
+      return {
+        'success': false,
+        'message': 'User not found',
+      };
+    }
+    
+    // Generate new password hash
+    final passwordService = PasswordHashingService();
+    final salt = passwordService.generateSalt();
+    final newHash = passwordService.hashPassword(newPassword, salt: salt);
+    
+    // Update in local database
+    await db.customStatement(
+      'UPDATE users SET password_hash = ?, salt = ?, iterations = ?, updated_at = ? WHERE email = ?',
+      [newHash, salt, 100000, DateTime.now().toIso8601String(), emailKey],
+    );
+    
+    debugPrint('✅ resetPassword: Password updated successfully for $email');
+    
+    return {
+      'success': true,
+      'message': 'Password reset successfully',
+    };
+  } catch (e) {
+    debugPrint('❌ resetPassword: Error: $e');
+    return {
+      'success': false,
+      'message': 'Failed to reset password: $e',
+    };
+  }
+}
 }

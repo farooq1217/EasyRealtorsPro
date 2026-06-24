@@ -365,6 +365,7 @@ class _UsersPageState extends State<UsersPage> {
           orElse: () => companyViewModel.companies.isNotEmpty 
               ? companyViewModel.companies.first 
               : companyViewModel.companies.first,
+              
         );
         
         companies = [
