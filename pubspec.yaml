@@ -48,13 +48,14 @@ dependencies:
   syncfusion_flutter_charts: ^32.2.8
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
-  firebase_remote_config: ^6.1.3
+  firebase_remote_config: ^6.5.3
   package_info_plus: ^4.2.0
   dio: ^5.4.0
   archive: ^3.4.9
   flutter_secure_storage: ^9.2.2
   permission_handler: ^11.3.1
   flutter_dotenv: ^6.0.1
+  auto_updater: ^1.0.0
   # sqlite3: ^2.4.0 # Permanently removed for web compatibility
 
 dev_dependencies:

@@ -1,0 +1,36 @@
+mutation SeedDatabase @transaction {
+  user_insertMany(data: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      email: "alice@example.com",
+      displayName: "Alice"
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440002",
+      email: "bob@example.com",
+      displayName: "Bob"
+    }
+  ])
+  project_insertMany(data: [
+    {
+      id: "770e8400-e29b-41d4-a716-446655440001",
+      title: "Alpha Project",
+      ownerId: "550e8400-e29b-41d4-a716-446655440001"
+    }
+  ])
+  task_insertMany(data: [
+    {
+      id: "990e8400-e29b-41d4-a716-446655440001",
+      title: "Finish documentation",
+      status: "TODO",
+      projectId: "770e8400-e29b-41d4-a716-446655440001"
+    }
+  ])
+  comment_insertMany(data: [
+    {
+      content: "Initial comment on the task",
+      taskId: "990e8400-e29b-41d4-a716-446655440001",
+      authorId: "550e8400-e29b-41d4-a716-446655440002"
+    }
+  ])
+}

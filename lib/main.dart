@@ -22,6 +22,8 @@ import 'core/services/log_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:easyrealtorspro/core/services/auth/jwt_service.dart';
 import 'core/services/foreground_sync_manager.dart';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
+import 'package:auto_updater/auto_updater.dart';
 
 /// Safe Firebase initialization with Windows support
 Future<void> _initializeFirebaseSafely(bool isWindows) async {
@@ -54,6 +56,30 @@ Future<void> _initializeFirebaseSafely(bool isWindows) async {
   }
 }
 
+// Remote config setup function
+Future<void> setupRemoteConfig() async {
+  final remoteConfig = FirebaseRemoteConfig.instance;
+
+  // Settings: App kitni der baad Firebase se naya data check kare
+  await remoteConfig.setConfigSettings(RemoteConfigSettings(
+    fetchTimeout: const Duration(minutes: 1),
+    minimumFetchInterval: const Duration(minutes: 15), // Har 15 minute baad check karega
+  ));
+
+  // Agar internet na ho toh default value kya ho
+  await remoteConfig.setDefaults(const {
+    "show_new_banner": false,
+  });
+
+  // Firebase se values fetch aur activate karein
+  try {
+    await remoteConfig.fetchAndActivate();
+    debugPrint('Remote Config updated!');
+  } catch (e) {
+    debugPrint('Remote Config error: $e');
+  }
+}
+
 bool _validateFirebaseOptions(FirebaseOptions options) {
   return options.apiKey.isNotEmpty && 
          options.appId.isNotEmpty && 
@@ -75,6 +101,16 @@ void main() async {
 
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // ✅ Add this AutoUpdater initialization
+      if (isWindows) {
+        // Initialize the auto_updater by setting the feed URL. Replace with your actual update feed URL.
+        await autoUpdater.setFeedURL('https://your-server.com/updates.json');
+        // Optionally configure scheduled checks (default is 24h). Uncomment to customize.
+        // await autoUpdater.setScheduledCheckInterval(Duration(hours: 12));
+        // Check for updates immediately on startup
+        await autoUpdater.checkForUpdates();
+      }
     
     await dotenv.load(fileName: ".env");
     await LogService.init();

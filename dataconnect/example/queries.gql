@@ -1,0 +1,21 @@
+mutation CreateUser($email: String!, $displayName: String!) @auth(level: PUBLIC) {
+  user_insert(data: { email: $email, displayName: $displayName })
+}
+
+query GetProjects @auth(level: USER) {
+  projects {
+    title
+    description
+    owner {
+      displayName
+    }
+  }
+}
+
+mutation CreateTask($title: String!, $status: String!, $projectId: UUID!) @auth(level: USER) {
+  task_insert(data: { title: $title, status: $status, projectId: $projectId })
+}
+
+mutation DeleteTask($id: UUID!) @auth(level: USER) {
+  task_delete(id: $id)
+}

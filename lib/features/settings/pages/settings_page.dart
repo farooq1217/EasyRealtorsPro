@@ -13,6 +13,9 @@ import 'package:image_picker/image_picker.dart' show ImagePicker, ImageSource;
 import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as io;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show File;
+import 'package:firebase_remote_config/firebase_remote_config.dart';
+import 'package:auto_updater/auto_updater.dart';
+
 
 class SettingsPageClean extends StatefulWidget {
   final dynamic db;
@@ -58,6 +61,7 @@ class _SettingsPageCleanState extends State<SettingsPageClean> {
     _viewModel?.dispose();
     super.dispose();
   }
+  
 
   Future<void> _initializeViewModel() async {
     if (_initialized) {
@@ -420,6 +424,11 @@ Future<void> _deleteSociety(String societyId, String societyName) async {
       }
     }
   }
+
+   Future<void> _handleUpdate() async {
+  // Checks for updates and shows UI if available.
+  await autoUpdater.checkForUpdates();
+}
 
   @override
   Widget build(BuildContext context) {
