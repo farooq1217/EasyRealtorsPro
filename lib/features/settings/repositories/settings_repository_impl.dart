@@ -72,7 +72,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
       final id = 'soc_${name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_')}_${DateTime.now().millisecondsSinceEpoch}';
       final nowIso = DateTime.now().toUtc().toIso8601String();
 
-      // Save to SQLite first
+      // 1. Save to SQLite first (Yeh zaroori hai, is par await rahega)
       await db.into(db.societies).insertOnConflictUpdate(
         SocietiesCompanion(
           id: d.Value(id),
@@ -83,8 +83,9 @@ class SettingsRepositoryImpl implements SettingsRepository {
         ),
       );
 
-      // Sync to Firestore
-      await _executeFirestoreOperation(() async {
+      // 2. Sync to Firestore (BACKGROUND MEIN BHEJEIN - Await hata diya)
+      // Is se yeh background mein sync hota rahega aur app ko hold nahi karega
+      _executeFirestoreOperation(() async {
         if (Firebase.apps.isNotEmpty) {
           await FirestoreSyncService().syncDocument(
             collection: 'societies',
@@ -99,7 +100,11 @@ class SettingsRepositoryImpl implements SettingsRepository {
             merge: true,
           );
         }
+      }).catchError((e) {
+        // Agar background sync fail ho jaye toh kam az kam app crash na ho
+        debugPrint('Background Firestore sync error for society: $e');
       });
+      
     } catch (e) {
       debugPrint('Error adding society: $e');
       rethrow;

@@ -328,6 +328,7 @@ Future<void> createSociety(String name) async {
       });
       
       await _loadSocieties();
+      safeNotifyListeners();
     } catch (e) {
       debugPrint('Error adding society: $e');
       rethrow;

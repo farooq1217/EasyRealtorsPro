@@ -779,7 +779,8 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> saveSubItemWithCategory(String parentId, {String? category}) async {
+  // ✅ FIXED: Added 'date' parameter
+  Future<bool> saveSubItemWithCategory(String parentId, {String? category, String? date}) async {
     if (_itemDescriptionController.text.trim().isEmpty ||
         _itemAmountController.text.trim().isEmpty) {
       _showErrorSnackBar('Please fill all fields');
@@ -787,7 +788,7 @@ class ExpenditureViewModel extends ChangeNotifier {
     }
     
     try {
-      debugPrint('ExpenditureViewModel: Saving sub-item with category: $category');
+      debugPrint('ExpenditureViewModel: Saving sub-item with category: $category, date: $date');
           
       if (category != null && category.isEmpty) {
         _showErrorSnackBar('Invalid category');
@@ -804,8 +805,13 @@ class ExpenditureViewModel extends ChangeNotifier {
         createdBy: _user?['id']?.toString() ?? _user?['userId']?.toString(),
         isActive: true,
         isSynced: true,
-        createdAt: DateTime.now().toIso8601String(),
+        // ✅ FIXED: Save exact Date & Time selected by user (fallback to current time)
+        createdAt: date ?? DateTime.now().toIso8601String(),
         updatedAt: DateTime.now().toIso8601String(),
+        
+        // ⚠️ NOTE: Agar aapke "ExpenditureSubItem" model (jo domain file mein hai) 
+        // mein 'date' naam ka koi alag field hai, toh usko bhi yahan assign kar dein.
+        // Jaise: date: date ?? DateTime.now().toIso8601String(),
       );
       
       debugPrint('ExpenditureViewModel: Sub-item data before save: ${subItem.toMap()}');
@@ -836,6 +842,7 @@ class ExpenditureViewModel extends ChangeNotifier {
       return false;
     }
   }
+
 
   Future<bool> deleteSubItem(String id) async {
     try {

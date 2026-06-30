@@ -40,7 +40,16 @@ class _FollowUpPageState extends State<FollowUpPage> {
     final isEditing = existing != null;
     final titleController = TextEditingController(text: existing?.clientName ?? '');
     final noteController = TextEditingController(text: existing?.note ?? '');
+    
+    // For Editing Single Follow Up
     DateTime selectedDate = existing?.followUpDate ?? DateTime.now();
+    
+    // For Creating 4 New Follow Ups (Default days)
+    int days1 = 2;
+    int days2 = 5;
+    int days3 = 10;
+    int days4 = 15;
+
     TimeOfDay selectedTime = existing?.followUpTime != null
         ? TimeOfDay(
             hour: int.parse(existing!.followUpTime.split(':')[0].replaceAll(RegExp(r'[^0-9]'), '')),
@@ -48,6 +57,25 @@ class _FollowUpPageState extends State<FollowUpPage> {
           )
         : const TimeOfDay(hour: 9, minute: 0);
     String status = existing?.status ?? 'pending';
+
+    // Helper widget for dropdown
+    Widget buildDaysDropdown(String label, int value, ValueChanged<int?> onChanged) {
+      return DropdownButtonFormField<int>(
+        value: value,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.black54, fontSize: 12),
+          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.black38)),
+        ),
+        items: List.generate(30, (index) => index + 1).map((day) {
+          return DropdownMenuItem<int>(
+            value: day,
+            child: Text('$day Days', style: const TextStyle(fontSize: 14)),
+          );
+        }).toList(),
+        onChanged: onChanged,
+      );
+    }
 
     await showDialog(
         context: context,
@@ -66,7 +94,7 @@ class _FollowUpPageState extends State<FollowUpPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isEditing ? 'Edit Follow‑Up' : 'New Follow‑Up',
+                        isEditing ? 'Edit Follow‑Up' : 'Create 4 Follow‑Ups',
                         style: GoogleFonts.inter(
                           fontSize: 20,
                           fontWeight: FontWeight.w600,
@@ -94,52 +122,75 @@ class _FollowUpPageState extends State<FollowUpPage> {
                         ),
                         style: const TextStyle(color: Colors.black87),
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: InkWell(
-                              onTap: () async {
-                                final date = await showDatePicker(
-                                  context: context,
-                                  initialDate: selectedDate,
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime(2100),
-                                );
-                                if (date != null) setDialogState(() => selectedDate = date);
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.black38))),
-                                child: Text(
-                                  'Date: ${selectedDate.toLocal().toIso8601String().split('T')[0]}',
-                                  style: const TextStyle(color: Colors.black87),
-                                ),
-                              ),
-                            ),
+                      const SizedBox(height: 16),
+                      
+                      // TIME PICKER (Common for both)
+                      InkWell(
+                        onTap: () async {
+                          final time = await showTimePicker(
+                            context: context,
+                            initialTime: selectedTime,
+                          );
+                          if (time != null) setDialogState(() => selectedTime = time);
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.black38))),
+                          child: Text(
+                            'Time: ${selectedTime.format(context)}',
+                            style: const TextStyle(color: Colors.black87),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: InkWell(
-                              onTap: () async {
-                                final time = await showTimePicker(
-                                  context: context,
-                                  initialTime: selectedTime,
-                                );
-                                if (time != null) setDialogState(() => selectedTime = time);
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.black38))),
-                                child: Text(
-                                  'Time: ${selectedTime.format(context)}',
-                                  style: const TextStyle(color: Colors.black87),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
+                      const SizedBox(height: 16),
+
+                      // DYNAMIC UI: 4 Dropdowns for NEW, Date Picker for EDIT
+                      if (!isEditing) ...[
+                        Text(
+                          'Select days for 4 follow-ups:',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w500, color: Colors.black87),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(child: buildDaysDropdown('1st Follow-up', days1, (v) => setDialogState(() => days1 = v!))),
+                            const SizedBox(width: 12),
+                            Expanded(child: buildDaysDropdown('2nd Follow-up', days2, (v) => setDialogState(() => days2 = v!))),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(child: buildDaysDropdown('3rd Follow-up', days3, (v) => setDialogState(() => days3 = v!))),
+                            const SizedBox(width: 12),
+                            Expanded(child: buildDaysDropdown('4th Follow-up', days4, (v) => setDialogState(() => days4 = v!))),
+                          ],
+                        ),
+                      ] else ...[
+                        // Single Date Picker for Editing
+                        InkWell(
+                          onTap: () async {
+                            final date = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate,
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (date != null) setDialogState(() => selectedDate = date);
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.black38))),
+                            child: Text(
+                              'Date: ${selectedDate.toLocal().toIso8601String().split('T')[0]}',
+                              style: const TextStyle(color: Colors.black87),
+                            ),
+                          ),
+                        ),
+                      ],
+
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         value: status,
@@ -167,25 +218,57 @@ class _FollowUpPageState extends State<FollowUpPage> {
                           ),
                           onPressed: () async {
                             if (titleController.text.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill required fields')));
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill client name')));
                               return;
                             }
-                            final followUp = FollowUp(
-                              id: existing?.id ?? UniqueKey().toString(),
-                              clientName: titleController.text,
-                              followUpDate: selectedDate,
-                              followUpTime: selectedTime.format(context),
-                              note: noteController.text.isEmpty ? null : noteController.text,
-                              status: status,
-                              companyId: RoleUtils.getUserCompanyId(AuthService.currentUser) ?? '',
-                              createdBy: AuthService.currentUser?['id']?.toString() ?? '',
-                            );
-                            final success = isEditing ? await _viewModel.updateFollowUp(followUp) : await _viewModel.addFollowUp(followUp);
-                            if (success && context.mounted) {
-                              Navigator.of(context).pop();
+
+                            if (isEditing) {
+                              // EDIT SINGLE FOLLOW-UP
+                              final followUp = FollowUp(
+                                id: existing!.id,
+                                clientName: titleController.text,
+                                followUpDate: selectedDate,
+                                followUpTime: selectedTime.format(context),
+                                note: noteController.text.isEmpty ? null : noteController.text,
+                                status: status,
+                                companyId: RoleUtils.getUserCompanyId(AuthService.currentUser) ?? '',
+                                createdBy: AuthService.currentUser?['id']?.toString() ?? '',
+                              );
+                              final success = await _viewModel.updateFollowUp(followUp);
+                              if (success && context.mounted) Navigator.of(context).pop();
+                            } else {
+                              // CREATE 4 NEW FOLLOW-UPS
+                              final now = DateTime.now();
+                              final targetDates = [
+                                now.add(Duration(days: days1)),
+                                now.add(Duration(days: days2)),
+                                now.add(Duration(days: days3)),
+                                now.add(Duration(days: days4)),
+                              ];
+
+                              bool allSuccess = true;
+                              for (int i = 0; i < 4; i++) {
+                                final followUp = FollowUp(
+                                  id: UniqueKey().toString(), // Generate new unique ID for each
+                                  clientName: titleController.text,
+                                  followUpDate: targetDates[i],
+                                  followUpTime: selectedTime.format(context),
+                                  note: noteController.text.isEmpty ? null : noteController.text,
+                                  status: status, 
+                                  companyId: RoleUtils.getUserCompanyId(AuthService.currentUser) ?? '',
+                                  createdBy: AuthService.currentUser?['id']?.toString() ?? '',
+                                );
+                                final success = await _viewModel.addFollowUp(followUp);
+                                if (!success) allSuccess = false;
+                              }
+
+                              if (allSuccess && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('4 Follow-ups created successfully')));
+                                Navigator.of(context).pop();
+                              }
                             }
                           },
-                          child: Text(isEditing ? 'Update' : 'Create'),
+                          child: Text(isEditing ? 'Update' : 'Create All 4'),
                         ),
                       ),
                     ],

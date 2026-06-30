@@ -99,12 +99,19 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
         if (daysUntilFirstMonday == 0) daysUntilFirstMonday = 7; // If today is Monday, use next Monday
         return today.add(Duration(days: daysUntilFirstMonday + 14)); // +14 days for 3rd Monday
         
-      case 'AEMP': // The first Monday after the upcoming Eid (using basic holiday constant)
-        // For demo purposes, assume upcoming Eid is 30 days from today
-        final upcomingEid = today.add(const Duration(days: 30));
-        int daysUntilEidMonday = (DateTime.monday - upcomingEid.weekday + 7) % 7;
-        if (daysUntilEidMonday == 0) daysUntilEidMonday = 7; // If Eid is Monday, use next Monday
-        return upcomingEid.add(Duration(days: daysUntilEidMonday));
+      case 'AEMP': // After Eid Monday Payment
+    // Demo logic hata dein aur agli Eid ki exact date set karein.
+    // Misal ke taur par, agar agli Eid 10 March 2027 ko hai:
+    final upcomingEid = DateTime(2027, 3, 10); // Yahan asal Eid ki fixed date likhein
+
+    int daysUntilEidMonday = (DateTime.monday - upcomingEid.weekday + 7) % 7;
+    
+    // Agar Eid khud Monday ko hai, toh agla Monday (7 days later) use karein
+    if (daysUntilEidMonday == 0) {
+        daysUntilEidMonday = 7; 
+    }
+
+    return upcomingEid.add(Duration(days: daysUntilEidMonday));
         
       case 'BOP': // Bank Opening Payment - manual date
       case 'SOP': // Society Opening Payment - manual date
@@ -648,9 +655,10 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                             
                             final availableStock = _getAvailableStock();
                             
-                            if (quantity > availableStock) {
+                           /* if (quantity > availableStock) {
                               return 'Insufficient stock! Available: ${availableStock.toStringAsFixed(2)}';
-                            }
+                            }*/
+                           
                           }
                           
                           return null;
@@ -776,7 +784,7 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                           _selectedCategory,
                         );
                         
-                        if (quantity > availableStock) {
+                      /* if (quantity > availableStock) {
                           // Show red SnackBar for insufficient stock
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -796,7 +804,7 @@ class _GenericTradingFormState extends State<GenericTradingForm> {
                             ),
                           );
                           return; // Don't proceed with save
-                        }
+                        }*/
                       }
                       
                       debugPrint('TradingForm: Creating entry...');

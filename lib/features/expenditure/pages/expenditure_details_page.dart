@@ -251,7 +251,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
     return categoryColors[category] ?? Colors.grey;
   }
 
-  void _showAddSubItemDialog(BuildContext context, ExpenditureViewModel viewModel) {
+ void _showAddSubItemDialog(BuildContext context, ExpenditureViewModel viewModel) {
     const List<String> categoryItems = [
       "Civil work material", "Sanitary material", "Electric material",
       "Steel work material", "Wood work material", "Labor",
@@ -260,6 +260,10 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
     String? selectedCategory;
     final customCategoryController = TextEditingController();
     bool showCustomCategory = false;
+    
+    // NEW: Variables for Date and Time
+    DateTime? _selectedDate = DateTime.now();
+    TimeOfDay _selectedTime = TimeOfDay.now();
 
     showDialog(
       context: context,
@@ -270,13 +274,19 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
             return Dialog(
               insetPadding: const EdgeInsets.all(20),
               child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.5, minWidth: 450, maxHeight: MediaQuery.of(context).size.height * 0.8),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.5, 
+                  minWidth: 450, 
+                  // Increased height slightly to accommodate new fields
+                  maxHeight: MediaQuery.of(context).size.height * 0.9 
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Header
                       Row(
                         children: [
                           Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: const Color(0xFFFF6B35).withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.add_circle_outline, color: Color(0xFFFF6B35), size: 24)),
@@ -286,6 +296,8 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                         ],
                       ),
                       const SizedBox(height: 32),
+                      
+                      // Body Fields
                       Expanded(
                         child: SingleChildScrollView(
                           child: Column(
@@ -298,6 +310,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                 decoration: InputDecoration(hintText: 'Enter description...', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50),
                               ),
                               const SizedBox(height: 24),
+                              
                               Text('Amount', style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
                               const SizedBox(height: 12),
                               TextField(
@@ -306,6 +319,7 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                 keyboardType: TextInputType.number,
                               ),
                               const SizedBox(height: 24),
+                              
                               Text('Category', style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
                               const SizedBox(height: 12),
                               DropdownButtonFormField<String>(
@@ -328,10 +342,87 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                 const SizedBox(height: 12),
                                 TextField(controller: customCategoryController, decoration: InputDecoration(hintText: 'Specify custom category...', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50)),
                               ],
+                              
+                              // NEW: Date Field
+                              const SizedBox(height: 24),
+                              Text("Date*", style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () async {
+                                  final DateTime? picked = await showDatePicker(
+                                    context: dialogContext,
+                                    initialDate: _selectedDate ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                                  );
+                                  if (picked != null) {
+                                    setState(() {
+                                      _selectedDate = picked;
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey.shade300),
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.calendar_today, color: Colors.blue.shade600),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          _selectedDate != null ? DateFormat('dd MMM yyyy').format(_selectedDate!) : 'Select date',
+                                          style: AppFonts.poppins(color: _selectedDate != null ? (Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87) : Colors.grey.shade600),
+                                        ),
+                                      ),
+                                      Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              // NEW: Time Field
+                              const SizedBox(height: 16),
+                              Text("Time", style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () async {
+                                  final TimeOfDay? picked = await showTimePicker(context: dialogContext, initialTime: _selectedTime);
+                                  if (picked != null) {
+                                    setState(() {
+                                      _selectedTime = picked;
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey.shade300),
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.access_time, color: Colors.blue.shade600),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(_selectedTime.format(context), style: AppFonts.poppins(color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87)),
+                                      ),
+                                      Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
                             ],
                           ),
                         ),
                       ),
+                      
+                      // Footer Buttons
                       const SizedBox(height: 24),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
@@ -340,6 +431,9 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                           const SizedBox(width: 12),
                           ElevatedButton(
                             onPressed: () async {
+                              // Optional: You can validate if _selectedDate is not null here, 
+                              // but since it's initialized with DateTime.now(), it shouldn't be.
+                              
                               String finalCategory = '';
                               if (selectedCategory != null) {
                                 if (selectedCategory == "Other" && customCategoryController.text.isNotEmpty) {
@@ -348,7 +442,25 @@ class _ExpenditureDetailsPageState extends State<ExpenditureDetailsPage> {
                                   finalCategory = selectedCategory!;
                                 }
                               }
-                              final success = await viewModel.saveSubItemWithCategory(widget.expense.id, category: finalCategory.isEmpty ? null : finalCategory);
+
+                              // Convert DateTime and TimeOfDay into a single DateTime string to pass to the ViewModel
+                              final finalDateTime = DateTime(
+                                _selectedDate!.year,
+                                _selectedDate!.month,
+                                _selectedDate!.day,
+                                _selectedTime.hour,
+                                _selectedTime.minute,
+                              );
+
+                              // WE ARE PASSING THE DATE ALONG WITH OTHER DATA. 
+                              // *NOTE*: Ensure your viewModel.saveSubItemWithCategory method accepts a 'date' parameter.
+                              final success = await viewModel.saveSubItemWithCategory(
+                                widget.expense.id, 
+                                category: finalCategory.isEmpty ? null : finalCategory,
+                                // Assuming your method supports passing date. If not, we'll need to update the ViewModel.
+                                date: finalDateTime.toIso8601String(), 
+                              );
+                              
                               if (success && dialogContext.mounted) Navigator.pop(dialogContext);
                             },
                             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B35), foregroundColor: Colors.white),

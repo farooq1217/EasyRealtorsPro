@@ -1400,12 +1400,12 @@ class _ExpenditurePageState extends State<ExpenditurePage>
     );
   }
 
+  // REPLACED: _showProjectExpenseDialog
   void _showProjectExpenseDialog(BuildContext context, ExpenditureViewModel viewModel, String category) {
-    _amountController.clear();
-    _categoryController.clear();
     _projectNameController.clear();
-    _selectedDate = DateTime.now();
-    TimeOfDay _selectedTime = TimeOfDay.now();
+    _categoryController.clear(); // For Description
+    
+    // Remove Date & Time initializations as they are no longer needed here.
 
     showDialog(
       context: context,
@@ -1418,11 +1418,13 @@ class _ExpenditurePageState extends State<ExpenditurePage>
               child: ConstrainedBox(
                 constraints: BoxConstraints(
                   maxWidth: MediaQuery.of(dialogContext).size.width * 0.9,
-                  maxHeight: MediaQuery.of(dialogContext).size.height * 0.8,
+                  // Reduced height because fields are removed
+                  maxHeight: MediaQuery.of(dialogContext).size.height * 0.6, 
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Header Container
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
@@ -1441,7 +1443,7 @@ class _ExpenditurePageState extends State<ExpenditurePage>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text("Add Project Expense", style: AppFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                                Text("Add Project", style: AppFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                                 Text(category, style: AppFonts.poppins(fontSize: 14, color: Colors.white.withOpacity(0.9))),
                               ],
                             ),
@@ -1450,6 +1452,8 @@ class _ExpenditurePageState extends State<ExpenditurePage>
                         ],
                       ),
                     ),
+                    
+                    // Body Fields
                     Expanded(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.all(20),
@@ -1467,94 +1471,49 @@ class _ExpenditurePageState extends State<ExpenditurePage>
                                 fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                               ),
                             ),
+                            
                             const SizedBox(height: 16),
-                            Text("Amount*", style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: _amountController,
-                              keyboardType: TextInputType.numberWithOptions(decimal: true),
-                              decoration: InputDecoration(
-                                prefixText: 'Rs ',
-                                hintText: '0.00',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                filled: true,
-                                fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text("Description", style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
+                            
+                            Text("Description (Optional)", style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
                             const SizedBox(height: 8),
                             TextField(
                               controller: _categoryController,
                               decoration: InputDecoration(
-                                hintText: 'Enter expense details',
+                                hintText: 'Enter project details or context',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 filled: true,
                                 fillColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
                               ),
                             ),
-                            const SizedBox(height: 16),
-                            Text("Date*", style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 8),
-                            InkWell(
-                              onTap: () => _selectDate(dialogContext, viewModel),
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade300),
-                                  borderRadius: BorderRadius.circular(12),
-                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.calendar_today, color: Colors.blue.shade600),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        _selectedDate != null ? DateFormat('dd MMM yyyy').format(_selectedDate!) : 'Select date',
-                                        style: AppFonts.poppins(color: _selectedDate != null ? (Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87) : Colors.grey.shade600),
-                                      ),
-                                    ),
-                                    Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
-                                  ],
-                                ),
+                            
+                            // Info Box (Instead of Time/Date)
+                            const SizedBox(height: 24),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50, 
+                                borderRadius: BorderRadius.circular(8), 
+                                border: Border.all(color: Colors.blue.shade200)
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text("Time", style: AppFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 8),
-                            InkWell(
-                              onTap: () async {
-                                final TimeOfDay? picked = await showTimePicker(context: dialogContext, initialTime: _selectedTime);
-                                if (picked != null) {
-                                  setStateDialog(() {
-                                    _selectedTime = picked;
-                                  });
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade300),
-                                  borderRadius: BorderRadius.circular(12),
-                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade50,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.access_time, color: Colors.blue.shade600),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(_selectedTime.format(context), style: AppFonts.poppins(color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black87)),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.info_outline, color: Colors.blue.shade600, size: 20),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      "Amounts, dates, and times for individual expenses will be added inside this project.", 
+                                      style: AppFonts.poppins(fontSize: 12, color: Colors.blue.shade700)
                                     ),
-                                    Icon(Icons.arrow_drop_down, color: Colors.grey.shade600),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
                     ),
+                    
+                    // Footer Buttons
                     Container(
                       padding: const EdgeInsets.all(20),
                       child: Row(
@@ -1564,11 +1523,43 @@ class _ExpenditurePageState extends State<ExpenditurePage>
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () async {
-                                final success = await _saveProjectExpense(viewModel, category, _selectedTime);
-                                if (success && dialogContext.mounted) Navigator.of(dialogContext).pop();
+                                final projectName = _projectNameController.text.trim();
+                                if (projectName.isEmpty) {
+                                  ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Please enter a project name'), backgroundColor: Colors.red));
+                                  return;
+                                }
+                                
+                                // Since we removed amount, we pass 0.0 initially for the main project bucket
+                                // The description field is repurposed for context/details.
+                                final description = _categoryController.text.trim();
+                                final finalDescription = projectName.isNotEmpty
+                                    ? '$projectName${description.isNotEmpty ? ': $description' : ''}'
+                                    : (description.isNotEmpty ? description : category);
+
+                                try {
+                                  // Call the save method. 
+                                  // Since Amount is required by the ViewModel method, we pass 0.0. 
+                                  // Date/Time is set to DateTime.now() silently in the background just for record keeping.
+                                  final success = await viewModel.saveInstantExpenseFromCategory(
+                                    'project_expense',
+                                    category,
+                                    description: finalDescription,
+                                    amount: 0.0, 
+                                    selectedDate: DateTime.now(),
+                                  );
+
+                                  if (success && dialogContext.mounted) {
+                                      Navigator.of(dialogContext).pop();
+                                      _showSuccessSnackBar('Project created successfully');
+                                  }
+                                } catch (e) {
+                                  if (dialogContext.mounted) {
+                                    ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Error creating project: $e'), backgroundColor: Colors.red));
+                                  }
+                                }
                               },
                               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF6B35), padding: const EdgeInsets.symmetric(vertical: 16)),
-                              child: Text('Save Project Expense', style: AppFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
+                              child: Text('Create Project', style: AppFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
                             ),
                           ),
                         ],
