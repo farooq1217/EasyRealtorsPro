@@ -14,7 +14,7 @@ import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as i
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show File;
 import 'package:firebase_remote_config/firebase_remote_config.dart';
-import 'package:auto_updater/auto_updater.dart';
+import 'package:easyrealtorspro/widgets/update_dialog.dart';
 
 
 class SettingsPageClean extends StatefulWidget {
@@ -426,9 +426,10 @@ Future<void> _deleteSociety(String societyId, String societyName) async {
   }
 
    Future<void> _handleUpdate() async {
-  // Checks for updates and shows UI if available.
-  await autoUpdater.checkForUpdates();
-}
+     if (mounted) {
+       await UpdateDialog.show(context);
+     }
+   }
 
   @override
   Widget build(BuildContext context) {

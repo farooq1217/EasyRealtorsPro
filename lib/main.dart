@@ -23,7 +23,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:easyrealtorspro/core/services/auth/jwt_service.dart';
 import 'core/services/foreground_sync_manager.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
-import 'package:auto_updater/auto_updater.dart';
+
 
 /// Safe Firebase initialization with Windows support
 Future<void> _initializeFirebaseSafely(bool isWindows) async {
@@ -102,15 +102,7 @@ void main() async {
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // ✅ Add this AutoUpdater initialization
-      if (isWindows) {
-        // Initialize the auto_updater by setting the feed URL. Replace with your actual update feed URL.
-        await autoUpdater.setFeedURL('https://your-server.com/updates.json');
-        // Optionally configure scheduled checks (default is 24h). Uncomment to customize.
-        // await autoUpdater.setScheduledCheckInterval(Duration(hours: 12));
-        // Check for updates immediately on startup
-        await autoUpdater.checkForUpdates();
-      }
+
     
     await dotenv.load(fileName: ".env");
     await LogService.init();

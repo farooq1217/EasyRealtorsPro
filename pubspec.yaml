@@ -1,6 +1,6 @@
 name: easyrealtorspro
 description: Flutter Desktop Admin app (Windows) with first-run Drive setup and retention scheduler.
-version: 0.1.0
+version: 1.0.1
 publish_to: 'none'
 
 environment:
