@@ -18,12 +18,31 @@ class PasswordHashingService {
   /// Verifies a password against a stored PBKDF2 hash.
   bool verifyPassword(String password, String storedHash) {
     try {
-      if (!_isValidHashFormat(storedHash)) {
-        debugPrint('⚠️ PasswordHashingService: Invalid hash format detected');
-        return false;
+      if (storedHash.isEmpty) return false;
+
+      // If it is a valid PBKDF2 hash format, use standard PBKDF2 verification
+      if (isValidHashFormat(storedHash)) {
+        return PasswordHasher.verify(password, storedHash);
       }
-      
-      return PasswordHasher.verify(password, storedHash);
+
+      // Legacy fallback check: salt:plaintext format
+      final parts = storedHash.split(':');
+      if (parts.length == 2) {
+        final storedPlaintext = parts[1];
+        if (storedPlaintext == password) {
+          debugPrint('🔑 PasswordHashingService: Verified legacy salt:plaintext format');
+          return true;
+        }
+      }
+
+      // Direct plaintext comparison fallback
+      if (storedHash == password) {
+        debugPrint('🔑 PasswordHashingService: Verified legacy plaintext format');
+        return true;
+      }
+
+      debugPrint('⚠️ PasswordHashingService: Invalid hash format or mismatch');
+      return false;
     } on FormatException catch (e) {
       debugPrint('⚠️ PasswordHashingService: FormatException during password verification: $e');
       return false;
@@ -44,7 +63,8 @@ class PasswordHashingService {
   }
 
   /// Validates if hash format is correct (iterations:salt:hash)
-  bool _isValidHashFormat(String hash) {
+  bool isValidHashFormat(String? hash) {
+    if (hash == null || hash.isEmpty) return false;
     try {
       final parts = hash.split(':');
       if (parts.length != 3) {
@@ -79,7 +99,7 @@ class PasswordHashingService {
 
   /// Checks if a stored hash needs to be rehashed
   bool needsRehash(String storedHash) {
-    return !_isValidHashFormat(storedHash);
+    return !isValidHashFormat(storedHash);
   }
 
   /// Fallback: Generate proper Base64 salt

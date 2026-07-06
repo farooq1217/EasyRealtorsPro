@@ -349,25 +349,28 @@ class _ExpenditurePageState extends State<ExpenditurePage>
         // Empty state
         if (list.isEmpty)
           SliverFillRemaining(
+            hasScrollBody: false,
             child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    type == "Office" ? Icons.business_center : Icons.assignment,
-                    size: 64,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "No $type Records Found",
-                    style: AppFonts.poppins(
-                      fontSize: 16,
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      type == "Office" ? Icons.business_center : Icons.assignment,
+                      size: 64,
+                      color: Colors.grey.shade400,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    Text(
+                      "No $type Records Found",
+                      style: AppFonts.poppins(
+                        fontSize: 16,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           )

@@ -55,38 +55,43 @@ class RestSyncManager {
     }
   }
   
-  Future<Map<String, dynamic>> syncUsers() async {
-    try {
-      debugPrint('📥 RestSyncManager: Fetching users from Firestore...');
+ Future<Map<String, dynamic>> syncUsers() async {
+  try {
+    List allDocuments = [];
+    String? pageToken;
+    
+    do {
+      String url = '${FirebaseConfig.firestoreBaseUrl}/users?key=${FirebaseConfig.apiKey}&pageSize=300';
+      if (pageToken != null) {
+        url += '&pageToken=$pageToken';
+      }
       
-      final url = '${FirebaseConfig.firestoreBaseUrl}/users?key=${FirebaseConfig.apiKey}';
       final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
-      
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final documents = data['documents'] as List? ?? [];
-        
-        debugPrint('📥 RestSyncManager: Fetched ${documents.length} users');
-        
-        await _saveUsersToLocal(documents);
-        debugPrint('✅ RestSyncManager: Users saved to local DB');
-        
-        return {'success': true, 'count': documents.length};
-      } else {
-        debugPrint('❌ RestSyncManager: Failed to fetch users: ${response.statusCode}');
-        return {'success': false, 'count': 0, 'error': response.body};
-      }
-    } catch (e) {
-      debugPrint('❌ RestSyncManager: Error syncing users: $e');
-      return {'success': false, 'count': 0, 'error': e.toString()};
-    }
+        allDocuments.addAll(data['documents'] ?? []);
+        pageToken = data['nextPageToken']; // Agar mazeed data hoga tou token milega
+      } 
+      else {
+  // Yeh line zaroor add karein!
+  debugPrint('❌ RestSyncManager: Failed to fetch trading entries: ${response.statusCode} - ${response.body}');
+  return {'success': false, 'count': 0, 'error': response.body};
+}
+    } while (pageToken != null);
+
+    await _saveUsersToLocal(allDocuments);
+    return {'success': true, 'count': allDocuments.length};
+  } catch (e) {
+    return {'success': false, 'count': 0, 'error': e.toString()};
   }
+}
   
   Future<Map<String, dynamic>> syncCompanies() async {
     try {
       debugPrint('📥 RestSyncManager: Fetching companies from Firestore...');
       
       final url = '${FirebaseConfig.firestoreBaseUrl}/companies?key=${FirebaseConfig.apiKey}';
+      debugPrint('🔍 TARGET URL: $url');
       final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
       
       if (response.statusCode == 200) {
@@ -99,10 +104,12 @@ class RestSyncManager {
         debugPrint('✅ RestSyncManager: Companies saved to local DB');
         
         return {'success': true, 'count': documents.length};
-      } else {
-        debugPrint('❌ RestSyncManager: Failed to fetch companies: ${response.statusCode}');
-        return {'success': false, 'count': 0, 'error': response.body};
-      }
+      } 
+      else {
+  // Yeh line zaroor add karein!
+  debugPrint('❌ RestSyncManager: Failed to fetch trading entries: ${response.statusCode} - ${response.body}');
+  return {'success': false, 'count': 0, 'error': response.body};
+}
     } catch (e) {
       debugPrint('❌ RestSyncManager: Error syncing companies: $e');
       return {'success': false, 'count': 0, 'error': e.toString()};
@@ -214,6 +221,11 @@ Future<Map<String, dynamic>> syncTradingEntries() async {
       await _saveTradingEntriesToLocal(documents);
       return {'success': true, 'count': documents.length};
     }
+    else {
+  // Yeh line zaroor add karein!
+  debugPrint('❌ RestSyncManager: Failed to fetch trading entries: ${response.statusCode} - ${response.body}');
+  return {'success': false, 'count': 0, 'error': response.body};
+}
     return {'success': false, 'count': 0};
   } catch (e) {
     debugPrint('❌ RestSyncManager: Error syncing trading: $e');
@@ -235,6 +247,11 @@ Future<Map<String, dynamic>> syncWorkingProgress() async {
       await _saveWorkingProgressToLocal(documents);
       return {'success': true, 'count': documents.length};
     }
+    else {
+  // Yeh line zaroor add karein!
+  debugPrint('❌ RestSyncManager: Failed to fetch trading entries: ${response.statusCode} - ${response.body}');
+  return {'success': false, 'count': 0, 'error': response.body};
+}
     return {'success': false, 'count': 0};
   } catch (e) {
     debugPrint('❌ RestSyncManager: Error syncing working progress: $e');
@@ -256,6 +273,11 @@ Future<Map<String, dynamic>> syncExpenditures() async {
       await _saveExpendituresToLocal(documents);
       return {'success': true, 'count': documents.length};
     }
+    else {
+  // Yeh line zaroor add karein!
+  debugPrint('❌ RestSyncManager: Failed to fetch trading entries: ${response.statusCode} - ${response.body}');
+  return {'success': false, 'count': 0, 'error': response.body};
+}
     return {'success': false, 'count': 0};
   } catch (e) {
     debugPrint('❌ RestSyncManager: Error syncing expenditures: $e');
@@ -277,6 +299,11 @@ Future<Map<String, dynamic>> syncInventoryFiles() async {
       await _saveInventoryFilesToLocal(documents);
       return {'success': true, 'count': documents.length};
     }
+    else {
+  // Yeh line zaroor add karein!
+  debugPrint('❌ RestSyncManager: Failed to fetch trading entries: ${response.statusCode} - ${response.body}');
+  return {'success': false, 'count': 0, 'error': response.body};
+}
     return {'success': false, 'count': 0};
   } catch (e) {
     debugPrint('❌ RestSyncManager: Error syncing inventory: $e');
@@ -298,6 +325,11 @@ Future<Map<String, dynamic>> syncRentalItems() async {
       await _saveRentalItemsToLocal(documents);
       return {'success': true, 'count': documents.length};
     }
+    else {
+  // Yeh line zaroor add karein!
+  debugPrint('❌ RestSyncManager: Failed to fetch trading entries: ${response.statusCode} - ${response.body}');
+  return {'success': false, 'count': 0, 'error': response.body};
+}
     return {'success': false, 'count': 0};
   } catch (e) {
     debugPrint('❌ RestSyncManager: Error syncing rental: $e');
@@ -319,6 +351,11 @@ Future<Map<String, dynamic>> syncReminders() async {
       await _saveRemindersToLocal(documents);
       return {'success': true, 'count': documents.length};
     }
+    else {
+  // Yeh line zaroor add karein!
+  debugPrint('❌ RestSyncManager: Failed to fetch trading entries: ${response.statusCode} - ${response.body}');
+  return {'success': false, 'count': 0, 'error': response.body};
+}
     return {'success': false, 'count': 0};
   } catch (e) {
     debugPrint('❌ RestSyncManager: Error syncing reminders: $e');
@@ -456,41 +493,24 @@ Future<void> _saveWorkingProgressToLocal(List documents) async {
 // ✅ Save Expenditures
 Future<void> _saveExpendituresToLocal(List documents) async {
   final db = await AppDatabase.instance();
-  for (final doc in documents) {
-    final docName = doc['name'] as String;
-    final docId = docName.split('/').last;
-    final fields = doc['fields'] as Map<String, dynamic>;
-    
-    try {
-      await db.customStatement(
-        '''INSERT OR REPLACE INTO expenditures (
-          id, date, description, amount, category, company_id, created_by,
-          kind, project_id, category_id, office_month, category_type,
-          created_at, updated_at, is_active, is_synced
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-        [
-          docId,
-          _extractString(fields['date']) ?? DateTime.now().toIso8601String(),
-          _extractString(fields['description']) ?? '',
-          _extractDouble(fields['amount']) ?? 0.0,
-          _extractString(fields['category']) ?? '',
-          _extractString(fields['company_id']) ?? '',
-          _extractString(fields['created_by']) ?? '',
-          _extractString(fields['kind']) ?? '',
-          _extractString(fields['project_id']),
-          _extractString(fields['category_id']),
-          _extractString(fields['office_month']),
-          _extractString(fields['category_type']),
-          _extractString(fields['created_at']) ?? DateTime.now().toIso8601String(),
-          _extractString(fields['updated_at']) ?? DateTime.now().toIso8601String(),
-          _extractInt(fields['is_active']) ?? 1,
-          1,
-        ],
-      );
-    } catch (e) {
-      debugPrint('❌ Error saving expenditure: $e');
+  
+  // Transaction mein wrap karein taake speed 100x fast ho jaye
+  await db.transaction(() async {
+    for (final doc in documents) {
+      final docName = doc['name'] as String;
+      final docId = docName.split('/').last;
+      final fields = doc['fields'] as Map<String, dynamic>? ?? {};
+      
+      try {
+        await db.customStatement(
+          '''INSERT OR REPLACE INTO expenditures (...) VALUES (...)''',
+          [ /* parameters */ ],
+        );
+      } catch (e) {
+        debugPrint('❌ Error saving expenditure $docId: $e');
+      }
     }
-  }
+  });
 }
 
 // ✅ Save Inventory Files

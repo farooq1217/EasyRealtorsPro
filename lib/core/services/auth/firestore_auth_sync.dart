@@ -10,6 +10,7 @@ import 'package:shared/shared.dart';
 import '../firebase_threading_handler.dart';
 import '../../database/app_database_extensions.dart';
 import './local_auth_storage.dart';
+import 'password_hashing_service.dart';
 
 class FirestoreAuthSync {
   final FirebaseFirestore? _firestoreOverride;
@@ -106,14 +107,37 @@ class FirestoreAuthSync {
         final iterations = data['iterations'] is int ? data['iterations'] as int : int.tryParse(data['iterations']?.toString() ?? '');
 
         // Update local SQLite
+        final existing = await db.customSelect(
+          'SELECT password_hash, salt, iterations FROM users WHERE id = ? OR email = ?',
+          variables: [Variable.withString(id), Variable.withString(email)],
+        ).get();
+        
+        String? finalPasswordHash = passwordHash;
+        String? finalSalt = salt;
+        int? finalIterations = iterations;
+        
+        final hashingService = PasswordHashingService();
+        if (existing.isNotEmpty) {
+          final existingRow = existing.first.data;
+          final existingHash = existingRow['password_hash']?.toString() ?? '';
+          final existingSalt = existingRow['salt']?.toString() ?? '';
+          final existingIterations = existingRow['iterations'] is int ? existingRow['iterations'] as int : int.tryParse(existingRow['iterations']?.toString() ?? '');
+          
+          if (!hashingService.isValidHashFormat(finalPasswordHash) && hashingService.isValidHashFormat(existingHash)) {
+            finalPasswordHash = existingHash;
+            finalSalt = existingSalt;
+            finalIterations = existingIterations;
+          }
+        }
+
         await db.customStatement(
           'INSERT OR REPLACE INTO users (id, username, password_hash, salt, iterations, user_id, name, email, contact_no, permissions, company_id, status, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             id,
             username,
-            passwordHash,
-            salt,
-            iterations,
+            finalPasswordHash,
+            finalSalt,
+            finalIterations,
             userId,
             name,
             email,

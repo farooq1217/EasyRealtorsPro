@@ -360,32 +360,41 @@ class _UsersPageState extends State<UsersPage> {
       // Company Admin: Can only see their own company, dropdown is disabled
       final userCompanyId = userViewModel.currentUser?['company_id']?.toString();
       if (userCompanyId != null) {
-        final userCompany = companyViewModel.companies.firstWhere(
-          (company) => company.id == userCompanyId,
-          orElse: () => companyViewModel.companies.isNotEmpty 
-              ? companyViewModel.companies.first 
-              : companyViewModel.companies.first,
-        );
+        dynamic userCompany;
+        if (companyViewModel.companies.isNotEmpty) {
+          for (final company in companyViewModel.companies) {
+            if (company.id == userCompanyId) {
+              userCompany = company;
+              break;
+            }
+          }
+          userCompany ??= companyViewModel.companies.first;
+        }
         
+        final companyName = userCompany?.name ?? 'My Company';
         companies = [
           {
             'id': userCompanyId,
-            'name': userCompany.name,
+            'name': companyName,
           },
         ];
         
         // Force selection to user's company and disable dropdown
         selectedValue = userCompanyId;
         isDropdownEnabled = false;
-        hintText = userCompany.name;
+        hintText = companyName;
         
         // Update state if needed
         if (_selectedCompanyId != userCompanyId) {
-          setState(() {
-            _selectedCompanyId = userCompanyId;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _selectedCompanyId != userCompanyId) {
+              setState(() {
+                _selectedCompanyId = userCompanyId;
+              });
+              // Apply filters with user's company
+              userViewModel.applyFilters(userCompanyId, _selectedRole, _selectedStatus);
+            }
           });
-          // Apply filters with user's company
-          userViewModel.applyFilters(userCompanyId, _selectedRole, _selectedStatus);
         }
       }
     }

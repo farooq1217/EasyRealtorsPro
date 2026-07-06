@@ -39,12 +39,15 @@ Future<void> _initializeFirebaseSafely(bool isWindows) async {
       await Firebase.initializeApp(options: options);
       Logger.info('Firebase: Successfully initialized', tag: 'Firebase');
       
-      // ✅ CRITICAL: Windows par Firestore ko foreground-only mode mein set karein
+      // ✅ Updated: Enable persistence on Windows for background sync
       if (isWindows) {
         FirebaseFirestore.instance.settings = const Settings(
-          persistenceEnabled: false, // Windows par persistence disable
+          persistenceEnabled: true, // Enable offline persistence
         );
-        Logger.info('Firebase: Windows - Firestore configured for foreground-only sync', tag: 'Firebase');
+        Logger.info('Firebase: Windows - Firestore enabled persistence for background sync', tag: 'Firebase');
+        // Enable network for background sync
+        await FirebaseFirestore.instance.enableNetwork();
+        Logger.info('Firebase: Network enabled for Firestore', tag: 'Firebase');
       }
     } else {
       Logger.warning('Firebase: Invalid options, initializing fallback mode', tag: 'Firebase');

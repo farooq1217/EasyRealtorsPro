@@ -17,6 +17,9 @@ import 'package:shared/shared.dart';
 import 'package:drift/drift.dart' as d;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'firestore_sync_service.dart';
 import 'package:provider/provider.dart';
 import '../core/providers/theme_provider.dart';
@@ -145,6 +148,103 @@ class _LoginPageState extends State<LoginPage> {
     return null;
   }
 
+  Future<bool> _checkIsUserActive(String email) async {
+    final emailKey = email.trim().toLowerCase();
+    
+    // 0. Explicitly exempt Super Admin by email
+    if (emailKey == 'mayof286@gmail.com') {
+      debugPrint('🛡️ Exempting Super Admin email from kill-switch: $emailKey');
+      return true;
+    }
+
+    // Explicitly exempt Super Admin by local database role check
+    try {
+      final db = await AppDatabase.instance();
+      final localUser = await db.customSelect(
+        'SELECT role FROM users WHERE email = ?',
+        variables: [d.Variable.withString(emailKey)],
+      ).get();
+      if (localUser.isNotEmpty) {
+        final role = localUser.first.data['role']?.toString().toLowerCase();
+        if (role == 'super_admin' || role == 'superadmin') {
+          debugPrint('🛡️ Exempting Super Admin role from kill-switch: $emailKey');
+          return true;
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to query local user role: $e');
+    }
+    
+    // 1. Try Firebase Firestore SDK first if available
+    try {
+      if (Firebase.apps.isNotEmpty) {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(emailKey)
+            .get();
+        if (doc.exists) {
+          final data = doc.data();
+          if (data != null) {
+            if (!data.containsKey('is_active') || data['is_active'] == null) {
+              final role = data['role']?.toString().toLowerCase();
+              if (role == 'super_admin' || role == 'superadmin') {
+                debugPrint('🛡️ Super Admin is_active is null/undefined in Firestore, defaulting to active');
+                return true;
+              }
+            } else {
+              return data['is_active'] == true;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Firestore SDK check failed: $e. Trying REST API fallback...');
+    }
+
+    // 2. Try Firestore REST API fallback (useful on Windows/REST situations)
+    try {
+      if (Firebase.apps.isNotEmpty) {
+        final projectId = Firebase.app().options.projectId;
+        final apiKey = Firebase.app().options.apiKey;
+        if (projectId.isNotEmpty && apiKey.isNotEmpty) {
+          final encodedEmail = Uri.encodeComponent(emailKey);
+          final url = 'https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/users/$encodedEmail?key=$apiKey';
+          final response = await http.get(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+          ).timeout(const Duration(seconds: 10));
+          
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            final fields = data['fields'] as Map<String, dynamic>?;
+            if (fields != null) {
+              if (!fields.containsKey('is_active') || fields['is_active'] == null) {
+                final roleField = fields['role'];
+                String? roleVal;
+                if (roleField is Map && roleField.containsKey('stringValue')) {
+                  roleVal = roleField['stringValue']?.toString().toLowerCase();
+                }
+                if (roleVal == 'super_admin' || roleVal == 'superadmin') {
+                  debugPrint('🛡️ Super Admin is_active is null/undefined in REST, defaulting to active');
+                  return true;
+                }
+              } else {
+                final isActiveField = fields['is_active'];
+                if (isActiveField is Map && isActiveField.containsKey('booleanValue')) {
+                  return isActiveField['booleanValue'] == true;
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Firestore REST API check failed: $e');
+    }
+
+    return true;
+  }
+
   Future<void> _login() async {
     if (_formKey.currentState?.validate() ?? false) {
       final isWindows = !kIsWeb && io.Platform.isWindows;
@@ -153,6 +253,52 @@ class _LoginPageState extends State<LoginPage> {
       });
 
       try {
+        final emailVal = _emailController.text.trim();
+        final isActive = await _checkIsUserActive(emailVal);
+        
+        if (!isActive) {
+          // Update local DB to inactive to prevent offline bypass
+          try {
+            final db = await AppDatabase.instance();
+            await db.customStatement(
+              'UPDATE users SET is_active = 0 WHERE email = ?',
+              [emailVal.toLowerCase()],
+            );
+          } catch (dbErr) {
+            debugPrint('Failed to update local database status: $dbErr');
+          }
+          
+          setState(() {
+            _isLoading = false;
+          });
+          
+          if (mounted) {
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (BuildContext context) {
+                return PopScope(
+                  canPop: false,
+                  child: AlertDialog(
+                    title: const Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                        SizedBox(width: 10),
+                        Text('Service Suspended', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    content: const Text(
+                      'Service Suspended. Please contact the developer.',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                );
+              },
+            );
+          }
+          return;
+        }
+
         final result = await AuthService.login(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),

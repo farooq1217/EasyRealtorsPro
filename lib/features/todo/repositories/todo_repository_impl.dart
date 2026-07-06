@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart' as d;
+import 'package:easyrealtorspro/firestore_sync_service.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:shared/shared.dart';
 import 'todo_repository.dart';
@@ -94,7 +95,7 @@ class TodoRepositoryImpl implements TodoRepository {
     try {
       debugPrint('TodoRepository: Inserting reminder - Title: ${reminder.reminderTitle}, Date: ${reminder.reminderDate}');
       
-      await _db.into(_db.reminders).insert(
+      final insertedId = await _db.into(_db.reminders).insert(
         RemindersCompanion.insert(
           agentId: reminder.agentId,
           companyId: d.Value(reminder.companyId),
@@ -111,6 +112,31 @@ class TodoRepositoryImpl implements TodoRepository {
           updatedAt: reminder.updatedAt,
         ),
       );
+      // Firestore sync for the newly created reminder
+      try {
+        await FirestoreSyncService().syncDocument(
+          collection: 'reminders',
+          documentId: insertedId.toString(),
+          data: {
+            'agentId': reminder.agentId,
+            'companyId': reminder.companyId,
+            'clientName': reminder.clientName,
+            'clientPhone': reminder.clientPhone,
+            'reminderTitle': reminder.reminderTitle,
+            'reminderDetails': reminder.reminderDetails,
+            'reminderDate': reminder.reminderDate,
+            'reminderTime': reminder.reminderTime,
+            'notificationStatus': reminder.notificationStatus,
+            'is_active': reminder.is_active,
+            'isSynced': true,
+            'createdAt': reminder.createdAt,
+            'updatedAt': reminder.updatedAt,
+          },
+        );
+        debugPrint('TodoRepository: Reminder synced to Firestore');
+      } catch (e) {
+        debugPrint('TodoRepository: Firestore sync failed: $e');
+      }
       
       debugPrint('TodoRepository: Reminder inserted successfully');
     } catch (e) {

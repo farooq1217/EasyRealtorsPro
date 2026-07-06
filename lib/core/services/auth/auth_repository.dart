@@ -207,6 +207,7 @@ class AuthRepository extends ChangeNotifier {
   // ✅ UPDATED: Local DB + REST API fallback (Windows safe, no crash)
   Future<Map<String, dynamic>> _localLoginOnly(String email, String password) async {
     try {
+      final isWindows = !kIsWeb && io.Platform.isWindows;
       debugPrint('🔐 _localLoginOnly: Starting local authentication for $email');
       
       final db = await AppDatabase.instance();
@@ -268,44 +269,67 @@ class AuthRepository extends ChangeNotifier {
       final passwordService = PasswordHashingService();
       var isValid = passwordService.verifyPassword(password, storedHash);
       
-      // ✅ NEW: Agar local verification fail ho, to Firebase Auth se verify karein (Auto Sync)
+      if (isValid && !passwordService.isValidHashFormat(storedHash)) {
+        debugPrint('🔄 _localLoginOnly: Local hash format is legacy/corrupted. Self-healing to secure PBKDF2...');
+        try {
+          final newSalt = passwordService.generateSalt();
+          final newHash = passwordService.hashPassword(password, salt: newSalt);
+          await db.customStatement(
+            'UPDATE users SET password_hash = ?, salt = ?, iterations = ?, updated_at = ? WHERE email = ?',
+            [newHash, newSalt, 100000, DateTime.now().toIso8601String(), emailKey],
+          );
+          debugPrint('✅ _localLoginOnly: Self-healed legacy/corrupted local hash successfully');
+        } catch (e) {
+          debugPrint('⚠️ _localLoginOnly: Self-healing failed: $e');
+        }
+      }
+      
+      // ✅ NEW: Agar local verification fail ho, to Firebase Auth or REST API fallback se verify karein (Self-healing)
       if (!isValid) {
-        debugPrint('⚠️ _localLoginOnly: Local password mismatch, attempting Firebase Auth fallback...');
+        debugPrint('⚠️ _localLoginOnly: Local password mismatch/corruption, attempting Firebase/REST verification fallback...');
         
         try {
-          // Check internet
           final hasInternet = await _checkInternetConnectivity();
-          
-          if (hasInternet && Firebase.apps.isNotEmpty) {
-            // Silent Firebase Auth verification
-            final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-              email: emailKey,
-              password: password,
-            );
+          if (hasInternet) {
+            // First, try our robust REST API verification (Windows safe)
+            final isRestValid = await _verifyPasswordViaRestApi(emailKey, password);
             
-            if (credential.user != null) {
-              debugPrint('✅ _localLoginOnly: Firebase Auth successful - syncing new password to local DB');
+            if (isRestValid) {
+              debugPrint('✅ _localLoginOnly: REST Auth successful - self-healing local password hash');
               
-              // Naya password hash generate karein
               final newSalt = passwordService.generateSalt();
               final newHash = passwordService.hashPassword(password, salt: newSalt);
               
-              // Local DB mein update karein
-              final db = await AppDatabase.instance();
               await db.customStatement(
                 'UPDATE users SET password_hash = ?, salt = ?, iterations = ?, updated_at = ? WHERE email = ?',
                 [newHash, newSalt, 100000, DateTime.now().toIso8601String(), emailKey],
               );
               
-              debugPrint('✅ _localLoginOnly: Password synced to local DB successfully');
-              isValid = true; // Ab valid hai
+              isValid = true;
+            } else if (Firebase.apps.isNotEmpty && !isWindows) {
+              // Fallback to Firebase SDK for non-Windows if REST fails for some reason
+              final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+                email: emailKey,
+                password: password,
+              );
+              
+              if (credential.user != null) {
+                debugPrint('✅ _localLoginOnly: Firebase Auth SDK successful - self-healing local password hash');
+                
+                final newSalt = passwordService.generateSalt();
+                final newHash = passwordService.hashPassword(password, salt: newSalt);
+                
+                await db.customStatement(
+                  'UPDATE users SET password_hash = ?, salt = ?, iterations = ?, updated_at = ? WHERE email = ?',
+                  [newHash, newSalt, 100000, DateTime.now().toIso8601String(), emailKey],
+                );
+                
+                isValid = true;
+              }
             }
           }
-        } on FirebaseAuthException catch (e) {
-          debugPrint('❌ _localLoginOnly: Firebase Auth failed: ${e.code} - ${e.message}');
-          // Firebase bhi fail, matlab password genuinely galat hai
         } catch (e) {
-          debugPrint('❌ _localLoginOnly: Firebase Auth error: $e');
+          debugPrint('❌ _localLoginOnly: Self-healing verification fallback failed: $e');
         }
       }
       
@@ -560,6 +584,34 @@ class AuthRepository extends ChangeNotifier {
   Future<void> _saveUserToLocalDb(Map<String, dynamic> userData) async {
     try {
       final db = await AppDatabase.instance();
+      final emailKey = (userData['email'] ?? '').toString().trim().toLowerCase();
+      final idVal = userData['id']?.toString() ?? '';
+      
+      // Check if user exists in local database
+      final existing = await db.customSelect(
+        'SELECT password_hash, salt, iterations FROM users WHERE id = ? OR email = ?',
+        variables: [d.Variable.withString(idVal), d.Variable.withString(emailKey)],
+      ).get();
+      
+      String? passwordHash = userData['password_hash'] ?? userData['passwordHash'];
+      String? salt = userData['salt'];
+      dynamic iterations = userData['iterations'];
+      
+      final hashingService = PasswordHashingService();
+      
+      if (existing.isNotEmpty) {
+        final existingRow = existing.first.data;
+        final existingHash = existingRow['password_hash']?.toString() ?? '';
+        final existingSalt = existingRow['salt']?.toString() ?? '';
+        final existingIterations = existingRow['iterations'];
+        
+        // If incoming is not valid but existing is valid, preserve existing
+        if (!hashingService.isValidHashFormat(passwordHash) && hashingService.isValidHashFormat(existingHash)) {
+          passwordHash = existingHash;
+          salt = existingSalt;
+          iterations = existingIterations;
+        }
+      }
       
       String permsStr = '{}';
       if (userData['permissions'] is String) {
@@ -575,14 +627,14 @@ class AuthRepository extends ChangeNotifier {
           is_active, profile_picture_path, created_at, updated_at, is_synced
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
-        userData['id'],
-        userData['username'] ?? userData['email'],
-        userData['password_hash'] ?? '',
-        userData['salt'] ?? '',
-        int.tryParse(userData['iterations']?.toString() ?? '') ?? 100000,
-        userData['user_id'] ?? userData['id'],
+        idVal,
+        userData['username'] ?? userData['email'] ?? emailKey,
+        passwordHash ?? '',
+        salt ?? '',
+        int.tryParse(iterations?.toString() ?? '') ?? 100000,
+        userData['user_id'] ?? idVal,
         userData['name'] ?? '',
-        userData['email'] ?? '',
+        emailKey,
         userData['contact_no'] ?? '',
         userData['role'] ?? 'agent',
         permsStr,
@@ -611,6 +663,47 @@ class AuthRepository extends ChangeNotifier {
       debugPrint('⚠️ _checkInternetConnectivity: $e');
       return false;
     }
+  }
+
+  // ✅ NEW: Verify password using Firebase Auth REST API (cross-platform, Windows safe)
+  Future<bool> _verifyPasswordViaRestApi(String email, String password) async {
+    try {
+      if (Firebase.apps.isEmpty) {
+        debugPrint('⚠️ REST API: Firebase not initialized');
+        return false;
+      }
+      final apiKey = Firebase.app().options.apiKey;
+      if (apiKey.isEmpty) {
+        debugPrint('⚠️ REST API: API Key is empty');
+        return false;
+      }
+      
+      final url = 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$apiKey';
+      debugPrint('🌐 REST API: Making call to identitytoolkit for $email...');
+      
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email.trim().toLowerCase(),
+          'password': password,
+          'returnSecureToken': true,
+        }),
+      ).timeout(const Duration(seconds: 10));
+      
+      debugPrint('🌐 REST API Status Code: ${response.statusCode}');
+      debugPrint('🌐 REST API Response: ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data.containsKey('idToken')) {
+          return true; // Password is valid
+        }
+      }
+    } catch (e) {
+      debugPrint('REST API password verification failed: $e');
+    }
+    return false;
   }
 
   // ✅ EXISTING: Create first admin account locally
@@ -700,10 +793,11 @@ class AuthRepository extends ChangeNotifier {
       debugPrint('📥 _fetchUserFromFirestore: Fetching user $email from Firestore...');
       
       final firestore = FirebaseFirestore.instance;
+      final emailKey = email.trim().toLowerCase();
       
       final snapshot = await firestore
           .collection('users')
-          .where('email', isEqualTo: email)
+          .where('email', isEqualTo: emailKey)
           .limit(1)
           .get()
           .timeout(const Duration(seconds: 10));
@@ -719,6 +813,31 @@ class AuthRepository extends ChangeNotifier {
       debugPrint('✅ _fetchUserFromFirestore: Found user in Firestore, saving to local DB...');
       
       final db = await AppDatabase.instance();
+      
+      // Check if user exists in local database
+      final existing = await db.customSelect(
+        'SELECT password_hash, salt, iterations FROM users WHERE id = ? OR email = ?',
+        variables: [d.Variable.withString(doc.id), d.Variable.withString(emailKey)],
+      ).get();
+      
+      String? passwordHash = data['password_hash'] ?? data['passwordHash'];
+      String? salt = data['salt'];
+      dynamic iterations = data['iterations'];
+      
+      final hashingService = PasswordHashingService();
+      
+      if (existing.isNotEmpty) {
+        final existingRow = existing.first.data;
+        final existingHash = existingRow['password_hash']?.toString() ?? '';
+        final existingSalt = existingRow['salt']?.toString() ?? '';
+        final existingIterations = existingRow['iterations'];
+        
+        if (!hashingService.isValidHashFormat(passwordHash) && hashingService.isValidHashFormat(existingHash)) {
+          passwordHash = existingHash;
+          salt = existingSalt;
+          iterations = existingIterations;
+        }
+      }
       
       String permsStr = '{}';
       if (data['permissions'] is String) {
@@ -736,12 +855,12 @@ class AuthRepository extends ChangeNotifier {
         [
           doc.id,
           data['username']?.toString() ?? '',
-          data['password_hash']?.toString() ?? '',
-          data['salt']?.toString() ?? '',
-          int.tryParse(data['iterations']?.toString() ?? '') ?? 100000,
+          passwordHash ?? '',
+          salt ?? '',
+          int.tryParse(iterations?.toString() ?? '') ?? 100000,
           data['user_id']?.toString() ?? doc.id,
           data['name']?.toString() ?? '',
-          data['email']?.toString() ?? email,
+          emailKey,
           data['contact_no']?.toString() ?? '',
           data['role']?.toString() ?? 'agent',
           permsStr,
@@ -750,8 +869,8 @@ class AuthRepository extends ChangeNotifier {
           (data['is_first_login'] == true || data['is_first_login'] == 1) ? 1 : 0,
           (data['is_active'] == true || data['is_active'] == 1) ? 1 : 0,
           data['profile_picture_path']?.toString() ?? '',
-          data['created_at']?.toString() ?? DateTime.now().toIso8601String(),
-          data['updated_at']?.toString() ?? DateTime.now().toIso8601String(),
+          data['created_at']?.toString() ?? DateTime.now().toUtc().toIso8601String(),
+          data['updated_at']?.toString() ?? DateTime.now().toUtc().toIso8601String(),
           1,
         ],
       );
