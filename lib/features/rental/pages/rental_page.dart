@@ -48,6 +48,7 @@ import '../../../firestore_sync_service.dart' show FirestoreSyncState;
 import '../../../image_cache_service.dart';
 import '../../../offline_sync_service.dart';
 import '../../../core/services/permission_helper.dart' show PermissionHelper;
+import '../../../core/services/background_sync_manager.dart';
 import '../../../core/services/app_storage.dart' show AppStorage;
 import '../../../widgets/stat_card.dart' show StatCard;
 import '../../../widgets/performance_chart_card.dart' show PerformanceChartCard;
@@ -694,7 +695,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                 if (existing != null && existing['id'] != null) {
                                   // Update existing record
                                   await widget.db.customStatement(
-                                    'UPDATE rental_items SET name = ?, location = ?, owner_name = ?, contact_no = ?, price = ?, security = ?, sale_status = ?, remarks = ?, updated_at = ? WHERE id = ?',
+                                    'UPDATE rental_items SET name = ?, location = ?, owner_name = ?, contact_no = ?, price = ?, security = ?, sale_status = ?, remarks = ?, updated_at = ?, is_synced = 0 WHERE id = ?',
                                     [
                                       data['name'],
                                       data['location'],
@@ -719,7 +720,7 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                   data['is_active'] = 1;
 
                                   await widget.db.customStatement(
-                                    'INSERT INTO rental_items (id, created_by, name, location, owner_name, contact_no, price, security, sale_status, remarks, company_id, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                                    'INSERT INTO rental_items (id, created_by, name, location, owner_name, contact_no, price, security, sale_status, remarks, company_id, is_active, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
                                     [
                                       id,
                                       userId ?? '',
@@ -738,6 +739,11 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
                                     ],
                                   );
                                 }
+
+                                // Auto-trigger background sync immediately to push changes
+                                BackgroundSyncManager().forceSync().catchError((e) {
+                                  debugPrint('RentalPage: Error triggering background sync: $e');
+                                });
 
                                 // Close dialog
                                 setState(() {
@@ -1237,9 +1243,14 @@ class _RentalItemsPageState extends State<RentalItemsPage> {
 
     try {
       await widget.db.customStatement(
-        'UPDATE rental_items SET is_active = 0, updated_at = ? WHERE id = ?',
+        'UPDATE rental_items SET is_active = 0, is_synced = 0, updated_at = ? WHERE id = ?',
         [DateTime.now().toUtc().toIso8601String(), id],
       );
+
+      // Auto-trigger background sync immediately to push changes
+      BackgroundSyncManager().forceSync().catchError((e) {
+        debugPrint('RentalPage: Error triggering background sync on delete: $e');
+      });
 
       await _load();
       ScaffoldMessenger.of(context).showSnackBar(

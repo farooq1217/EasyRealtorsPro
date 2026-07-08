@@ -6,6 +6,7 @@ import 'dart:io' if (dart.library.html) '../../platform_stubs/io_stub.dart' as i
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared/shared.dart' show AppDatabase;
 import '../../../core/services/firebase_threading_handler.dart';
+import '../../../core/services/background_sync_manager.dart';
 import 'rental_repository.dart';
 
 /// Implementation of RentalRepository using Drift/SQLite
@@ -131,8 +132,8 @@ class RentalRepositoryImpl implements RentalRepository {
       await _database.customStatement(
         '''INSERT INTO rental_items 
            (id, created_by, name, location, owner_name, contact_no, cnic, 
-            price, security, sale_status, remarks, company_id, is_active, updated_at) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            price, security, sale_status, remarks, company_id, is_active, updated_at, is_synced) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)''',
         [
           id,
           item['created_by'],
@@ -419,6 +420,11 @@ class RentalRepositoryImpl implements RentalRepository {
       UPDATE rental_items SET is_synced = 0, updated_at = ? 
       WHERE id = ?
     ''', [DateTime.now().toIso8601String(), id]);
+    
+    // Auto-trigger background sync immediately to push changes
+    BackgroundSyncManager().forceSync().catchError((e) {
+      debugPrint('RentalRepository: Error triggering background sync inside markRentalItemAsUnsynced: $e');
+    });
   }
 
   Future<void> markRentalItemAsSynced(String id) async {

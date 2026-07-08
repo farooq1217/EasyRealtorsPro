@@ -9,6 +9,7 @@ import '../database/app_database_singleton.dart';
 import 'firebase_threading_handler.dart';
 import '../database/app_database_extensions.dart';
 import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:shared/src/db/schema.dart';
 /// Background sync manager for incremental local-to-cloud sync
@@ -208,7 +209,7 @@ class BackgroundSyncManager {
 
     // CRITICAL: Additional protection against rapid successive calls
     if (_lastSyncTime != null && 
-        DateTime.now().difference(_lastSyncTime!).inSeconds < 30) {
+        DateTime.now().difference(_lastSyncTime!).inSeconds < 3) {
       debugPrint('[SYNC] Sync called too recently - skipping (last sync: ${_lastSyncTime})');
       return;
     }
@@ -306,10 +307,7 @@ class BackgroundSyncManager {
     
     // Convert records to Firestore format
     final documents = unsyncedRecords.map((row) {
-      final data = Map<String, dynamic>.from(row.data);
-      // Remove internal fields
-      data.remove('is_synced');
-      return data;
+      return _prepareRecordForFirestore(tableName, row.data);
     }).toList();
     
     // Batch sync to Firestore
@@ -397,19 +395,34 @@ class BackgroundSyncManager {
     
     debugPrint('[SYNC] Syncing ${unsyncedRecords.length} business records from $tableName');
     
-    // Mark records as synced
-    for (final record in unsyncedRecords) {
-      final id = record.data['id']?.toString();
-      if (id != null) {
-        await db.customStatement(
-          'UPDATE $tableName SET is_synced = 1 WHERE id = ?',
-          [id],
-        );
-      }
-    }
+    // Convert records to Firestore format
+    final documents = unsyncedRecords.map((row) {
+      return _prepareRecordForFirestore(tableName, row.data);
+    }).toList();
     
-    status.completeSync(success: true);
-    debugPrint('[SYNC] Successfully synced ${unsyncedRecords.length} business records from $tableName');
+    // Batch sync to Firestore
+    final success = await _firestoreSync.batchSync(
+      collection: collectionName,
+      documents: documents,
+    );
+    
+    if (success) {
+      // Mark records as synced
+      for (final record in unsyncedRecords) {
+        final id = record.data['id']?.toString();
+        if (id != null) {
+          await db.customStatement(
+            'UPDATE $tableName SET is_synced = 1 WHERE id = ?',
+            [id],
+          );
+        }
+      }
+      status.completeSync(success: true);
+      debugPrint('[SYNC] Successfully synced ${unsyncedRecords.length} business records from $tableName');
+    } else {
+      status.completeSync(success: false, error: 'Firestore batch sync failed');
+      debugPrint('[SYNC] Failed to sync business records from $tableName');
+    }
   }
 
   /// Mark a record as unsynced (for local changes)
@@ -477,6 +490,55 @@ class BackgroundSyncManager {
 
   /// Check if sync is currently in progress
   bool get isSyncing => _isSyncing;
+
+  /// Prepare a SQLite record for writing to Firestore by formatting datatypes
+  Map<String, dynamic> _prepareRecordForFirestore(String tableName, Map<String, dynamic> rowData) {
+    final data = Map<String, dynamic>.from(rowData);
+    
+    // Remove local-only fields
+    data.remove('is_synced');
+    
+    // Convert boolean integer fields (0/1) to actual booleans (false/true)
+    final boolKeys = [
+      'is_active', 'isActive', 
+      'is_first_login', 'isFirstLogin', 
+      'is_completed', 'isCompleted'
+    ];
+    for (final key in boolKeys) {
+      if (data.containsKey(key) && data[key] is int) {
+        data[key] = data[key] == 1;
+      }
+    }
+    
+    // Convert date string fields to Firestore Timestamps
+    final dateKeys = [
+      'created_at', 'createdAt',
+      'updated_at', 'updatedAt',
+      'date',
+      'due_date', 'dueDate',
+      'transfer_date', 'transferDate',
+      'next_working_date', 'nextWorkingDate',
+      'reminder_date', 'reminderDate'
+    ];
+    
+    for (final key in dateKeys) {
+      if (data.containsKey(key) && data[key] != null && data[key] is String) {
+        final val = data[key] as String;
+        if (val.isNotEmpty) {
+          try {
+            final parsedDate = DateTime.tryParse(val);
+            if (parsedDate != null) {
+              data[key] = Timestamp.fromDate(parsedDate);
+            }
+          } catch (e) {
+            // Ignore parse errors, keep original string
+          }
+        }
+      }
+    }
+    
+    return data;
+  }
 }
 
 /// Sync status for tracking table synchronization

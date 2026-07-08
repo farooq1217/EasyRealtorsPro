@@ -107,7 +107,12 @@ void main() async {
 
 
     
-    await dotenv.load(fileName: ".env");
+    try {
+      await dotenv.load(fileName: ".env");
+    } catch (e) {
+      debugPrint('⚠️ Warning: Failed to load .env file: $e');
+      dotenv.loadFromString(envString: 'DUMMY=true');
+    }
     await LogService.init();
     await LogService.write('✅ App Started');
     

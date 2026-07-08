@@ -27,12 +27,9 @@ class RestSyncManager {
       final workingResult = await syncWorkingProgress();
       final expenditureResult = await syncExpenditures();
       final inventoryResult = await syncInventoryFiles();
-      //final rentalResult = await syncRentalItems();
+      final rentalResult = await syncRentalItems();
       final todoResult = await syncReminders();
 
-      debugPrint('⏸️ RestSyncManager: Rental items sync temporarily disabled');
-
-      
       debugPrint('✅ RestSyncManager: All data synced successfully');
       
       return {
@@ -44,7 +41,7 @@ class RestSyncManager {
         'working': workingResult['count'] ?? 0,
         'expenditure': expenditureResult['count'] ?? 0,
         'inventory': inventoryResult['count'] ?? 0,
-        'rental': 0,
+        'rental': rentalResult['count'] ?? 0,
         'todo': todoResult['count'] ?? 0,
       };
     } catch (e) {
@@ -503,8 +500,23 @@ Future<void> _saveExpendituresToLocal(List documents) async {
       
       try {
         await db.customStatement(
-          '''INSERT OR REPLACE INTO expenditures (...) VALUES (...)''',
-          [ /* parameters */ ],
+          '''INSERT OR REPLACE INTO expenditures (
+            id, date, description, amount, category, category_type, company_id, created_by, created_at, updated_at, is_active, is_synced
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+          [
+            docId,
+            _extractString(fields['date']) ?? DateTime.now().toIso8601String(),
+            _extractString(fields['description']) ?? '',
+            _extractDouble(fields['amount']) ?? 0.0,
+            _extractString(fields['category']) ?? '',
+            _extractString(fields['category_type']) ?? _extractString(fields['categoryType']) ?? 'office',
+            _extractString(fields['company_id']) ?? _extractString(fields['companyId']) ?? '',
+            _extractString(fields['created_by']) ?? _extractString(fields['createdBy']) ?? '',
+            _extractString(fields['created_at']) ?? _extractString(fields['createdAt']) ?? DateTime.now().toIso8601String(),
+            _extractString(fields['updated_at']) ?? _extractString(fields['updatedAt']) ?? DateTime.now().toIso8601String(),
+            _extractInt(fields['is_active']) ?? _extractInt(fields['isActive']) ?? 1,
+            1,
+          ],
         );
       } catch (e) {
         debugPrint('❌ Error saving expenditure $docId: $e');
@@ -559,17 +571,26 @@ Future<void> _saveRentalItemsToLocal(List documents) async {
     try {
       await db.customStatement(
         '''INSERT OR REPLACE INTO rental_items (
-          id, name, rent_amount, company_id, is_active,
-          created_at, updated_at, is_synced
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+          id, company_id, created_by, name, price, remarks, location, 
+          owner_name, contact_no, cnic, security, sale_status, 
+          is_active, created_at, updated_at, is_synced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         [
           docId,
+          _extractString(fields['company_id']) ?? _extractString(fields['companyId']),
+          _extractString(fields['created_by']) ?? _extractString(fields['createdBy']),
           _extractString(fields['name']) ?? '',
-          _extractDouble(fields['rent_amount']) ?? 0.0,
-          _extractString(fields['company_id']) ?? '',
-          _extractInt(fields['is_active']) ?? 1,
-          _extractString(fields['created_at']) ?? DateTime.now().toIso8601String(),
-          _extractString(fields['updated_at']) ?? DateTime.now().toIso8601String(),
+          _extractInt(fields['price']) ?? _extractInt(fields['rent_amount']), // Mapped from price or legacy rent_amount
+          _extractString(fields['remarks']),
+          _extractString(fields['location']),
+          _extractString(fields['owner_name']) ?? _extractString(fields['ownerName']),
+          _extractString(fields['contact_no']) ?? _extractString(fields['contactNo']),
+          _extractString(fields['cnic']),
+          _extractInt(fields['security']),
+          _extractString(fields['sale_status']) ?? _extractString(fields['saleStatus']),
+          _extractInt(fields['is_active']) ?? _extractInt(fields['isActive']) ?? 1,
+          _extractString(fields['created_at']) ?? _extractString(fields['createdAt']) ?? DateTime.now().toIso8601String(),
+          _extractString(fields['updated_at']) ?? _extractString(fields['updatedAt']) ?? DateTime.now().toIso8601String(),
           1,
         ],
       );

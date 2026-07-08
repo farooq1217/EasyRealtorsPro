@@ -47,6 +47,7 @@ import '../follow_up/pages/follow_up_page.dart';
 import 'package:shared/shared.dart' show AppDatabase;
 import '../follow_up/view_models/follow_up_view_model.dart';
 import '../../../core/services/foreground_sync_manager.dart';
+import '../../../core/services/background_sync_manager.dart';
 import '../../../core/services/rest_sync_manager.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/theme/app_themes.dart';
@@ -159,6 +160,7 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
   final ValueNotifier<int?> _badgeRentalsNotifier = ValueNotifier(null);
   StreamSubscription<Map<String, dynamic>?>? _userStreamSubscription;
   Timer? _periodicPermissionCheckTimer;
+  Timer? _autoSyncTimer;
   
   late final List<Widget> _pages;
 
@@ -180,7 +182,7 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
     
     _startPeriodicPermissionCheck();
     
-    _triggerForegroundSyncOnWindows();
+    _triggerWindowsAutoSync();
   }
 
   List<Widget> _initializePages() {
@@ -210,7 +212,7 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
     ];
   }
 
-  Future<void> _triggerForegroundSyncOnWindows() async {
+  Future<void> _triggerWindowsAutoSync() async {
     final isWindows = !kIsWeb && io.Platform.isWindows;
     
     if (!isWindows) {
@@ -225,8 +227,41 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
         debugPrint('❌ MainNavigationPage: Foreground sync failed: $e');
       }
     } else {
-      debugPrint('⏸️ MainNavigationPage: Windows detected - Firestore sync disabled (temporary)');
-      debugPrint('💡 Note: Data sync will be available after Firebase REST API integration');
+      // 1. Initialize BackgroundSyncManager for outbound (SQLite -> Firestore) sync
+      try {
+        if (!BackgroundSyncManager().hasBeenInitializedInSession) {
+          await BackgroundSyncManager().initialize();
+          debugPrint('🔄 MainNavigationPage: BackgroundSyncManager initialized for Windows');
+        }
+      } catch (e) {
+        debugPrint('❌ MainNavigationPage: Error initializing BackgroundSyncManager: $e');
+      }
+
+      // 2. Delay start for silent background REST sync (Priority 1: Local SQLite loads first)
+      await Future.delayed(const Duration(seconds: 5));
+      if (!mounted) return;
+
+      // 3. Perform initial silent inbound sync
+      _performSilentInboundSync();
+
+      // 4. Set up periodic timer to pull updates (real-time sync replacement for Windows)
+      _autoSyncTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        await _performSilentInboundSync();
+      });
+    }
+  }
+
+  Future<void> _performSilentInboundSync() async {
+    try {
+      debugPrint('🔄 MainNavigationPage: Starting silent background REST sync...');
+      final result = await RestSyncManager.instance.syncAllData();
+      debugPrint('✅ MainNavigationPage: Silent background REST sync completed: $result');
+    } catch (e) {
+      debugPrint('❌ MainNavigationPage: Silent background REST sync failed: $e');
     }
   }
 
@@ -260,6 +295,7 @@ class _MainNavigationPageContentState extends State<_MainNavigationPageContent> 
   void dispose() {
     _userStreamSubscription?.cancel();
     _periodicPermissionCheckTimer?.cancel();
+    _autoSyncTimer?.cancel();
     _isSidebarOpenNotifier.dispose();
     _badgeFilesNotifier.dispose();
     _badgeRentalsNotifier.dispose();

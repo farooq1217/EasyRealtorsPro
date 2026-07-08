@@ -21,6 +21,9 @@ class SyncDatabaseHelper {
         [recordId],
       );
       debugPrint('[SYNC_HELPER] Marked record $recordId in $tableName as unsynced');
+      _syncManager.forceSync().catchError((e) {
+        debugPrint('[SYNC_HELPER] Error auto-triggering background sync: $e');
+      });
     } catch (e) {
       debugPrint('[SYNC_HELPER] Error marking record as unsynced: $e');
     }
@@ -38,6 +41,9 @@ class SyncDatabaseHelper {
         recordIds,
       );
       debugPrint('[SYNC_HELPER] Marked ${recordIds.length} records in $tableName as unsynced');
+      _syncManager.forceSync().catchError((e) {
+        debugPrint('[SYNC_HELPER] Error auto-triggering background sync: $e');
+      });
     } catch (e) {
       debugPrint('[SYNC_HELPER] Error marking multiple records as unsynced: $e');
     }
@@ -69,6 +75,9 @@ class SyncDatabaseHelper {
       
       if (recordId != null) {
         debugPrint('[SYNC_HELPER] Inserted and marked record $recordId in $tableName as unsynced');
+        _syncManager.forceSync().catchError((e) {
+          debugPrint('[SYNC_HELPER] Error auto-triggering background sync: $e');
+        });
         return recordId;
       }
       
@@ -98,6 +107,9 @@ class SyncDatabaseHelper {
       );
       
       debugPrint('[SYNC_HELPER] Updated and marked record $recordId in $tableName as unsynced');
+      _syncManager.forceSync().catchError((e) {
+        debugPrint('[SYNC_HELPER] Error auto-triggering background sync: $e');
+      });
       return true;
     } catch (e) {
       debugPrint('[SYNC_HELPER] Error in updateWithSyncMark: $e');
@@ -119,6 +131,9 @@ class SyncDatabaseHelper {
       );
       
       debugPrint('[SYNC_HELPER] Marked record $recordId in $tableName as unsynced before deletion');
+      _syncManager.forceSync().catchError((e) {
+        debugPrint('[SYNC_HELPER] Error auto-triggering background sync: $e');
+      });
       return true;
     } catch (e) {
       debugPrint('[SYNC_HELPER] Error in deleteWithSyncMark: $e');

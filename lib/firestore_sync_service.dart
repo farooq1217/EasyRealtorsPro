@@ -217,10 +217,25 @@ class FirestoreSyncService {
     required String collection,
     required List<Map<String, dynamic>> documents,
   }) async {
-    if (Firebase.apps.isEmpty) return false;
-    if (kIsWeb == false && RootIsolateToken.instance == null) return false;
-    await _ensureAuthenticatedWithFreshToken();
-    if (FirebaseAuth.instance.currentUser == null) return false;
+    if (Firebase.apps.isEmpty) {
+      debugPrint('❌ Batch Sync Error in $collection: Firebase is not initialized.');
+      return false;
+    }
+    if (kIsWeb == false && RootIsolateToken.instance == null) {
+      debugPrint('❌ Batch Sync Error in $collection: RootIsolateToken is null.');
+      return false;
+    }
+    
+    try {
+      await _ensureAuthenticatedWithFreshToken();
+    } catch (e) {
+      debugPrint('❌ Batch Sync Error in $collection: Failed to ensure authentication: $e');
+    }
+    
+    if (FirebaseAuth.instance.currentUser == null) {
+      debugPrint('❌ Batch Sync Error in $collection: No authenticated Firebase user found.');
+      return false;
+    }
 
     try {
       final batch = FirebaseFirestore.instance.batch();
@@ -230,9 +245,10 @@ class FirestoreSyncService {
           final ref = FirebaseFirestore.instance.collection(collection).doc(docId);
           try {
             batch.set(ref, doc, SetOptions(merge: true));
-          } catch (e) {
+          } catch (e, stack) {
             _ensureMainThread(() {
-              debugPrint('Batch sync skipped doc $docId: $e');
+              debugPrint('❌ Batch sync skipped doc $docId in $collection due to serialization/set error: $e');
+              debugPrint(stack.toString());
             });
           }
         }
@@ -244,9 +260,17 @@ class FirestoreSyncService {
       });
       
       return true;
-    } catch (e) {
+    } on FirebaseException catch (e, stack) {
       _ensureMainThread(() {
-        debugPrint('Error batch syncing to Firestore: $e');
+        debugPrint('❌ Firebase Batch Sync Error in $collection: [${e.code}] ${e.message}');
+        debugPrint('Details: ${e.toString()}');
+        debugPrint(stack.toString());
+      });
+      return false;
+    } catch (e, stack) {
+      _ensureMainThread(() {
+        debugPrint('❌ Generic Batch Sync Error in $collection: $e');
+        debugPrint(stack.toString());
       });
       return false;
     }

@@ -269,6 +269,21 @@ class AuthRepository extends ChangeNotifier {
       final passwordService = PasswordHashingService();
       var isValid = passwordService.verifyPassword(password, storedHash);
       
+      if (isValid) {
+        _checkInternetConnectivity().then((hasInternet) {
+          if (hasInternet) {
+            FirebaseAuth.instance.signInWithEmailAndPassword(
+              email: emailKey,
+              password: password,
+            ).then((_) {
+              debugPrint('✅ Background Firebase Auth sign-in successful on Windows');
+            }).catchError((e) {
+              debugPrint('⚠️ Background Firebase Auth sign-in failed: $e');
+            });
+          }
+        });
+      }
+      
       if (isValid && !passwordService.isValidHashFormat(storedHash)) {
         debugPrint('🔄 _localLoginOnly: Local hash format is legacy/corrupted. Self-healing to secure PBKDF2...');
         try {
